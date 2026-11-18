@@ -94,6 +94,9 @@ const CSS = `
 #mf-ending .txt{font-size:14px;line-height:2.1;color:rgba(255,255,255,.88);margin:26px 0 34px;white-space:pre-line;max-width:560px;}
 #mf-ending button{font-family:inherit;cursor:pointer;font-size:12px;padding:10px 26px;letter-spacing:.1em;
   background:rgba(0,0,0,.35);color:#fff;border:1px solid rgba(255,255,255,.5);}
+#mf-ending .ends{display:flex;gap:12px;justify-content:center;}
+#mf-ending button.go{background:rgba(255,194,122,.92);color:#1a1a14;border-color:transparent;font-weight:700;}
+#mf-ending button.go:hover{background:#ffd39a;}
 #mf-dance{position:fixed;inset:0;z-index:55;display:none;align-items:center;justify-content:center;
   flex-direction:column;background:rgba(20,8,26,.88);}
 #mf-dance.on{display:flex;}
@@ -117,7 +120,8 @@ function initUI() {
     <div id="mf-hint"></div><div id="mf-toast"></div>
     <div id="mf-dialog"><div class="who"></div><div class="line"></div><div class="next">E / 点击 继续 ▼</div></div>
     <div id="mf-confirm"><div class="q"></div><button class="yes">确定</button><button class="no">再想想</button></div>
-    <div id="mf-ending"><div class="tag"></div><div class="name"></div><div class="txt"></div><button>返回</button></div>
+    <div id="mf-ending"><div class="tag"></div><div class="name"></div><div class="txt"></div>
+      <div class="ends"><button class="back">返回</button><button class="go">下班 · 开车回家 →</button></div></div>
     <div id="mf-dance"><div class="t">奶 蛙 舞 · 跟 上 节 拍</div><div class="arrow"></div><div class="seq"></div><div class="bar"><i></i></div><div class="hint">按对应方向键 · 错拍或超时即失败</div>
       <div class="dbtns"><button data-d="ArrowLeft">←</button><button data-d="ArrowUp">↑</button><button data-d="ArrowDown">↓</button><button data-d="ArrowRight">→</button></div></div>`;
   document.body.appendChild(wrap);

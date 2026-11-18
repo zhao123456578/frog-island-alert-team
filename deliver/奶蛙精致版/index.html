@@ -159,6 +159,7 @@
     </div>
     <div class="boot-btns">
       <button class="btn" id="btnEnter">进入第一幕</button>
+      <button class="btn" id="btnOutdoor" style="background:#1d2320;color:#cfe3a0;border:1px solid rgba(207,227,160,.45);">下班 · 开车回家 →</button>
       <button class="btn dev" id="btnDevEnter">以开发者模式进入</button>
     </div>
     <div class="boot-foot">点击场景卡片选关 · 左下方向键 / WASD 移动 · 拖拽环视 · E 交互 · F 手电 · 空格装死<br>
@@ -269,7 +270,8 @@ renderer.setPixelRatio(1);renderer.setSize(window.innerWidth,window.innerHeight,
 
 /* ===== MF 交互框架（背包 / 对话 / 结局 / 跳舞） ===== */
 MF.initUI();
-document.querySelector("#mf-ending button").textContent="返回工厂";
+document.querySelector("#mf-ending .back").textContent="返回工厂";
+document.querySelector("#mf-ending .go").onclick=()=>{location.href="outdoor.html";};
 MF.bindPanel(document.getElementById("mfPanel"));
 
 const S={levels:24,wobble:0.004,noise:0.02,scan:0.04,warp:0.05,fogDensity:0.062,fogHue:205,
@@ -2253,6 +2255,7 @@ function startScene(devMode){if(S.started)return;S.started=true;
   if(devMode){dev.classList.add("open");devToggle.classList.add("active");document.body.classList.add("dev-open");}}
 document.getElementById("btnEnter").onclick=()=>startScene(false);
 document.getElementById("btnDevEnter").onclick=()=>startScene(true);
+document.getElementById("btnOutdoor").onclick=()=>{location.href="outdoor.html";};
 devToggle.onclick=toggleDev;
 document.querySelectorAll(".scene-card").forEach(c=>c.onclick=()=>{
   document.querySelectorAll(".scene-card").forEach(x=>x.style.borderColor="");

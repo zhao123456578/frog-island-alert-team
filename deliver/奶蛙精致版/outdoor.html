@@ -64,19 +64,22 @@
   <div class="pill" id="hSpeed">0 km/h</div>
   <div class="pill" id="hRadio">电台 <b>深夜交通台</b><br><span id="hRadioLine" style="color:#8b929c">FM 98.7</span></div>
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
-  <div class="pill" id="hKeys">W 油门 · S 刹车 · A/D 变道<br>SPACE 开窗 · 1-4 换台 · F 喝咖啡</div>
+  <div class="pill" id="hKeys">W 油门 · S 刹车 · A/D 变道<br>SPACE 开窗 · R 雨刷 · 1-4 换台 · F 喝咖啡</div>
 </div>
 <div id="toast"></div>
 <div id="title">
   <h1>夜班 · 回家路</h1>
   <div class="sub">一个普通的周二 23:47</div>
-  <div class="keys">W 油门 · S 刹车 · A/D 变道<br>SPACE 按住开窗提神 · 1-4 换电台 · F 喝咖啡</div>
+  <div class="keys">W 油门 · S 刹车 · A/D 变道<br>SPACE 按住开窗提神 · R 雨刷 · 1-4 换电台 · F 喝咖啡</div>
   <button id="btnStart">出发</button>
 </div>
 <div id="end">
   <h2>到家了</h2>
   <div id="ticket"></div>
-  <button id="btnAgain">再开一次</button>
+  <div style="display:flex;gap:12px;">
+    <button id="btnAgain">再开一次</button>
+    <button id="btnBack" style="background:#2a2f36;color:#cfd2c0;border:1px solid rgba(230,226,207,.28);">回到奶厂</button>
+  </div>
 </div>
 <div id="hideTip">你靠着方向盘睡着了——现在没事，车停在路边。</div>
 
@@ -407,12 +410,198 @@ if(q.has('redbeam'))beamPool.material.color.setHex(0xff0000);
 if(q.has('nocar'))car.visible=false;
 if(q.has('signz'))signs.forEach(g=>{g.position.z=+q.get('signz');});
 
+/* ---------- 仪表盘挂件：一只跟着困意点头的奶蛙 ---------- */
+const doll=new THREE.Group();
+{
+  const green=new THREE.MeshLambertMaterial({color:0x8fbf6b});
+  const pale=new THREE.MeshLambertMaterial({color:0xd8e6b8});
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.028,0.012,8),
+    new THREE.MeshLambertMaterial({color:0x1a1c1e}));
+  base.position.y=0.006;doll.add(base);
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.03,10,8),green);
+  body.scale.set(1,1.15,0.9);body.position.y=0.038;doll.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.024,10,8),green);
+  head.position.y=0.076;doll.add(head);
+  const belly=new THREE.Mesh(new THREE.SphereGeometry(0.017,8,6),pale);
+  belly.scale.set(1,1.1,0.6);belly.position.set(0,0.033,0.017);doll.add(belly);
+  doll.userData.eyes=[];
+  [-0.011,0.011].forEach(x=>{
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.0072,8,6),
+      new THREE.MeshBasicMaterial({color:0xf4f2e2}));
+    eye.position.set(x,0.082,0.0205);doll.add(eye);doll.userData.eyes.push(eye);
+    const pupil=new THREE.Mesh(new THREE.SphereGeometry(0.0034,6,4),
+      new THREE.MeshBasicMaterial({color:0x10120e}));
+    pupil.position.set(x,0.082,0.0266);doll.add(pupil);
+  });
+  [-0.03,0.03].forEach(x=>{
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(0.009,0.034,0.009),green);
+    arm.position.set(x,0.040,0.004);arm.rotation.z=(x<0?1:-1)*0.5;doll.add(arm);
+  });
+}
+doll.position.set(0.10,0.951,-0.90);
+car.add(doll);
+
+/* ---------- 车流：同向慢车 + 对向来车 ---------- */
+function buildTrafficCar(kind,dir){
+  const g=new THREE.Group();
+  const dark=new THREE.MeshLambertMaterial({color:0x14181e});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(kind==='truck'?2.0:1.72,kind==='truck'?1.5:0.52,kind==='truck'?5.0:3.6),dark);
+  body.position.y=kind==='truck'?0.95:0.44;g.add(body);
+  if(kind==='truck'){
+    const cab=new THREE.Mesh(new THREE.BoxGeometry(1.86,0.95,1.5),new THREE.MeshLambertMaterial({color:0x1b2027}));
+    cab.position.set(0,0.8,-1.9);g.add(cab);
+    for(let i=0;i<5;i++){
+      const rib=new THREE.Mesh(new THREE.BoxGeometry(2.06,0.05,0.12),new THREE.MeshLambertMaterial({color:0x0f1216}));
+      rib.position.set(0,0.5+i*0.28,2.51);g.add(rib);
+    }
+  }else{
+    const roof=new THREE.Mesh(new THREE.BoxGeometry(1.46,0.40,1.7),new THREE.MeshLambertMaterial({color:0x1c2128}));
+    roof.position.set(0,0.84,0.1);g.add(roof);
+    const rear=new THREE.Mesh(new THREE.PlaneGeometry(1.3,0.34),new THREE.MeshBasicMaterial({color:0x0a0e14}));
+    rear.position.set(0,0.84,1.83);rear.rotation.y=Math.PI;g.add(rear);
+  }
+  const wheelMat=new THREE.MeshLambertMaterial({color:0x0a0b0d});
+  const wz=kind==='truck'?[1.6,-1.6]:[1.15,-1.15];
+  const wx=kind==='truck'?0.95:0.82;
+  wz.forEach(z=>[-wx,wx].forEach(x=>{
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(0.30,0.30,0.16,8),wheelMat);
+    w.rotation.z=Math.PI/2;w.position.set(x,0.30,z);g.add(w);
+  }));
+  const halfW=kind==='truck'?0.82:0.62;
+  const tailZ=kind==='truck'?2.53:1.83;
+  [-halfW,halfW].forEach(x=>{
+    if(dir>0){
+      const s=glowSprite(0xff3d26,0.62,0.95);s.position.set(x,kind==='truck'?0.86:0.52,tailZ+0.05);g.add(s);
+      const lamp=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.12,0.03),new THREE.MeshBasicMaterial({color:0xff5540}));
+      lamp.position.set(x,kind==='truck'?0.86:0.50,tailZ);g.add(lamp);
+    }else{
+      const s=glowSprite(0xfff0d0,1.0,0.95);s.position.set(x,0.58,-1.90);g.add(s);
+      const lamp=new THREE.Mesh(new THREE.PlaneGeometry(0.26,0.16),new THREE.MeshBasicMaterial({color:0xfff6e2}));
+      lamp.position.set(x,0.56,-1.83);lamp.rotation.y=Math.PI;g.add(lamp);
+    }
+  });
+  return g;
+}
+const traffic=[];
+function resetTrafficCar(c,first){
+  c.z=first?-(60+Math.random()*200):-(240+Math.random()*120);
+  c.lane=c.dir>0?2.2:-2.2;
+  c.v=c.dir>0?8+Math.random()*6:15+Math.random()*9;
+  c.bumped=false;
+  c.grp.position.set(c.lane,0,c.z);
+}
+for(let i=0;i<7;i++){
+  const dir=i<4?1:-1;
+  const kind=dir>0&&Math.random()<0.35?'truck':'car';
+  const grp=buildTrafficCar(kind,dir);
+  scene.add(grp);
+  const c={grp,dir,kind,z:0,lane:0,v:0,bumped:false};
+  resetTrafficCar(c,true);
+  traffic.push(c);
+}
+
+/* ---------- 雨：粒子 + 挡风玻璃水膜 + 雨刷 ---------- */
+const rainCount=520;
+const rainHead=new Float32Array(rainCount*3);
+const rainPos=new Float32Array(rainCount*6);
+for(let i=0;i<rainCount;i++){
+  rainHead[i*3]=(Math.random()-0.5)*34;
+  rainHead[i*3+1]=Math.random()*14;
+  rainHead[i*3+2]=-Math.random()*58;
+}
+const rainGeo=new THREE.BufferGeometry();
+rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+const rainMat=new THREE.LineBasicMaterial({color:0xc2d4e2,transparent:true,opacity:0.34,depthWrite:false});
+const rain=new THREE.LineSegments(rainGeo,rainMat);
+rain.frustumCulled=false;
+rain.visible=false;scene.add(rain);
+/* 玻璃上的水珠：一层贴图，雨刷扫过就变淡 */
+const dropTex=mkTex(256,128,(x,w,h)=>{
+  for(let i=0;i<170;i++){
+    const cx=Math.random()*w,cy=Math.random()*h,r=0.8+Math.random()*2.2;
+    const g=x.createRadialGradient(cx-r*0.3,cy-r*0.3,0,cx,cy,r);
+    g.addColorStop(0,'rgba(226,238,246,.34)');
+    g.addColorStop(0.7,'rgba(190,208,222,.14)');
+    g.addColorStop(1,'rgba(170,190,205,0)');
+    x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,Math.PI*2);x.fill();
+    if(r>2.2){x.strokeStyle='rgba(210,225,235,.10)';x.lineWidth=1;
+      x.beginPath();x.moveTo(cx,cy+r);x.lineTo(cx+(Math.random()-0.5)*3,cy+r+5+Math.random()*8);x.stroke();}
+  }
+});
+dropTex.repeat.set(3,2);
+const wetPlane=new THREE.Mesh(new THREE.PlaneGeometry(2.0,0.54),
+  new THREE.MeshBasicMaterial({map:dropTex,transparent:true,opacity:0,depthWrite:false}));
+wetPlane.position.set(0,1.36,-1.12);wetPlane.rotation.x=-0.26;car.add(wetPlane);
+/* 雨刷：两根从风挡下沿摆出去的刮臂，平时贴着下沿，下雨才露面 */
+const wipers=[];
+[-0.54,0.28].forEach(x=>{
+  const w=new THREE.Group();
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(0.014,0.40,0.010),
+    new THREE.MeshBasicMaterial({color:0x0b0c0d}));
+  arm.position.y=0.20;w.add(arm);
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(0.010,0.30,0.014),
+    new THREE.MeshBasicMaterial({color:0x141619}));
+  blade.position.set(0,0.14,0.01);w.add(blade);
+  w.position.set(x,1.06,-1.10);w.rotation.x=-0.32;
+  w.visible=false;
+  car.add(w);wipers.push(w);
+});
+wipers.forEach(w=>{w.rotation.z=1.15;});
+
+/* ---------- 收费站（1300 m 处） ---------- */
+const toll=new THREE.Group();
+{
+  const metal=new THREE.MeshLambertMaterial({color:0x3c4148});
+  [-4.4,4.4].forEach(x=>{
+    const p=new THREE.Mesh(new THREE.BoxGeometry(0.46,5.2,0.5),metal);
+    p.position.set(x,2.6,0);toll.add(p);
+  });
+  const top=new THREE.Mesh(new THREE.BoxGeometry(9.6,0.5,0.7),metal);
+  top.position.set(0,5.3,0);toll.add(top);
+  const booth=new THREE.Mesh(new THREE.BoxGeometry(1.5,2.4,1.6),
+    new THREE.MeshLambertMaterial({color:0x30353b}));
+  booth.position.set(4.9,1.2,0.4);toll.add(booth);
+  const boothWin=new THREE.Mesh(new THREE.PlaneGeometry(1.1,0.7),
+    new THREE.MeshBasicMaterial({color:0xffd28a}));
+  boothWin.position.set(4.9,1.6,-0.42);boothWin.rotation.y=Math.PI;toll.add(boothWin);
+  const signTex2=mkTex(256,96,(x,w,h)=>{
+    x.fillStyle='#123b26';x.fillRect(0,0,w,h);
+    x.strokeStyle='#e8e6d6';x.lineWidth=6;x.strokeRect(6,6,w-12,h-12);
+    x.fillStyle='#e8e6d6';x.textAlign='center';x.textBaseline='middle';
+    x.font='700 40px "Microsoft YaHei",sans-serif';
+    x.fillText('收费站 30',w/2,40);
+    x.font='700 26px "Microsoft YaHei",sans-serif';
+    x.fillText('减速慢行',w/2,76);
+  });
+  const board=new THREE.Mesh(new THREE.PlaneGeometry(3.4,1.28),
+    new THREE.MeshBasicMaterial({map:signTex2}));
+  board.position.set(0,6.05,0.02);toll.add(board);
+  /* 抬杆：绕右柱转 */
+  const armPivot=new THREE.Group();
+  armPivot.position.set(4.2,1.25,-0.6);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(8.3,0.14,0.14),
+    new THREE.MeshLambertMaterial({color:0xd8d2be}));
+  arm.position.x=-4.15;armPivot.add(arm);
+  armPivot.userData.arm=arm;
+  const lampBand=new THREE.Mesh(new THREE.BoxGeometry(8.3,0.05,0.15),
+    new THREE.MeshBasicMaterial({color:0xb83a2c}));
+  lampBand.position.set(-4.15,0.10,0);armPivot.add(lampBand);
+  toll.add(armPivot);
+  toll.userData.pivot=armPivot;
+  toll.userData.lampMat=lampBand.material;
+  const gateGlow=glowSprite(0xff5040,1.4,0.5);gateGlow.position.set(0,5.05,-0.4);toll.add(gateGlow);
+  toll.userData.glow=gateGlow;
+}
+toll.position.set(0,0,-320);scene.add(toll);
+
 /* ---------- 状态 ---------- */
 const S={
   started:false,speed:0,dist:0,lateral:0,steer:0,
   drowsy:10,coffee:false,windy:false,
   station:0,switchCount:0,coffeeUsed:false,windTime:0,peakDrowsy:10,
-  startTime:0,ended:false,dest:1600
+  startTime:0,ended:false,dest:1600,
+  rain:false,wet:0,wiperOn:true,wiperPhase:0,
+  tollPassed:false,gateWait:0,bumps:0,bumpT:0,rainTold:false
 };
 const keys={};
 addEventListener('keydown',e=>{
@@ -420,6 +609,8 @@ addEventListener('keydown',e=>{
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
   if(!S.started||S.ended)return;
   if(e.key==='1'||e.key==='2'||e.key==='3'||e.key==='4')setStation(+e.key-1);
+  if(e.key.toLowerCase()==='r'){S.wiperOn=!S.wiperOn;
+    toast(S.wiperOn?'雨刷 开。':'雨刷 关。');}
   if(e.key.toLowerCase()==='f'&&S.coffee&&!S.coffeeUsed){S.coffeeUsed=true;coffee.visible=false;
     S.drowsy=Math.max(0,S.drowsy-38);toast('咖啡下肚，眼睛睁开了。');}
 });
@@ -536,6 +727,80 @@ function update(dt){
     if(m.position.z>10)m.position.z-=56*7.5;});
   blds.forEach(b=>{b.position.z+=scroll;if(b.position.z>14)b.position.z-=BLD_SPAN;});
   signs.forEach(g=>{g.position.z+=scroll;if(g.position.z>12)g.position.z-=SIGN_SPAN;});
+  /* 车流：同向的慢慢吞吞，对向的迎面扑来 */
+  traffic.forEach(c=>{
+    c.z+=(S.speed+(c.dir>0?-c.v:c.v))*dt;
+    c.grp.position.z=c.z;
+    if(c.z>26||c.z<-420){resetTrafficCar(c,false);return;}
+    if(!c.bumped&&c.z>-6.2&&c.z<-1.4&&Math.abs(S.lateral-c.lane)<1.18){
+      c.bumped=true;S.bumps++;S.bumpT=1;
+      S.speed=Math.max(0,c.dir>0?S.speed*0.32:0);
+      S.drowsy=Math.min(100,S.drowsy+(c.dir>0?7:15));
+      if(c.dir>0)toast('剐到了前车——保险杠掉了点漆。');
+      else toast('迎面来车！猛地一把方向。');
+    }
+  });
+  if(S.bumpT>0){S.bumpT-=dt*1.6;
+    camera.position.x+=Math.sin(performance.now()*0.06)*0.06*Math.max(0,S.bumpT);}
+  /* 雨：820–1260 m 一段雨区 */
+  const inRain=S.dist>820&&S.dist<1260;
+  if(inRain!==S.rain){
+    S.rain=inRain;
+    rain.visible=inRain;
+    if(inRain&&!S.rainTold){S.rainTold=true;toast('下起雨了。R 键开雨刷。');}
+    if(!inRain)toast('雨停了，路面还湿着。');
+  }
+  if(S.rain){
+    const pa=rainGeo.attributes.position.array;
+    for(let i=0;i<rainCount;i++){
+      rainHead[i*3+1]-=21*dt;
+      rainHead[i*3+2]+=S.speed*dt*0.9;
+      if(rainHead[i*3+1]<0.1){rainHead[i*3+1]=13+Math.random()*3;
+        rainHead[i*3]=(Math.random()-0.5)*34;rainHead[i*3+2]=-Math.random()*55;}
+      if(rainHead[i*3+2]>2)rainHead[i*3+2]-=60;
+      const x=rainHead[i*3],y=rainHead[i*3+1],z=rainHead[i*3+2];
+      pa[i*6]=x;pa[i*6+1]=y;pa[i*6+2]=z;
+      pa[i*6+3]=x+0.06;pa[i*6+4]=y-0.5;pa[i*6+5]=z+0.12;
+    }
+    rainGeo.attributes.position.needsUpdate=true;
+    hemi.intensity=0.5;scene.fog.density=0.024;
+  }else{
+    hemi.intensity=0.72;scene.fog.density=0.019;
+  }
+  /* 雨刷与水膜 */
+  S.wiperPhase+=dt*(S.wiperOn&&S.rain?6.2:0);
+  const sweep=Math.sin(S.wiperPhase);
+  const slide=Math.max(0,sweep);
+  wipers.forEach(w=>{w.visible=S.rain||S.wet>0.12;w.rotation.z=1.15-slide*0.78;});
+  if(S.rain)S.wet=Math.min(1,S.wet+(S.wiperOn?0.12:0.30)*dt);
+  else S.wet=Math.max(0,S.wet-(S.wiperOn?0.34:0.05)*dt);
+  wetPlane.material.opacity=Math.min(0.34,S.wet*0.36);
+  wetPlane.material.map.offset.x=sweep*0.03;
+  wetPlane.visible=S.wet>0.02;
+  /* 收费站：杆抬不抬，看你速度 */
+  toll.position.z=S.dist-1300;
+  toll.visible=S.dist>1140&&S.dist<1360;
+  if(!S.tollPassed){
+    if(S.gateWait>0){
+      S.gateWait-=dt;
+      S.dist=Math.min(S.dist,1293);
+      S.speed=Math.min(S.speed,4);
+      if(S.gateWait<=0){S.tollPassed=true;toast('杆抬起来了。慢点过去。');}
+    }else if(S.dist>=1293&&S.dist<1306){
+      if(S.speed*3.6<=31){S.tollPassed=true;toast('收费站通过。');}
+      else{S.gateWait=1.8;S.speed=0;S.dist=1291;S.drowsy=Math.min(100,S.drowsy+9);
+        toast('杆没抬起来——你急刹在杆前。');}
+    }
+  }
+  const armTarget=S.tollPassed?-1.15:0;
+  toll.userData.pivot.rotation.z+=(armTarget-toll.userData.pivot.rotation.z)*Math.min(1,dt*4);
+  toll.userData.lampMat.color.setHex(S.tollPassed?0x4fd07a:0xb83a2c);
+  toll.userData.glow.material.color.setHex(S.tollPassed?0x66e08a:0xff5040);
+  /* 挂件：变道晃，困了点头、闭眼 */
+  const tired=Math.min(1,Math.max(0,(S.drowsy-55)/45));
+  doll.rotation.z=-S.steer*0.12+Math.sin(performance.now()*0.0016)*0.04;
+  doll.rotation.x=tired*0.36+Math.sin(performance.now()*0.0021)*0.03;
+  doll.userData.eyes.forEach(e=>{e.scale.y=1-tired*0.7;});
   camera.fov=62+S.speed*0.42;camera.updateProjectionMatrix();
   /* 灯闪 */
   const t=performance.now()*0.001;
@@ -604,6 +869,7 @@ function finish(kind){
     '用时　<b>'+mins+' 分钟</b><br>'+
     '换台　<b>'+S.switchCount+' 次</b><br>'+
     '开窗　<b>'+Math.round(S.windTime)+' 秒</b><br>'+
+    '剐蹭　<b>'+S.bumps+' 次</b><br>'+
     '最高困意　<b>'+Math.round(S.peakDrowsy)+'%</b><br>'+
     '咖啡　<b>'+(S.coffeeUsed?'喝了':'没喝')+'</b>';
   if(kind==='睡着了'){
@@ -624,10 +890,13 @@ window.__game={
   state(){return {started:S.started,speed:+S.speed.toFixed(2),dist:Math.round(S.dist),
     lateral:+S.lateral.toFixed(2),drowsy:+S.drowsy.toFixed(1),station:S.station,
     ended:S.ended,coffeeUsed:S.coffeeUsed,windy:S.windy,
-    switches:S.switchCount};},
+    switches:S.switchCount,rain:S.rain,wet:+S.wet.toFixed(2),wiperOn:S.wiperOn,
+    tollPassed:S.tollPassed,bumps:S.bumps};},
   start:startGame,
   set(o){Object.assign(S,o);},
   input(){return {...keys};},
+  trafficAt(i,z){const c=traffic[i];if(!c)return null;
+    c.z=z;c.grp.position.set(c.lane,0,z);return {lane:c.lane,dir:c.dir};},
   tick(dt){if(S.started&&!S.ended)update(dt||0.016);},
   shot(name){renderer.render(scene,camera);
     return fetch('/_save?name='+(name||'outdoor')+'.png',{method:'POST',
@@ -648,7 +917,14 @@ if(q.has('shot')){
   lid.style.opacity=ld0.toFixed(3);
   viewEl.style.filter=dv0>0.02?'blur('+(dv0*1.5).toFixed(2)+'px)':'';
   if(S.dist>700){S.coffee=true;coffee.visible=true;}
+  if(q.has('speed'))S.speed=+q.get('speed');
+  if(q.has('traffic')){
+    [[0,-15],[1,-34],[4,-58]].forEach(([i,z])=>{const c=traffic[i];
+      c.z=z;c.grp.position.set(c.lane,0,z);});
+  }
+  if(q.has('wet'))S.wet=Math.min(1,+q.get('wet')||0.85);
 }
+document.getElementById('btnBack').onclick=()=>{location.href='index.html';};
 if(q.has('shot')){
   setTimeout(()=>{renderer.render(scene,camera);
     fetch('/_save?name='+q.get('shot')+'.png',{method:'POST',
