@@ -1,51 +1,35 @@
-# 蛙岛警报 · 奶蛙：午夜奶厂（源码包）
+# naiwaRA · 奶蛙：午夜奶厂（完整存档）
 
-《奶蛙：午夜奶厂》MILK FROG: Last Drop —— PS1 粗糙画质 · 怪诞恐怖黑色幽默 · 多结局叙事游戏。
-Three.js 网页端，**双击 `index.html` 即可离线运行**，无需构建、无需联网。
+> **备注（2026-11-18）**：本目录是 `naiwaRA` 项目的**完整存档**，独立放在团队仓库里，与仓库根目录的三个交付包互不干扰。
+> 运行时只需要本目录根部的 `index.html` + `assets/` + `vendor/`；其余为开发过程留存。
 
-## 运行入口
+## 运行
 
-| 文件 | 说明 |
+```bash
+cd naiwaRA
+python -m http.server 8899
+# 浏览器打开 http://127.0.0.1:8899/index.html
+```
+
+启动页选一幕：ACT I 醒奶区 / ACT II 发酵区 / ACT III 主奶泵室。
+
+## 目录
+
+| 路径 | 说明 |
 | --- | --- |
-| `index.html` | 主游戏（PS1 BUILD · 三幕场景，含启动遮罩与开发者模式） |
-| `motion_demo.html` | 角色运动演示（独立场景） |
-| `assets/audio/音效试听.html` | 音效试听页（读取 `manifest.js`） |
+| `index.html` | 主场景，单文件承载三幕关卡、HUD、PS1 后处理与剧情判定 |
+| `interaction_lab.html` | 道具交互实验台 |
+| `motion_demo.html` | 角色运动演示（6 个 GLB + 状态切换 + 眼睛追踪） |
+| `assets/` | 角色与道具 GLB、Blender 源文件、45 个 WAV 音效 |
+| `vendor/` | three.js + GLTFLoader（本地化，不依赖 CDN） |
+| `剧情小说与结局分章.md` | 三幕推进与七个结局的小说化文本 |
+| `场景设计与提示词.md` | 场景设定与美术提示词 |
+| `角色运动逻辑.md` | 动效层说明 |
+| `.build_*.py` / `.render_*.py` / `.probe_*.py` | 模型与音效的构建、渲染、量测脚本 |
+| `_backup/` | 本地备份：旧版 index、serve 脚本、奶蛙精致版解压副本 |
+| `frog-island-alert-team/` | 上游团队仓库的本地副本（含其交付 zip） |
 
-## 目录结构
+## 说明
 
-```
-蛙岛警报-奶蛙午夜奶厂-20261117/
-├── index.html               主游戏单文件（程序化 canvas 贴图，无外部图片依赖）
-├── motion_demo.html         角色运动演示
-├── vendor/                   Three.js r149 UMD + GLTFLoader（本地存放，file:// 可直开）
-├── assets/
-│   ├── *.glb                 角色模型 8 个（奶蛙 No.13 / 奶蛙群像 / 奶龙 / 奶龙低模 / 奶龙史莱姆 / 蛙神 / 奶牛售货机 / 鸽子）
-│   ├── *.blend / *.blend1    Blender 源文件（角色建模用）
-│   ├── audio/                42 个音效 WAV + 1 个 m4a + manifest.js + 试听页
-│   ├── char_motion.js        角色动作数据
-│   ├── nailong_data.js       奶龙模型数据
-│   └── README.md             奶龙模型 Blender 导入教程（面向新手）
-├── 场景设计与提示词.md         PS1 美术规格书：12 场景 × 8 维度 + 渲染管线 + 贴图规范 + 结局画面规范
-├── 剧情小说与结局分章.md       小说化叙事：序章 + 三幕 + 7 结局 + 1 彩蛋
-├── 角色运动逻辑.md             角色运动规则
-├── *.py                      资产构建脚本（音效合成 / 角色建模 / 渲染出图 / 探针）
-└── .workbuddy/memory/         开发过程记录
-```
-
-## 美术规格
-
-- **三幕色板**：醒奶区（病奶白 `#E6E2CF` / 锈红 `#8C3B2E` / 荧光绿 `#86C24B`）、发酵区（霉绿 `#7E8B3A` / 奶酪黄 `#D9B84A`）、主奶泵室（母液粉 `#E06B9E` / 警示黄 `#E8C02A`）
-- **PS1 渲染管线**：320×240 RenderTarget + NearestFilter 放大、顶点抖动、6 级色阶 + Bayer Dither、CRT 桶形畸变 / 扫描线 / 噪点 / 暗角、FogExp2 浓雾
-- **结局**：溜了溜了（普通）/ 断奶（真）/ 草莓奶昔 S 级（搞笑）/ 新厂长（坏）/ 蛙神降临（隐藏）/ 三分钟下班（速通）/ 售货机新货（彩蛋）
-
-## 资产构建
-
-- **音效**：`.build_sfx.py` 纯标准库合成（振荡器 / 噪声 / 滤波 / 包络 / 延迟混响，固定随机种子可复现），输出 WAV + `manifest.js`
-- **角色**：`.build_milkfrog.py`、`.rot_cast.py`、`.shape_asym.py` 等 Blender 脚本生成 `.blend` 再导出 `.glb`
-- **第三方模型**：奶龙（Nailoong）模型来自 GitHub `bigdiu/naiwa-nailoong-blender-model`，**非商用授权**，`assets/README.md` 附手把手导入教程
-
-## 使用提示
-
-- 完全离线：`vendor/` 本地 Three.js，贴图程序化生成，无任何外部网络请求
-- 在 iframe 预览面板里演示时，用左下角方向键按钮操控（不依赖键盘焦点）；WASD 需先点击画面获取焦点
-- 音效保留原始 WAV 未压缩，便于二次处理
+- `_backup/` 与 `frog-island-alert-team/` 是开发过程留存，不是运行必需。
+- 上游仓库 `frog-island-alert-team` 根目录的「团队包」「场景源码包」已标注展示勿用，本目录不受影响。
