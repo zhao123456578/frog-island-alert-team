@@ -64,13 +64,13 @@
   <div class="pill" id="hSpeed">0 km/h</div>
   <div class="pill" id="hRadio">电台 <b>深夜交通台</b><br><span id="hRadioLine" style="color:#8b929c">FM 98.7</span></div>
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
-  <div class="pill" id="hKeys">W 油门 · S 刹车 · A/D 变道<br>SPACE 开窗 · R 雨刷 · 1-4 换台 · F 喝咖啡</div>
+  <div class="pill" id="hKeys">W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · 1-4 换台 · F 喝咖啡</div>
 </div>
 <div id="toast"></div>
 <div id="title">
   <h1>夜班 · 回家路</h1>
   <div class="sub">一个普通的周二 23:47</div>
-  <div class="keys">W 油门 · S 刹车 · A/D 变道<br>SPACE 按住开窗提神 · R 雨刷 · 1-4 换电台 · F 喝咖啡</div>
+  <div class="keys">W 油门 · S 刹车 · A/D 变道<br>SPACE 按住开窗提神 · R 雨刷 · 1-4 换电台 · F 喝咖啡<br>到小区门口减速靠右，按 E 停车</div>
   <button id="btnStart">出发</button>
 </div>
 <div id="end">
@@ -594,6 +594,58 @@ const toll=new THREE.Group();
 }
 toll.position.set(0,0,-320);scene.add(toll);
 
+/* ---------- 终点：小区门口的路边车位 ---------- */
+const park=new THREE.Group();
+{
+  const lineMat=new THREE.MeshBasicMaterial({color:0xc9c6b2,transparent:true,opacity:0.5});
+  const longGeo=new THREE.BoxGeometry(2.5,0.015,0.08);
+  const sideGeo=new THREE.BoxGeometry(0.08,0.015,6.0);
+  [-3,3].forEach(z=>{const m=new THREE.Mesh(longGeo,lineMat);m.position.set(3.75,0.02,z);park.add(m);});
+  [2.5,5.0].forEach(x=>{const m=new THREE.Mesh(sideGeo,lineMat);m.position.set(x,0.02,0);park.add(m);});
+  const bayFill=new THREE.Mesh(new THREE.PlaneGeometry(2.5,6),
+    new THREE.MeshBasicMaterial({color:0x6fd08a,transparent:true,opacity:0,
+      blending:THREE.AdditiveBlending,depthWrite:false}));
+  bayFill.rotation.x=-Math.PI/2;bayFill.position.set(3.75,0.014,0);park.add(bayFill);
+  park.userData.bay=bayFill;park.userData.lineMat=lineMat;
+  const pTex=mkTex(96,96,(x,w,h)=>{
+    x.fillStyle='#14406e';x.fillRect(0,0,w,h);
+    x.strokeStyle='#e8e6d6';x.lineWidth=6;x.strokeRect(5,5,w-10,h-10);
+    x.fillStyle='#e8e6d6';x.textAlign='center';x.textBaseline='middle';
+    x.font='700 62px "Courier New",monospace';x.fillText('P',w/2,h/2+3);
+  });
+  const pBoard=new THREE.Mesh(new THREE.PlaneGeometry(0.72,0.72),
+    new THREE.MeshBasicMaterial({map:pTex}));
+  pBoard.position.set(5.8,2.35,2.4);pBoard.rotation.y=-0.28;park.add(pBoard);
+  const pPole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.06,2.4,6),lampMat);
+  pPole.position.set(5.8,1.2,2.4);park.add(pPole);
+  /* 12 号楼：窗子有的亮着，有的已经睡了 */
+  const block=new THREE.Mesh(new THREE.BoxGeometry(16,11,12),
+    new THREE.MeshLambertMaterial({color:0x232a30,emissive:0x070a0d}));
+  block.position.set(15,5.5,-9);park.add(block);
+  for(let f=0;f<3;f++)for(let c=0;c<3;c++){
+    const lit=(f*3+c)%4!==1;
+    const win=new THREE.Mesh(new THREE.PlaneGeometry(1.2,0.95),
+      new THREE.MeshBasicMaterial({color:lit?0xffcf92:0x0e1620}));
+    win.position.set(6.96,2.4+f*3.0,-4.6-c*3.3);
+    win.rotation.y=-Math.PI/2;park.add(win);
+  }
+  const gateTex=mkTex(256,80,(x,w,h)=>{
+    x.fillStyle='#1b1f24';x.fillRect(0,0,w,h);
+    x.strokeStyle='#e8e6d6';x.lineWidth=4;x.strokeRect(4,4,w-8,h-8);
+    x.fillStyle='#ffc27a';x.textAlign='center';x.textBaseline='middle';
+    x.font='700 34px "Microsoft YaHei",sans-serif';x.fillText('12 号楼',w/2,h/2+2);
+  });
+  const gate=new THREE.Mesh(new THREE.PlaneGeometry(2.6,0.8),
+    new THREE.MeshBasicMaterial({map:gateTex}));
+  gate.position.set(6.94,3.1,-3.15);gate.rotation.y=-Math.PI/2;park.add(gate);
+  const bayLamp=glowSprite(0xffc78a,3.0,0.45);bayLamp.position.set(4.6,4.6,0);park.add(bayLamp);
+  const bayPool=new THREE.Mesh(new THREE.PlaneGeometry(4.2,8),
+    new THREE.MeshBasicMaterial({map:glowTex,color:0xffb972,transparent:true,
+      opacity:0.14,blending:THREE.AdditiveBlending,depthWrite:false}));
+  bayPool.rotation.x=-Math.PI/2;bayPool.position.set(4.4,0.03,0);park.add(bayPool);
+}
+park.position.set(0,0,-200);scene.add(park);
+
 /* ---------- 状态 ---------- */
 const S={
   started:false,speed:0,dist:0,lateral:0,steer:0,
@@ -601,7 +653,9 @@ const S={
   station:0,switchCount:0,coffeeUsed:false,windTime:0,peakDrowsy:10,
   startTime:0,ended:false,dest:1600,
   rain:false,wet:0,wiperOn:true,wiperPhase:0,
-  tollPassed:false,gateWait:0,bumps:0,bumpT:0,rainTold:false
+  tollPassed:false,gateWait:0,bumps:0,bumpT:0,rainTold:false,
+  parked:false,parkTries:0,parkTold:false,overTold:false,reverse:false,
+  radioSayT:0,radioSayText:''
 };
 const keys={};
 addEventListener('keydown',e=>{
@@ -613,27 +667,28 @@ addEventListener('keydown',e=>{
     toast(S.wiperOn?'雨刷 开。':'雨刷 关。');}
   if(e.key.toLowerCase()==='f'&&S.coffee&&!S.coffeeUsed){S.coffeeUsed=true;coffee.visible=false;
     S.drowsy=Math.max(0,S.drowsy-38);toast('咖啡下肚，眼睛睁开了。');}
+  if(e.key.toLowerCase()==='e')tryPark();
 });
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
 
 /* ---------- 电台 ---------- */
 const STATIONS=[
-  {name:'深夜交通台',freq:'FM 98.7',lines:[
+  {name:'深夜交通台',freq:'FM 98.7',rain:'桥面湿了，车距拉开——前面那辆也看不见你。',lines:[
     '前方高架通畅——今晚唯一的好消息。',
     '末班公交已经收车了，路上只剩你们。',
     '听众朋友，如果也刚下班，请把远光灯关掉。',
     '下一段路没有测速，也没有人。']},
-  {name:'老歌台',freq:'AM 1134',lines:[
+  {name:'老歌台',freq:'AM 1134',rain:'（雨声）……这首放完，就快到家了。',lines:[
     '下面这首，献给还没到家的人。',
     '（沙沙声）……我们继续。',
     '这首歌很长，够你开过两个出口。',
     '磁带有点旧了，别介意。']},
-  {name:'深夜热线',freq:'FM 774',lines:[
+  {name:'深夜热线',freq:'FM 774',rain:'下雨了，你那边……带伞没有？',lines:[
     '喂？我还在路上。',
     '别催了，堵在匝道上呢。',
     '……你说，家里的灯是不是还亮着？',
     '最后一通电话，导播说要下班了。']},
-  {name:'养生台',freq:'FM 1323',lines:[
+  {name:'养生台',freq:'FM 1323',rain:'雨天路滑，这时候比养肝更要紧。',lines:[
     '子时养肝，熬夜伤身，建议立即靠边停车。',
     '睡前不要喝浓茶，也不要开快车。',
     '听众朋友，请把座椅靠背调直。',
@@ -685,6 +740,19 @@ const vig=document.getElementById('vig'),toastEl=document.getElementById('toast'
 const lid=document.getElementById('lid'),viewEl=document.getElementById('view');
 let toastT=0;
 function toast(msg){toastEl.textContent=msg;toastEl.classList.add('on');toastT=3.2;}
+function radioSay(msg){
+  if(S.ended)return;
+  S.radioSayText=msg;S.radioSayT=5.0;
+  staticBurst(0.18);
+}
+function tryPark(){
+  if(S.ended||S.parked)return;
+  if(S.dist<1570||S.dist>1598){toast('这里不能停车——再往前是小区门口。');return;}
+  if(S.speed*3.6>12){S.parkTries++;toast('太快了，先踩刹车再靠边。');return;}
+  if(S.lateral<1.9){S.parkTries++;toast('再往右靠一点，车身还在车道里。');return;}
+  S.parked=true;S.speed=0;S.reverse=false;
+  finish('到家');
+}
 
 /* ---------- 循环 ---------- */
 let last=performance.now();
@@ -703,6 +771,10 @@ function update(dt){
   S.speed-=S.speed*0.035*dt;
   S.speed=Math.max(0,Math.min(27,S.speed));
   S.dist+=S.speed*dt;
+  /* 停车区里车停住了，按住 S 可以慢慢倒 */
+  const nearBay=!S.parked&&S.dist>1568&&S.dist<=1600.01;
+  S.reverse=!!(brake&&nearBay&&S.speed<0.5);
+  if(S.reverse)S.dist=Math.max(1568,S.dist-3.4*dt);
   /* 变道 */
   const steerDir=(right?1:0)-(left?1:0);
   S.steer+=(steerDir*2.6-S.steer)*Math.min(1,dt*6);
@@ -728,7 +800,10 @@ function update(dt){
   blds.forEach(b=>{b.position.z+=scroll;if(b.position.z>14)b.position.z-=BLD_SPAN;});
   signs.forEach(g=>{g.position.z+=scroll;if(g.position.z>12)g.position.z-=SIGN_SPAN;});
   /* 车流：同向的慢慢吞吞，对向的迎面扑来 */
+  const trafficOff=S.dist>1460;
   traffic.forEach(c=>{
+    c.grp.visible=!trafficOff;
+    if(trafficOff)return;
     c.z+=(S.speed+(c.dir>0?-c.v:c.v))*dt;
     c.grp.position.z=c.z;
     if(c.z>26||c.z<-420){resetTrafficCar(c,false);return;}
@@ -747,7 +822,8 @@ function update(dt){
   if(inRain!==S.rain){
     S.rain=inRain;
     rain.visible=inRain;
-    if(inRain&&!S.rainTold){S.rainTold=true;toast('下起雨了。R 键开雨刷。');}
+    if(inRain&&!S.rainTold){S.rainTold=true;toast('下起雨了。R 键开雨刷。');
+      radioSay('桥面开始落雨，车距拉开。');}
     if(!inRain)toast('雨停了，路面还湿着。');
   }
   if(S.rain){
@@ -785,7 +861,8 @@ function update(dt){
       S.gateWait-=dt;
       S.dist=Math.min(S.dist,1293);
       S.speed=Math.min(S.speed,4);
-      if(S.gateWait<=0){S.tollPassed=true;toast('杆抬起来了。慢点过去。');}
+      if(S.gateWait<=0){S.tollPassed=true;toast('杆抬起来了。慢点过去。');
+        radioSay('过了杆，再开三公里就到了。');}
     }else if(S.dist>=1293&&S.dist<1306){
       if(S.speed*3.6<=31){S.tollPassed=true;toast('收费站通过。');}
       else{S.gateWait=1.8;S.speed=0;S.dist=1291;S.drowsy=Math.min(100,S.drowsy+9);
@@ -816,21 +893,44 @@ function update(dt){
   spots.forEach(s=>{s.target.position.z=-24-S.speed*0.6;});
   /* 里程事件 */
   if(!S.coffee&&S.dist>700){S.coffee=true;coffee.visible=true;
-    toast('副驾上有一罐咖啡。按 F 喝。');}
+    toast('副驾上有一罐咖啡。按 F 喝。');
+    radioSay('副驾上那罐咖啡，别等凉了。');}
   if(S.dist>1050&&!S._x1){S._x1=true;toast('电台开始串台，信号变差了。');}
+  if(S.dist>1120&&!S._told1){S._told1=true;radioSay('前方收费站，限速三十。');}
   /* 电台 */
   lineTimer+=dt;
   if(lineTimer>8){lineTimer=0;lineIdx++;
     if(S.dist>1050&&Math.random()<0.5)setStation((S.station+1+((Math.random()*3)|0))%4);}
   radioLineEl=document.getElementById('hRadioLine');
-  if(radioLineEl)radioLineEl.textContent=STATIONS[S.station].lines[lineIdx%STATIONS[S.station].lines.length];
+  if(radioLineEl){
+    if(S.radioSayT>0){S.radioSayT-=dt;radioLineEl.textContent=S.radioSayText;}
+    else{
+      const st=STATIONS[S.station];
+      const rainLine=S.rain&&st.rain?st.rain:null;
+      radioLineEl.textContent=rainLine&&lineIdx%2?rainLine:st.lines[lineIdx%st.lines.length];
+    }
+  }
   /* 困到睡着 */
   if(S.drowsy>=100&&!S.ended){finish('睡着了');return;}
-  /* 到家 */
-  if(S.dist>=S.dest){finish('到家');return;}
+  /* 终点：小区门口的路边车位 */
+  park.position.z=S.dist-1583;
+  park.visible=S.dist>1380&&S.dist<1620;
+  if(!S.parked){
+    if(!S.parkTold&&S.dist>1490){S.parkTold=true;
+      toast('前面右边就是车位。减速、靠右，按 E 停车。');
+      radioSay('小区门口到了，慢一点。');}
+    const inBay=S.dist>=1570&&S.dist<=1598;
+    const aligned=S.lateral>=1.9&&S.speed*3.6<=12;
+    park.userData.bay.material.opacity=inBay?(aligned?0.16+Math.sin(performance.now()*0.005)*0.04:0.05):0;
+    park.userData.lineMat.color.setHex(inBay&&aligned?0x8fe0a0:0xd8d5c0);
+    if(S.dist>=1600){S.dist=1600;S.speed=0;
+      if(!S.overTold){S.overTold=true;
+        toast('开过头了。按住 S 倒回车位。');
+        radioSay('倒一点，车位在后头。');}}
+  }
   /* HUD */
   elDist.textContent='里程 '+(S.dist/1000).toFixed(2)+' km';
-  elSpeed.textContent=Math.round(S.speed*3.6)+' km/h';
+  elSpeed.textContent=S.reverse?'R 倒车':Math.round(S.speed*3.6)+' km/h';
   elDrow.firstChild.textContent='困意 '+Math.round(S.drowsy)+'%';
   const dv=Math.min(1,Math.max(0,(S.drowsy-58)/46));
   vig.style.opacity=(dv*0.9).toFixed(3);
@@ -871,7 +971,8 @@ function finish(kind){
     '开窗　<b>'+Math.round(S.windTime)+' 秒</b><br>'+
     '剐蹭　<b>'+S.bumps+' 次</b><br>'+
     '最高困意　<b>'+Math.round(S.peakDrowsy)+'%</b><br>'+
-    '咖啡　<b>'+(S.coffeeUsed?'喝了':'没喝')+'</b>';
+    '咖啡　<b>'+(S.coffeeUsed?'喝了':'没喝')+'</b>'+
+    (kind==='到家'?'<br>停车　<b>'+(S.parkTries===0?'一把进':'试了 '+S.parkTries+' 次')+'</b>':'');
   if(kind==='睡着了'){
     document.getElementById('end').querySelector('h2').textContent='在路边睡着了';
     document.getElementById('hideTip').style.display='block';
@@ -891,8 +992,10 @@ window.__game={
     lateral:+S.lateral.toFixed(2),drowsy:+S.drowsy.toFixed(1),station:S.station,
     ended:S.ended,coffeeUsed:S.coffeeUsed,windy:S.windy,
     switches:S.switchCount,rain:S.rain,wet:+S.wet.toFixed(2),wiperOn:S.wiperOn,
-    tollPassed:S.tollPassed,bumps:S.bumps};},
+    tollPassed:S.tollPassed,bumps:S.bumps,parked:S.parked,parkTries:S.parkTries,
+    reverse:S.reverse};},
   start:startGame,
+  park:tryPark,
   set(o){Object.assign(S,o);},
   input(){return {...keys};},
   trafficAt(i,z){const c=traffic[i];if(!c)return null;
@@ -918,6 +1021,8 @@ if(q.has('shot')){
   viewEl.style.filter=dv0>0.02?'blur('+(dv0*1.5).toFixed(2)+'px)':'';
   if(S.dist>700){S.coffee=true;coffee.visible=true;}
   if(q.has('speed'))S.speed=+q.get('speed');
+  if(q.has('lateral')){S.lateral=+q.get('lateral');
+    car.position.x=S.lateral;camera.position.x=S.lateral;}
   if(q.has('traffic')){
     [[0,-15],[1,-34],[4,-58]].forEach(([i,z])=>{const c=traffic[i];
       c.z=z;c.grp.position.set(c.lane,0,z);});
