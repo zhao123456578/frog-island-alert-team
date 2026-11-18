@@ -1078,9 +1078,18 @@ function buildPump(){
   /* ===== 母液泵 ===== */
   for(let i=0;i<12;i++){const a=i*Math.PI/6;
     makeHangingLamp(g,add,Math.cos(a)*8.5,5.2,CZ+Math.sin(a)*8.5,lamps,{color:i%3===1?0x9fc8dd:0xffc07a,power:i%3===1?0.75:0.95});}
-  const vatMat=new THREE.MeshBasicMaterial({color:0xd9b06a,transparent:true,opacity:0.42,side:THREE.DoubleSide});
+  const vatMat=new THREE.MeshBasicMaterial({color:0xcfd7c2,transparent:true,opacity:0.26,side:THREE.DoubleSide});
   allMats.push(vatMat);
-  const vat=add("母液罐",new THREE.Mesh(new THREE.CylinderGeometry(2.4,2.4,5,12,1,true),vatMat));vat.position.set(0,2.8,CZ);
+  const vat=add("母液罐",new THREE.Mesh(new THREE.CylinderGeometry(2.4,2.4,5,24,1,true),vatMat));vat.position.set(0,2.8,CZ);
+  /* 罐体是半透明面，单看只剩一块平色；加竖肋和顶盖把体积撑起来 */
+  const ribMat=psMat({color:0x7f8a83,flatShading:true});
+  for(let i=0;i<12;i++){const a=i*Math.PI/6;
+    const rib=new THREE.Mesh(new THREE.BoxGeometry(0.07,5,0.07),ribMat);
+    rib.position.set(Math.cos(a)*2.41,2.8,CZ+Math.sin(a)*2.41);rib.rotation.y=-a;add("罐体竖肋",rib);}
+  const lid=add("罐顶",new THREE.Mesh(new THREE.SphereGeometry(2.4,24,6,0,Math.PI*2,0,Math.PI/2),psMat({color:0x8f99a0,flatShading:true})));
+  lid.position.set(0,5.3,CZ);lid.scale.y=0.45;
+  const lidPipe=add("罐顶管",new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,0.9,8),M.pipe));
+  lidPipe.position.set(0,6.15,CZ);
   const hoopMat=psMat({color:0x6d7680,flatShading:true});
   [1.0,2.8,4.6].forEach(y=>{const hoop=new THREE.Mesh(new THREE.CylinderGeometry(2.46,2.46,0.14,12,1,true),hoopMat);
     hoop.position.set(0,y,CZ);add("母液罐箍带",hoop);});
@@ -1133,12 +1142,14 @@ function buildPump(){
   colliders.push({type:'cyl',x:5,z:-9,r:1.4,h:2.2});
   const toy=add("小玩具奶蛙",new THREE.Mesh(new THREE.SphereGeometry(0.18,7,5),M.frog));
   toy.scale.set(1,0.8,1);toy.position.set(6.2,0.18,-8.2);
-  const face=new THREE.Mesh(new THREE.PlaneGeometry(1.2,1.2),new THREE.MeshBasicMaterial({map:tex(128,128,(x,w,h)=>{
+  const face=new THREE.Mesh(new THREE.PlaneGeometry(0.95,0.95),new THREE.MeshBasicMaterial({map:tex(128,128,(x,w,h)=>{
     x.fillStyle="#e8c02a";x.fillRect(0,0,w,h);x.fillStyle="#3a2a12";
     x.beginPath();x.arc(42,50,10,0,7);x.fill();x.beginPath();x.arc(86,50,10,0,7);x.fill();
     x.lineWidth=7;x.strokeStyle="#3a2a12";x.beginPath();x.arc(64,70,26,0.2,Math.PI-0.2);x.stroke();
     x.font="bold 16px monospace";x.fillText("DIRECTOR AI",18,118);}),transparent:true}));
-  face.position.set(0,4.6,CZ+6.35);g.add(face);
+  face.position.set(3.2,4.35,CZ+5.0);g.add(face);
+  [2.92,3.48].forEach(x=>{const wire=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,2.2,4),psMat({color:0x2a2a2c,lit:false}));
+    wire.position.set(x,5.85,CZ+5.0);g.add(wire);});
   [0.55,2.35,4.15].forEach(a=>{
     const gp=new THREE.Group();gp.position.set(Math.cos(a)*15.5,2.4,CZ+Math.sin(a)*15.5);
     gp.rotation.y=Math.atan2(-Math.cos(a),-Math.sin(a));
