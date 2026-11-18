@@ -33,7 +33,7 @@ const LS_KEY = "mf_endings_v1";
 function newState() {
   const bottles = {}; FLAVORS.forEach(f => bottles[f] = false);
   return {
-    inv: { coin: 0, key: false, floorKey: false, flashlight: false,
+    inv: { coin: 0, key: false, floorKey: false, flashlight: false, backpack: false, corridorKey: false,
       tapes: [false, false, false], bottles },
     flags: { pigeonSaved: false, valveSolved: false, truthHeard: 0,
       tapesInserted: 0, slots: [false, false, false, false, false],
@@ -262,6 +262,8 @@ function refreshPanel() {
   const s = state, u = getUnlocked();
   const invBits = [];
   if (s.inv.flashlight) invBits.push("奶瓶手电" + (s.flashOn ? "·开" : "·关"));
+  if (s.inv.backpack) invBits.push("员工背包");
+  if (s.inv.corridorKey) invBits.push("廊B钥匙");
   if (s.inv.coin) invBits.push("硬币×" + s.inv.coin);
   if (s.inv.key) invBits.push("鸽子的钥匙");
   if (s.inv.floorKey) invBits.push("地上的钥匙");
