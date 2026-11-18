@@ -1,0 +1,18 @@
+{
+  "builtAt": "2026-11-17T05:33:28.924Z",
+  "three": "0.187.0",
+  "files": {
+    "vendor/three/build/three.core.js": 1474799,
+    "vendor/three/build/three.module.js": 658900,
+    "assets/mascot.glb": 613396,
+    "vendor/three/examples/jsm/loaders/GLTFLoader.js": 119861,
+    "vendor/three/examples/jsm/utils/BufferGeometryUtils.js": 39153,
+    "main.js": 17731,
+    "world.mjs": 12457,
+    "vendor/three/examples/jsm/utils/SkeletonUtils.js": 11535,
+    "index.html": 9350,
+    "score.mjs": 5924,
+    "player.mjs": 4688,
+    "actions.mjs": 527
+  }
+}

@@ -1,0 +1,20 @@
+node_modules/
+_shots/
+
+# Qoder Sites 的私有恢复记录，别推到公开仓库
+.蛙岛警报*.qoder.site
+
+# 奶龙二创的参考图、派生模型与对比产物：比赛要求原创，不入库
+refs/
+vibe_images/
+src/*naiwa*
+output/naiwa.glb
+output/compare/
+output/preview/
+
+# 已经通过聊天转发的大包，仓库里放源码即可
+deliver/*.zip
+deliver/mascot_wenwen/
+
+# site/ 是要提交的可玩构建产物（含内置 three.js），不要就加回这一行
+# site/

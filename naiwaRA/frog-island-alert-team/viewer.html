@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>奶蛙模型查看器</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f2f3f5; overflow: hidden; font: 13px/1.4 system-ui, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  #hud { position: fixed; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; z-index: 2; }
+  #hud button { padding: 5px 10px; border: 1px solid #c8ccd4; border-radius: 6px; background: #fff; cursor: pointer; }
+  #hud button:hover { background: #eef1f6; }
+  #info { position: fixed; right: 12px; top: 12px; color: #5b6270; z-index: 2; text-align: right; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud">
+  <button data-v="front">正</button>
+  <button data-v="side">侧</button>
+  <button data-v="back">背</button>
+  <button data-v="three4">3/4</button>
+  <button data-v="top">俯</button>
+  <button id="spin">自动旋转</button>
+</div>
+<div id="info">奶蛙 NaiWa · 拖拽旋转 / 滚轮缩放</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/addons/": "/node_modules/three/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf2f3f5);
+
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.05, 100);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 0.75, 0);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c2d0, 1.15));
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(2.5, 4, 3.5);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = key.shadow.camera.bottom = -2;
+key.shadow.camera.right = key.shadow.camera.top = 2;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xdfe6f2, 0.5);
+fill.position.set(-3, 2, -2);
+scene.add(fill);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(3, 64),
+  new THREE.MeshStandardMaterial({ color: 0xe3e6ec, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const grid = new THREE.GridHelper(6, 24, 0xc5cad4, 0xd8dce4);
+grid.position.y = 0.001;
+scene.add(grid);
+
+const R = 2.6;
+const VIEWS = {
+  front: [0, 0.8, R],
+  side: [R, 0.8, 0],
+  back: [0, 0.8, -R],
+  three4: [R * 0.72, 0.95, R * 0.72],
+  top: [0, R * 1.15, 0.001],
+};
+
+let spin = false;
+function setView(name) {
+  const v = VIEWS[name] || VIEWS.three4;
+  camera.position.set(...v);
+  controls.target.set(0, 0.75, 0);
+  controls.update();
+}
+
+new GLTFLoader().load('/output/naiwa.glb', (gltf) => {
+  const model = gltf.scene;
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
+  scene.add(model);
+  const q = new URLSearchParams(location.search);
+  setView(q.get('view') || 'three4');
+  document.getElementById('info').textContent =
+    '奶蛙 NaiWa · ' + model.children[0].geometry.attributes.position.count.toLocaleString() + ' 顶点';
+  ready = true;
+}, undefined, (e) => {
+  document.getElementById('info').textContent = '加载失败: ' + e.message;
+});
+
+document.querySelectorAll('#hud button[data-v]').forEach((b) =>
+  b.addEventListener('click', () => { spin = false; setView(b.dataset.v); }));
+document.getElementById('spin').addEventListener('click', () => { spin = !spin; });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+let ready = false;
+renderer.setAnimationLoop(() => {
+  if (spin) {
+    const a = performance.now() * 0.0006;
+    camera.position.set(Math.sin(a) * R, 0.9, Math.cos(a) * R);
+    controls.target.set(0, 0.75, 0);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// allow headless screenshotting: ?view=front&static=1 renders once then flags done
+if (new URLSearchParams(location.search).get('static')) {
+  setInterval(() => { window.__renderDone = ready; }, 100);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>蛙岛警报 · 震时避险开放世界演练</title>
+<style>
+  :root {
+    --safe: #2fbf71; --alert: #f0902a; --danger: #d94b3b; --info: #3b82c4;
+    --ink: #eef3f8; --dim: #97a3b3; --panel: rgba(14, 20, 28, .72);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1017; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
+    color: var(--ink); -webkit-font-smoothing: antialiased;
+  }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: fixed; z-index: 5; pointer-events: none; }
+
+  /* 顶部：阶段 + 倒计时 */
+  #phase {
+    top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 999px; padding: 7px 18px; display: flex; align-items: center; gap: 12px;
+    font-size: 14px; letter-spacing: .04em; backdrop-filter: blur(6px);
+  }
+  #phase .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--safe); }
+  #phase b { font-weight: 600; }
+  #phase .t { font-variant-numeric: tabular-nums; color: var(--dim); }
+
+  /* 左侧：检查清单 */
+  #check {
+    top: 74px; left: 14px; width: 214px; background: var(--panel);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 12px 13px;
+    backdrop-filter: blur(6px);
+  }
+  #check h3 { margin: 0 0 9px; font-size: 12px; font-weight: 600; color: var(--dim); letter-spacing: .1em; }
+  #check li { list-style: none; display: flex; align-items: baseline; gap: 7px; font-size: 13px; margin: 6px 0; }
+  #check ul { margin: 0; padding: 0; }
+  #check .mk { width: 14px; text-align: center; color: var(--dim); }
+  #check .on .mk { color: var(--safe); }
+  #check .bad .mk { color: var(--danger); }
+  #check .pt { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+  #check .on .pt { color: var(--ink); }
+
+  /* 底部：操作提示 + 事件流水 */
+  #prompt {
+    bottom: 26px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 10px; padding: 9px 16px; font-size: 14px; display: none; align-items: center; gap: 10px;
+    backdrop-filter: blur(6px);
+  }
+  #prompt kbd {
+    font: inherit; font-weight: 700; background: rgba(255,255,255,.14);
+    border-radius: 5px; padding: 1px 7px; min-width: 22px; text-align: center;
+  }
+  #toast {
+    bottom: 78px; left: 50%; transform: translateX(-50%);
+    font-size: 15px; text-shadow: 0 1px 12px #000; opacity: 0; transition: opacity .25s;
+    text-align: center; max-width: 60vw;
+  }
+  #toast.bad { color: #ffb1a6; }
+  #keyhint { bottom: 14px; left: 16px; font-size: 12px; color: var(--dim); }
+
+  /* 中央：阶段大字 */
+  #banner {
+    top: 30%; left: 50%; transform: translate(-50%,-50%); text-align: center;
+    opacity: 0; transition: opacity .3s;
+  }
+  #banner .big { font-size: 46px; font-weight: 800; letter-spacing: .12em; text-shadow: 0 3px 26px #000; }
+  #banner .sub { font-size: 16px; margin-top: 8px; color: #dbe6f2; text-shadow: 0 2px 14px #000; }
+
+  #vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 42%, rgba(190,55,40,.62) 100%); }
+  #trap { position: fixed; inset: 0; z-index: 6; display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px; background: rgba(40,6,4,.62); font-size: 26px; font-weight: 700; letter-spacing: .1em; }
+  #trap span { font-size: 14px; font-weight: 400; letter-spacing: .02em; color: #ffd2c9; }
+
+  .card {
+    position: fixed; z-index: 10; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(6, 10, 15, .88); backdrop-filter: blur(4px); overflow: auto; padding: 26px 18px;
+  }
+  .card .box {
+    background: #111a24; border: 1px solid rgba(255,255,255,.1); border-radius: 16px;
+    padding: 26px 28px; max-width: 940px; width: 100%;
+  }
+  .card h1 { margin: 0 0 4px; font-size: 27px; letter-spacing: .04em; }
+  .card .lede { color: var(--dim); font-size: 14px; margin: 0 0 20px; }
+  .card h2 { font-size: 14px; letter-spacing: .1em; color: var(--dim); margin: 22px 0 10px; font-weight: 600; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px 18px; font-size: 14px; }
+  .keys div { display: flex; gap: 9px; align-items: baseline; }
+  .keys kbd { font: inherit; font-weight: 700; background: #1d2836; border: 1px solid rgba(255,255,255,.12);
+    border-radius: 5px; padding: 1px 8px; }
+  button {
+    font: inherit; pointer-events: auto; cursor: pointer; color: #06180f; background: var(--safe);
+    border: 0; border-radius: 10px; padding: 11px 26px; font-weight: 700; letter-spacing: .06em; margin-top: 22px;
+  }
+  button:hover { filter: brightness(1.1); }
+  .note { font-size: 12.5px; color: var(--dim); margin-top: 12px; line-height: 1.7; }
+
+  #result .top { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+  #grade { font-size: 68px; font-weight: 800; line-height: 1; }
+  #total { font-size: 34px; font-weight: 700; }
+  #total em { font-style: normal; font-size: 15px; color: var(--dim); }
+  #dims { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 4px; min-width: 320px; flex: 1; }
+  .dim { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 10px; font-size: 13px; }
+  .bar { height: 7px; border-radius: 4px; background: #1e2a38; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--safe); }
+  .bar i.low { background: var(--alert); } .bar i.zero { background: var(--danger); }
+  .dim .v { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #heatwrap { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  canvas#heat { width: 336px; height: 336px; border-radius: 10px; background: #0d151d;
+    border: 1px solid rgba(255,255,255,.1); image-rendering: auto; }
+  #legend { font-size: 12.5px; color: var(--dim); line-height: 2; }
+  #legend .sw { display: inline-block; width: 22px; height: 8px; border-radius: 2px; margin-right: 7px; vertical-align: middle; }
+  #log { font-size: 12.5px; color: #c3d0de; max-height: 152px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  #log li { padding: 2px 0; } #log li.bad { color: #ffb1a6; }
+  #log .t { color: #6b7a8c; margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div class="hud" id="phase"><i class="dot"></i><b>准备</b><span class="t">--</span></div>
+
+<div class="hud card" id="intro">
+  <div class="box">
+    <h1>蛙岛警报 · 震时避险演练</h1>
+    <p class="lede">一座四个街区的小城。随机时刻会响起地震预警，你要在正确的时间做正确的四件事，并且永远别去按电梯。</p>
+    <div class="keys">
+      <div><kbd>W A S D</kbd><span>移动</span></div>
+      <div><kbd>Shift</kbd><span>奔跑</span></div>
+      <div><kbd>空格</kbd><span>跳跃</span></div>
+      <div><kbd>E</kbd><span>交互</span></div>
+      <div><kbd>拖拽</kbd><span>转视角</span></div>
+      <div><kbd>滚轮</kbd><span>拉近拉远</span></div>
+    </div>
+    <h2>评分五维</h2>
+    <div class="note">就近三角区 · 关掉燃气 · 拉下总闸 · 撤离路线 · 电梯误用。每维 20 分，满分 100。</div>
+    <button id="start">开始演练</button>
+    <div class="note">阶段顺序：自由探索 → 预警 → 剧烈晃动（只能就近躲避）→ 停晃后撤离 → 结算。
+      晃动停止前跑出去，三角区那一项拿不满。</div>
+  </div>
+</div>
+
+<div class="hud" id="check">
+  <h3>检查清单</h3>
+  <ul id="checklist"></ul>
+</div>
+
+<div class="hud" id="prompt"><kbd>E</kbd><span class="txt"></span></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="banner"><div class="big"></div><div class="sub"></div></div>
+<div class="hud" id="keyhint">WASD 移动 · Shift 跑 · 空格 跳 · E 交互</div>
+<div id="vignette"></div>
+<div id="trap">电梯困人<span>等待救援中 · 本局计一次电梯误用</span></div>
+
+<div class="card hidden" id="result">
+  <div class="box">
+    <div class="top">
+      <div>
+        <div id="grade">A</div>
+        <div id="total">100 <em>/ 100</em></div>
+      </div>
+      <div id="dims"></div>
+    </div>
+    <h2>停留热力图 · 你的轨迹</h2>
+    <div id="heatwrap">
+      <canvas id="heat" width="672" height="672"></canvas>
+      <div id="legend"></div>
+    </div>
+    <h2>行为流水</h2>
+    <ul id="log"></ul>
+    <button id="again">再来一局</button>
+    <div class="note">热力图按你在每一格里停留的秒数着色，红线是本局走过的路径。
+      长时间贴着建筑外墙、站在路口中央，都是震时最容易被砸到的位置。</div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
