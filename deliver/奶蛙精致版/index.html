@@ -172,7 +172,7 @@
       <button class="btn dev" id="btnDevEnter">以开发者模式进入</button>
     </div>
     <div class="boot-foot">点击场景卡片选关 · 左下方向键 / WASD 移动 · 拖拽环视 · E 交互 · F 手电 · 空格装死<br>
-      角色模型来自 bigdiu/naiwa-nailoong-blender-model（奶龙，非商用）</div>
+      角色模型基于团队自建 Blender 工程</div>
   </div>
 </div>
 
@@ -220,7 +220,7 @@
   </div>
   <div class="grp"><h4>► 场景 / SCENE</h4>
     <div class="btnrow"><button class="mini" id="s0">Ⅰ 醒奶区</button><button class="mini" id="s1">Ⅱ 发酵区</button><button class="mini" id="s2">Ⅲ 主奶泵室</button></div>
-    <label class="chk"><input type="checkbox" id="d_char" checked> 显示奶龙角色</label>
+    <label class="chk"><input type="checkbox" id="d_char" checked> 显示角色</label>
     <div class="btnrow"><button class="mini" id="d_rebroadcast">重播本幕广播</button><button class="mini" id="d_clearend">清除结局记录</button></div>
   </div>
   <div class="grp"><h4>► 渲染管线 / RENDER</h4>
@@ -1821,7 +1821,7 @@ function leaveFactory(){
   const f=document.getElementById("leaveFade");
   f.style.opacity="1";
   setTimeout(()=>f.classList.add("capOn"),420);
-  setTimeout(()=>{location.href="outdoor.html?from=factory&act=3";},1200);
+  setTimeout(()=>{location.href="yard.html";},1200);
 }
 window.addEventListener("pageshow",e=>{if(!e.persisted)return;
   leavingFactory=false;MF.setLock(false);
