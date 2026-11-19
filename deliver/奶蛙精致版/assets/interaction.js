@@ -45,10 +45,16 @@ function newState() {
 let state = newState();
 function resetState() { state = newState(); refreshPanel(); }
 function elapsed() { return (performance.now() - state.startAt) / 1000; }
+const SHIFT = window.MF_SHIFT || { end: "02:47" };
+let clockFrozen = false;
 function clockStr() {
-  const m = 13 + Math.floor(elapsed() / 60), s = Math.floor(elapsed() % 60);
+  if (clockFrozen) return SHIFT.end;
+  const m = 13 + Math.floor(elapsed() / 60);
+  if (m >= 47) return SHIFT.end;
+  const s = Math.floor(elapsed() % 60);
   return "02:" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
 }
+function freezeClock() { clockFrozen = true; refreshPanel(); }
 function tapeCount() { return state.inv.tapes.filter(Boolean).length; }
 function bottleCount() { return FLAVORS.filter(f => state.inv.bottles[f]).length; }
 function slotCount() { return state.flags.slots.filter(Boolean).length; }
@@ -186,6 +192,7 @@ function ending(id) {
   els.ending.querySelector(".name").textContent = e.name;
   els.ending.querySelector(".txt").textContent = e.text;
   els.ending.classList.add("on");
+  clockFrozen = true;
   hint(null); refreshPanel();
 }
 
@@ -299,7 +306,7 @@ window.addEventListener("keydown", e => {
 
 return {
   FLAVORS, FLAVOR_CN, FLAVOR_COLOR, ENDINGS, MAIN_ENDINGS,
-  get state() { return state; }, resetState, elapsed, clockStr,
+  get state() { return state; }, resetState, elapsed, clockStr, freezeClock,
   tapeCount, bottleCount, slotCount,
   getUnlocked, allMainUnlocked, clearUnlocked,
   initUI, toast, hint, dialog, dialogOpen, confirm, closeConfirm, confirmOpen, ending,
