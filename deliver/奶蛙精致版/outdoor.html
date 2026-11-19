@@ -56,6 +56,9 @@
   #title h1{font-size:34px;letter-spacing:.14em;margin:0 0 6px;color:var(--milk);}
   #title .sub{color:var(--dim);letter-spacing:.2em;margin-bottom:34px;}
   #title .keys{color:#a2a89a;font-size:12px;line-height:2;margin-bottom:30px;}
+  #diffPick{margin:-14px 0 26px;font-size:12px;color:#a2a89a;letter-spacing:.12em;}
+  .dopt{padding:1px 7px;cursor:pointer;border-bottom:1px solid transparent;}
+  .dopt.act{color:var(--warm);border-bottom-color:var(--warm);}
   button{font-family:inherit;font-size:14px;letter-spacing:.2em;color:#12140f;
     background:var(--warm);border:0;padding:11px 26px;cursor:pointer;}
   button:hover{background:#ffd39a;}
@@ -67,6 +70,19 @@
   #ticket{border:1px dashed rgba(230,226,207,.4);padding:16px 22px;font-size:13px;
     line-height:2;color:#cfd2c0;text-align:left;margin-bottom:24px;min-width:300px;}
   #ticket b{color:var(--warm);font-weight:normal;}
+  /* 工厂 → 回家路的入场淡入（只在 ?from=factory 时启用） */
+  #fadeIn{position:fixed;inset:0;background:#000;z-index:7;pointer-events:none;
+    opacity:0;transition:opacity 1s;}
+  #fadeIn .cap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    color:#cfd2c0;font-size:13px;letter-spacing:.32em;white-space:nowrap;
+    opacity:0;transition:opacity .5s;}
+  #fadeIn .cap.on{opacity:.85;}
+  /* 困到极限：强制靠边，视线黑三秒 */
+  #doze{position:fixed;inset:0;background:#000;z-index:8;display:none;
+    align-items:center;justify-content:center;opacity:0;transition:opacity .28s;pointer-events:none;}
+  #doze.on{opacity:1;}
+  #doze span{color:#cfd2c0;font-size:14px;letter-spacing:.32em;opacity:0;transition:opacity .5s .3s;}
+  #doze.on span{opacity:.9;}
   #touch{position:fixed;inset:0;z-index:4;pointer-events:none;display:none;}
   #touch.on{display:block;}
   .tbtn{position:fixed;width:74px;height:74px;border-radius:50%;
@@ -114,8 +130,9 @@
 <div id="toast"></div>
 <div id="title">
   <h1>夜班 · 回家路</h1>
-  <div class="sub">一个普通的周二 23:47</div>
+  <div class="sub">一个普通的周三 02:47</div>
   <div class="keys">W 油门 · S 刹车 · A/D 变道<br>拖动画面环视座舱 · 松手回到正前方<br>SPACE 按住开窗提神 · R 雨刷 · 1-4 换电台 · F 喝咖啡<br>到小区门口减速靠右，按 E 停车<br>手机：左下油门/刹车 · 右下左右 · 滑动画面环视</div>
+  <div id="diffPick">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
   <button id="btnStart">出发</button>
 </div>
 <div id="end">
@@ -124,11 +141,14 @@
   <div id="ticket"></div>
   <div style="display:flex;gap:12px;">
     <button id="btnAgain">再开一次</button>
-    <button id="btnBack" style="background:#2a2f36;color:#cfd2c0;border:1px solid rgba(230,226,207,.28);">回到奶厂</button>
+    <button id="btnBack" style="display:none;background:#2a2f36;color:#cfd2c0;border:1px solid rgba(230,226,207,.28);">回奶厂 →</button>
   </div>
 </div>
+<div id="fadeIn"><span class="cap" id="capLine">02:47 · 奶厂停车场</span></div>
+<div id="doze"><span>你猛地惊醒了</span></div>
 
 <script src="vendor/three.min.js"></script>
+<script src="assets/shift.js"></script>
 <script>
 'use strict';
 /* ============================================================
@@ -138,6 +158,13 @@
    ============================================================ */
 
 const q=new URLSearchParams(location.search);
+/* 夜班时间线与工厂共用（assets/shift.js）；from=factory 时带上工厂带过来的本班成绩 */
+const SHIFT=window.MF_SHIFT||{end:'02:47'};
+/* 难度：默认 easy（给评委，能走到结局）；normal 为设计强度。标题页可切。 */
+let DIFF=q.get('diff')==='normal'?'normal':'easy';
+const FROM_FACTORY=q.get('from')==='factory';
+const HANDOFF=(()=>{if(!FROM_FACTORY)return null;
+  try{return JSON.parse(sessionStorage.getItem('mf_handoff')||'null');}catch(e){return null;}})();
 const canvas=document.getElementById('view');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:false});
 renderer.setPixelRatio(1);
@@ -1737,8 +1764,18 @@ const S={
   wobT:0,brk:0,noAccelT:0,severe:0,
   openZ:0,openV:0,openBt:0,openPhase:0,openDone:false,openBrakeAt:-1,
   _workPass:false,_camRes:false,_brokenPass:false,
+  dozing:false,dozeT:0,wakeCount:0,
   psi:0,accS:0,latS:0,bob:0,bobV:0,seam:0,gear:0,gearDip:0,rpm:0.2
 };
+/* ===== 休息窗口 / 难度数值 ===== */
+function winOf(k){
+  const e=DIFF==='easy';
+  return k==='gas'?(e?[712,818]:[730,800]):(e?[1395,1545]:[1420,1520]);
+}
+function inWin(k,d){const w=winOf(k);return d>w[0]&&d<w[1];}
+function drowsyRate(){return DIFF==='easy'?0.42:0.62;}
+const PARK_SPEED=22;   /* km/h */
+const PARK_LAT=1.5;    /* 米，向右离开车道中心 */
 const keys={};
 addEventListener('keydown',e=>{
   keys[e.key.toLowerCase()]=true;
@@ -1893,6 +1930,7 @@ const hud=document.getElementById('hud');
 const elDist=document.getElementById('hDist'),elSpeed=document.getElementById('hSpeed');
 const elGuide=document.getElementById('hGuide');
 const elKeysHint=document.getElementById('hKeys');
+let keysHintOff=false;
 const elDrow=document.getElementById('hDrow'),elFill=document.getElementById('drowFill');
 const vig=document.getElementById('vig'),toastEl=document.getElementById('toast');
 const lid=document.getElementById('lid'),viewEl=document.getElementById('view');
@@ -1911,30 +1949,43 @@ function drinkCoffee(){
   S.drowsy=Math.max(0,S.drowsy-38);toast('咖啡下肚，眼睛睁开了。');
 }
 function tryPark(){
-  if(S.ended||S.parked)return;
+  if(S.ended||S.parked||S.dozing)return;
   /* 加油站：减速靠右，按 E 进去缓一口气 */
-  if(!S.gasStop&&S.dist>748&&S.dist<778){
-    if(S.speed*3.6>12){toast('太快了——减速到 12 km/h 以下再进站。');return;}
-    if(S.lateral<1.2){toast('往右靠一点，别停在车道上。');return;}
+  if(!S.gasStop&&inWin('gas',S.dist)){
+    if(S.speed*3.6>PARK_SPEED){toast('太快了——减速到 '+PARK_SPEED+' km/h 以下再进站。');return;}
+    if(S.lateral<PARK_LAT){toast('往右靠一点，别停在车道上。');return;}
     S.gasStop=true;S.drowsy=Math.max(0,S.drowsy-20);
     toast('加满 300，顺手拿了瓶水。人清醒了点。');
     radioSay('加完油再上桥，雨天慢点。');
     return;
   }
   /* 路边烤串摊 */
-  if(!S.bbq&&S.dist>1450&&S.dist<1492){
-    if(S.speed*3.6>12){toast('慢点，摊子前别冲。');return;}
-    if(S.lateral<1.2){toast('靠右停，别挡着后车。');return;}
+  if(!S.bbq&&inWin('bbq',S.dist)){
+    if(S.speed*3.6>PARK_SPEED){toast('慢点，摊子前别冲。');return;}
+    if(S.lateral<PARK_LAT){toast('靠右停，别挡着后车。');return;}
     S.bbq=true;S.drowsy=Math.max(0,S.drowsy-22);
     toast('老板塞了两串，趁热。胃里一暖，眼睛也亮了。');
     return;
   }
   if(S.dist<1540||S.dist>1660){
     toast(S.dist<1540?'还没到——前面小区门口才能停。':'开过了——先按 S 倒回来。');return;}
-  if(S.speed*3.6>12){S.parkTries++;toast('太快了，先踩刹车再靠边。');return;}
-  if(S.lateral<1.2){S.parkTries++;toast('再往右靠一点，车身还在车道里。');return;}
+  if(S.speed*3.6>PARK_SPEED){S.parkTries++;toast('太快了，先踩刹车再靠边。');return;}
+  if(S.lateral<PARK_LAT){S.parkTries++;toast('再往右靠一点，车身还在车道里。');return;}
   S.parked=true;S.speed=0;S.reverse=false;
   finish('到家');
+}
+/* 第一次困到 100%：强制靠边停 + 黑屏 3 秒，然后还能继续开 */
+function dozeOff(){
+  S.wakeCount++;
+  if(S.wakeCount>1&&DIFF!=='easy'){finish('睡着了');return;}
+  S.dozing=true;S.dozeT=3.0;S.brk=0;
+  S.speed=Math.min(S.speed,4);
+  const el=document.getElementById('doze');
+  if(el){el.style.display='flex';requestAnimationFrame(()=>el.classList.add('on'));}
+  toast('车停在路肩了。按 W 继续。');
+  radioSay('喂？刚才是不是压到路肩了？');
+  setTimeout(()=>{if(el)el.classList.remove('on');},3000);
+  setTimeout(()=>{if(el)el.style.display='none';},3450);
 }
 
 /* ---------- 循环 ---------- */
@@ -1949,8 +2000,9 @@ function loop(now){
   render(dt);
 }
 function update(dt){
-  const up=keys['w']||keys['arrowup'],down=keys['s']||keys['arrowdown'];
-  const left=keys['a']||keys['arrowleft'],right=keys['d']||keys['arrowright'];
+  const asleep=!!S.dozing;
+  const up=!asleep&&(keys['w']||keys['arrowup']),down=!asleep&&(keys['s']||keys['arrowdown']);
+  const left=!asleep&&(keys['a']||keys['arrowleft']),right=!asleep&&(keys['d']||keys['arrowright']);
   const brake=down,prevSpeed=S.speed;
   S.distPrev=S.dist;
   if(S.gearDip>0)S.gearDip-=dt;
@@ -2089,7 +2141,7 @@ function update(dt){
       c.dir>0?0:Math.PI);
     if(trafficVis>0.35&&!c.bumped&&c.z>-6.2&&c.z<-1.4&&Math.abs(S.lateral+LANE_LAT-c.lane)<1.18){
       c.bumped=true;S.bumps++;S.bumpT=c.dir>0?0.32:0.6;flash(0.35,true);
-      S.drowsy=Math.min(100,S.drowsy+(c.dir>0?7:15));
+      S.drowsy=Math.min(100,S.drowsy+(c.dir>0?4:8));
       if(c.dir>0){
         S.speed=Math.max(0,S.speed*0.32);
         toast('剐到了前车——保险杠掉了点漆。');
@@ -2127,7 +2179,7 @@ function update(dt){
       S.openDone=true;toast('跟住了。这脚刹车踩得刚好。');}
     if(S.openZ>-1.6&&S.openBt<3.8&&Math.abs(S.lateral)<1.18){
       S.openPhase=2;S.bumps++;S.bumpT=0.32;flash(0.45,true);
-      S.speed=Math.max(0,S.speed*0.25);S.drowsy=Math.min(100,S.drowsy+6);
+      S.speed=Math.max(0,S.speed*0.25);S.drowsy=Math.min(100,S.drowsy+3);
       S.openV=2;openCarTail(true);
       toast('追尾了——前车刹车灯亮了一路，你没跟上。');
     }else if(S.openZ>25||S.openBt>18){
@@ -2150,7 +2202,7 @@ function update(dt){
       const z=c.position.z+works.position.z;
       if(z>-2.4&&z<-0.8&&Math.abs(S.lateral+LANE_LAT-c.position.x)<0.62){
         c.userData.hit=true;S.cones++;S.speed*=0.55;
-        S.drowsy=Math.min(100,S.drowsy+6);
+        S.drowsy=Math.min(100,S.drowsy+3);
         c.rotation.z=1.25;c.position.y=-0.02;
         toast('压到雪糕筒了——右侧封着呢。');
       }
@@ -2194,15 +2246,15 @@ function update(dt){
     if(S.speed*3.6>72){
       S.fines++;flash(0.5,false);
       speedCam.userData.flash.material.opacity=0.85;
-      S.drowsy=Math.min(100,S.drowsy+4);
+      S.drowsy=Math.min(100,S.drowsy+2);
       toast('白光一闪——测速拍照，你开了 '+Math.round(S.speed*3.6)+'。刚那下有点快。');
       radioSay('刚那个测速闪了，罚单回头寄家里。');
     }else{
       toast('过了测速点，脚底下还算稳。');
     }
   }
-  if(!S._gasTold&&S.dist>731){S._gasTold=true;
-    toast('右前方加油站还开着——想歇口气就靠过去按 E。');
+  if(!S._gasTold&&S.dist>winOf('gas')[0]-60){S._gasTold=true;
+    toast('前方可以靠边休息——加油站还开着。');
     radioSay('下个加油站要不要进去缓一口？');}
   /* 猫：先窜到车道里愣一下，再往对面跑 */
   if(!S.catDone){
@@ -2218,7 +2270,7 @@ function update(dt){
       cat.visible=true;
       if(cz>-4.6&&cz<-1.2&&Math.abs(S.lateral+LANE_LAT-cl)<0.9){
         S.catDone=true;S.catHit=true;cat.visible=false;S.bumpT=1;
-        S.speed*=0.7;S.drowsy=Math.min(100,S.drowsy+8);
+        S.speed*=0.7;S.drowsy=Math.min(100,S.drowsy+3);
         toast('一只猫蹭到保险杠，喵了一声就跑了。');
         radioSay('刚才那下急刹，是看见猫了吧。');
       }else if(ct>2.7){
@@ -2232,7 +2284,7 @@ function update(dt){
     if(bz>-6.2&&bz<-1.2&&Math.abs(S.lateral)<1.2){
       S.brokenHit=true;S.bumpT=0.6;S.bumps++;flash(0.35,true);
       S.speed=Math.max(0,S.speed*0.25);
-      S.drowsy=Math.min(100,S.drowsy+8);
+      S.drowsy=Math.min(100,S.drowsy+4);
       toast('撞上那辆双闪的车了——司机就站在旁边。');
     }
   }
@@ -2241,11 +2293,11 @@ function update(dt){
     radioSay('右道有故障车，提前变道。');}
   if(!S._brokenPass&&S.dist>1452){S._brokenPass=true;
     if(!S.brokenHit)toast('借道绕过去了，对向刚好没车。');}
-  if(!S._bbqTold&&S.dist>1424){S._bbqTold=true;
-    toast('路边还有家烤串摊，灯还亮着。');}
-  if(!S.gasStop&&S.dist>750&&S.dist<776&&!S._gasNear){S._gasNear=true;
-    toast(isTouch?'减速到 12 km/h 以下，靠右停下点「加油」。':'减速到 12 km/h 以下，靠边停下按 E 加油。');}
-  if(!S.bbq&&S.dist>1454&&S.dist<1490&&!S._bbqNear){S._bbqNear=true;
+  if(!S._bbqTold&&S.dist>winOf('bbq')[0]-60){S._bbqTold=true;
+    toast('前方可以靠边休息——路边有家烤串摊，灯还亮着。');}
+  if(!S.gasStop&&inWin('gas',S.dist)&&!S._gasNear){S._gasNear=true;
+    toast(isTouch?'减速到 '+PARK_SPEED+' km/h 以下，靠右停下点「加油」。':'减速到 '+PARK_SPEED+' km/h 以下，靠边停下按 E 加油。');}
+  if(!S.bbq&&inWin('bbq',S.dist)&&!S._bbqNear){S._bbqNear=true;
     toast(isTouch?'摊子在右手边，停下点「买串」。':'摊子在右手边，停下按 E 买两串。');}
   /* 雨：820–1260 m 一段雨区 */
   const inRain=S.dist>820&&S.dist<1260;
@@ -2339,7 +2391,7 @@ function update(dt){
         radioSay('过了杆，还有三百米到家。');}
     }else if(S.dist>=1293&&S.dist<1306){
       if(S.speed*3.6<=31){S.tollPassed=true;toast('收费站通过。');}
-      else{S.gateWait=1.8;S.speed=0;S.dist=1291;S.drowsy=Math.min(100,S.drowsy+9);
+      else{S.gateWait=1.8;S.speed=0;S.dist=1291;S.drowsy=Math.min(100,S.drowsy+5);
         toast('杆没抬起来——你急刹在杆前。');}
     }
   }
@@ -2356,12 +2408,27 @@ function update(dt){
   const t=performance.now()*0.001;
   lamps.forEach((L,i)=>{const f=(i===3&&Math.sin(t*7.3)>0.93)?0.15:1;
     L.grp.children[2].material.color.setRGB(f,f*0.8,f*0.55);});
-  /* 困意 */
-  S.drowsy+=(S.speed>4?1.15:0.35)*dt;
+  /* 困意：专心开能撑到终点；开窗提神有衰减，停车休息才是硬解 */
+  S.drowsy+=(S.speed>4?drowsyRate():0.35)*dt;
   S.windy=!!keys[' '];
-  if(S.windy){S.drowsy-=3.4*dt;S.windTime+=dt;}
-  S.drowsy=Math.max(0,Math.min(104,S.drowsy));
+  if(S.windy){
+    const wk=S.windTime<15?1:(S.windTime<30?0.5:0);
+    S.drowsy-=3.4*wk*dt;S.windTime+=dt;
+    if(S.windTime>=15&&!S._windDull){S._windDull=true;
+      toast('吹久了，风也不那么提神了。');}
+    if(S.windTime>=30&&!S._windZero){S._windZero=true;
+      toast('风已经麻木了。找地方停一会儿吧。');}
+  }
+  const dcap=(DIFF==='easy'&&S.wakeCount>0)?99:104;
+  S.drowsy=Math.max(0,Math.min(dcap,S.drowsy));
   S.peakDrowsy=Math.max(S.peakDrowsy,S.drowsy);
+  /* 打盹：黑屏 3 秒，车自己靠到路肩，醒后 62% */
+  if(S.dozing){
+    S.dozeT-=dt;
+    S.speed=Math.max(0,S.speed-16*dt);
+    S.lateral+=(2.8-S.lateral)*Math.min(1,dt*1.4);
+    if(S.dozeT<=0){S.dozing=false;S.drowsy=62;S.brk=0;S.noAccelT=0.5;}
+  }
   /* 车头灯随速度微仰 */
   spots.forEach(s=>{s.target.position.z=-24-S.speed*0.6;});
   /* 里程事件 */
@@ -2385,8 +2452,8 @@ function update(dt){
       radioLineEl.textContent=rainLine&&lineIdx%2?rainLine:st.lines[lineIdx%st.lines.length];
     }
   }
-  /* 困到睡着 */
-  if(S.drowsy>=100&&!S.ended){finish('睡着了');return;}
+  /* 困到睡着：第一次强制靠边醒来，normal 第二次才结束 */
+  if(!S.dozing&&S.drowsy>=100&&!S.ended){dozeOff();}
   /* 终点：小区门口的路边车位 */
   placeRoad(park,1583,0,0);
   park.visible=S.dist>1380&&S.dist<1620;
@@ -2395,7 +2462,7 @@ function update(dt){
       toast('前面右边就是车位。减速、靠右，按 E 停车。');
       radioSay('小区门口到了，慢一点。');}
     const inBay=S.dist>=1570&&S.dist<=1598;
-    const aligned=S.lateral>=1.2&&S.speed*3.6<=12;
+    const aligned=S.lateral>=PARK_LAT&&S.speed*3.6<=PARK_SPEED;
     park.userData.bay.material.opacity=inBay?(aligned?0.16+Math.sin(performance.now()*0.005)*0.04:0.05):0;
     park.userData.lineMat.color.setHex(inBay&&aligned?0x8fe0a0:0xd8d5c0);
     if(S.dist>1660){S.dist=1660;S.speed=0;
@@ -2414,13 +2481,13 @@ function update(dt){
     if(gMode){
       elGuide.style.display='block';
       elGuide.className=gMode===1?'':'calm';
-      elGuide.textContent=gMode===1?'靠右 · 减速到 12 km/h 以下 · 按 E 停车'
+      elGuide.textContent=gMode===1?'靠右 · 减速到 '+PARK_SPEED+' km/h 以下 · 按 E 停车'
         :gMode===2?'倒车中 · 看到车位按 E 停车'
         :'开过了 · 按住 S 倒车，看到车位再按 E';
       if(elKeysHint)elKeysHint.style.display='none';
     }else{
       elGuide.style.display='none';
-      if(elKeysHint)elKeysHint.style.display='';
+      if(elKeysHint)elKeysHint.style.display=keysHintOff?'none':'';
     }
   }
   elSpeed.textContent=S.reverse?'R 倒车':Math.round(S.speed*3.6)+' km/h';
@@ -2437,8 +2504,8 @@ function update(dt){
   flashEl.style.opacity=flashT>0?Math.min(1,flashT*2.4).toFixed(2):'0';
   if(isTouch){
     const tE=document.getElementById('tE');
-    const inGas=!S.gasStop&&S.dist>748&&S.dist<778;
-    const inBbq=!S.bbq&&S.dist>1450&&S.dist<1492;
+    const inGas=!S.gasStop&&inWin('gas',S.dist);
+    const inBbq=!S.bbq&&inWin('bbq',S.dist);
     const inPark=S.dist>1570&&S.dist<1598&&!S.parked;
     tE.textContent=inGas?'加油':inBbq?'买串':'停';
     tE.style.display=(inGas||inBbq||inPark)?'block':'none';
@@ -2568,6 +2635,7 @@ function finish(kind){
     '──────────────<br>'+
     '里程　<b>'+(S.dist/1000).toFixed(2)+' km</b><br>'+
     '用时　<b>'+mins+' 分钟</b><br>'+
+    (FROM_FACTORY&&HANDOFF?'本班收集　<b>磁带 '+(HANDOFF.tapes||0)+'/3 · 印记 '+(HANDOFF.marks||0)+'/5</b><br>':'')+
     '换台　<b>'+S.switchCount+' 次</b><br>'+
     '开窗　<b>'+Math.round(S.windTime)+' 秒</b><br>'+
     '剐蹭　<b>'+S.bumps+' 次 · '+bumpLine+'</b><br>'+
@@ -2592,7 +2660,17 @@ function finish(kind){
   hud.classList.remove('on');
 }
 document.getElementById('btnStart').onclick=startGame;
-document.getElementById('btnAgain').onclick=()=>location.reload();
+document.getElementById('btnAgain').onclick=()=>{
+  const u=new URL(location.href);u.searchParams.set('diff',DIFF);location.href=u.toString();
+};
+(function(){
+  const pick=document.getElementById('diffPick');
+  if(!pick)return;
+  const opts=[...pick.querySelectorAll('.dopt')];
+  const mark=()=>opts.forEach(o=>o.classList.toggle('act',o.dataset.d===DIFF));
+  opts.forEach(o=>o.onclick=()=>{DIFF=o.dataset.d;mark();});
+  mark();
+})();
 
 /* ---------- 调试 / 自动截图 ---------- */
 window.__game={
@@ -2606,8 +2684,10 @@ window.__game={
     psi:+S.psi.toFixed(3),gear:S.gear,rpm:+S.rpm.toFixed(2),
     severe:S.severe,noAccelT:+S.noAccelT.toFixed(2),openPhase:S.openPhase,
     elapsed:+(S.startTime?(performance.now()-S.startTime)/1000:0).toFixed(1),
+    dozing:!!S.dozing,wakeCount:S.wakeCount,diff:DIFF,
     lookYaw:+look.yaw.toFixed(2),lookPitch:+look.pitch.toFixed(2)};},
   start:startGame,
+  finish(kind){finish(kind||'到家');},
   park:tryPark,
   set(o){Object.assign(S,o);},
   input(){return {...keys};},
@@ -2657,7 +2737,31 @@ if(q.has('shot')){
     look.yaw=look.ty=lv;look.pitch=look.tp=+(q.get('pitch')||0);
     camera.rotation.y=look.yaw;camera.rotation.x=look.pitch;}
 }
-document.getElementById('btnBack').onclick=()=>{location.href='index.html';};
+const btnBackEl=document.getElementById('btnBack');
+btnBackEl.onclick=()=>{location.href='index.html';};
+document.querySelector('#title .sub').textContent='一个普通的周三 '+SHIFT.end;
+
+/* ---------- 工厂 → 回家路：黑场 + 字幕 + 1 s 淡入（只认 ?from=factory） ---------- */
+if(FROM_FACTORY){
+  const fadeEl=document.getElementById('fadeIn'),capEl=document.getElementById('capLine');
+  titleEl.style.display='none';
+  btnBackEl.style.display='';
+  capEl.textContent=SHIFT.end+' · 奶厂停车场';
+  fadeEl.style.transition='none';fadeEl.style.opacity='1';
+  requestAnimationFrame(()=>{fadeEl.style.transition='opacity 1s';capEl.classList.add('on');});
+  startGame();
+  setTimeout(()=>{fadeEl.style.opacity='0';},250);
+  setTimeout(()=>{capEl.classList.remove('on');},600);
+  setTimeout(()=>{fadeEl.style.display='none';},1400);
+  if(HANDOFF){
+    /* 本班成绩：电台念一句，并留在交通台的轮播里 */
+    const gradeLine=HANDOFF.tapes>=3?'今晚那台泵，总算没再叫了。':'有盘磁带还留在里面。';
+    STATIONS[0].lines.unshift(gradeLine);
+    setTimeout(()=>{if(!S.ended)radioSay(gradeLine);},5200);
+  }
+  /* 按键说明：进入 6 秒后自动淡出，之后不再被停车引导点亮 */
+  setTimeout(()=>{keysHintOff=true;elKeysHint.style.transition='opacity .8s';elKeysHint.style.opacity='0';},6000);
+}
 if(q.has('shot')){
   setTimeout(()=>{
     /* 后台标签页里 rAF 不跑，世界还没随 dist 铺开；按 60 Hz 补跑约 1.8 s 再截 */

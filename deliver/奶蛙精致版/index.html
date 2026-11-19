@@ -53,12 +53,21 @@
     color:#cdd8bd;background:rgba(8,10,8,.7);border:1px solid #3c4a2e;padding:9px 16px;font-size:11px;
     letter-spacing:.08em;opacity:0;transition:opacity .5s;text-align:center;}
   #tip.on{opacity:1;}
+  /* 下班黑场：1.2 s 全黑后跳到 outdoor.html */
+  #leaveFade{position:fixed;inset:0;background:#000;z-index:60;opacity:0;pointer-events:none;
+    transition:opacity .45s;}
+  #leaveFade .cap{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    color:#cfd2c0;font:13px/1 "Courier New",monospace;letter-spacing:.32em;opacity:0;
+    transition:opacity .45s;white-space:nowrap;}
+  #leaveFade.capOn .cap{opacity:.85;}
   /* 目标 / 收集 */
   .hud-goal{margin-top:10px;display:flex;flex-direction:column;gap:3px;}
   .hud-goal div{color:#8d9c81;font-size:11px;letter-spacing:.03em;line-height:1.55;}
   .hud-goal div.done{color:#86c24b;}
   .hud-goal div.done::before{content:"✓ ";color:#86c24b;}
   .hud-count{margin-top:7px;color:#9fb7d8;font-size:10.5px;letter-spacing:.14em;}
+  .hud-exit{margin-top:8px;color:#cfe3a0;font-size:11px;letter-spacing:.14em;display:none;}
+  .hud-exit .arw{display:inline-block;width:1.2em;color:#86c24b;}
   #hurt{position:fixed;inset:0;z-index:18;pointer-events:none;opacity:0;transition:opacity .1s;
     background:radial-gradient(circle at 50% 50%,transparent 34%,rgba(132,18,16,.6) 100%);}
 
@@ -159,7 +168,7 @@
     </div>
     <div class="boot-btns">
       <button class="btn" id="btnEnter">进入第一幕</button>
-      <button class="btn" id="btnOutdoor" style="background:#1d2320;color:#cfe3a0;border:1px solid rgba(207,227,160,.45);">下班 · 开车回家 →</button>
+      <button class="btn" id="btnOutdoor" style="background:#1d2320;color:#cfe3a0;border:1px solid rgba(207,227,160,.45);">直接体验 · 夜班回家路（跳过工厂）</button>
       <button class="btn dev" id="btnDevEnter">以开发者模式进入</button>
     </div>
     <div class="boot-foot">点击场景卡片选关 · 左下方向键 / WASD 移动 · 拖拽环视 · E 交互 · F 手电 · 空格装死<br>
@@ -172,12 +181,14 @@
   <div class="hud-corner hud-tl"><div class="big" id="hudTitle">AWAKENING WING</div>
     <div id="hudSub">醒奶区 / CONVEYOR WAKE</div><div class="hud-tag" id="hudTag">— 第 13 号试饮员 —</div>
     <div class="hud-goal" id="hudGoal"></div>
-    <div class="hud-count">收集 <span id="hudCount">0</span> / 20 · 磁带 <span id="hudTape">0</span>/3</div></div>
+    <div class="hud-count">收集 <span id="hudCount">0</span> / 20 · 磁带 <span id="hudTape">0</span>/3</div>
+    <div class="hud-exit" id="hudExit"><span class="arw" id="exitArrow">↑</span><span id="exitText">下班出口</span></div></div>
   <div class="hud-corner hud-tr"><div id="hudScene">SCENE 1 / 3</div><div id="hudFps">-- FPS</div></div>
   <div class="hud-corner hud-bl"><div>CAM LOW · FOG <span id="hudFog">0.06</span></div><div id="hudMode">FREE CAM</div></div>
 </div>
 <div id="broadcast"><div class="who" id="bcWho">广播</div><div class="line" id="bcLine"></div></div>
 <div id="tip">方向键 / WASD 移动 · 拖拽环视 · E 交互 · F 手电 · 按住空格装死 · ~ 开发者模式</div>
+<div id="leaveFade"><div class="cap">02:47 · 奶厂停车场</div></div>
 
 <div id="dpad">
   <button data-k="KeyR" title="上升">↑</button><button data-k="KeyW" title="前进">▲</button><button data-k="KeyQ" title="下降">↓</button>
@@ -257,6 +268,7 @@
 <script src="vendor/three.min.js"></script>
 <script src="vendor/GLTFLoader.js"></script>
 <script src="assets/nailong_data.js"></script>
+<script src="assets/shift.js"></script>
 <script src="assets/interaction.js"></script>
 <script src="assets/audio/manifest.js"></script>
 <script>
@@ -1430,7 +1442,8 @@ function buildPump(){
     const phi=(i+0.5)*dphi;
     const doorGap=Math.abs(phi)<0.108||Math.abs(phi-Math.PI*2)<0.108;
     const altarGap=Math.abs(phi-Math.PI*1.5)<0.108;
-    if(doorGap||altarGap)continue;
+    const exitGap=Math.abs(phi-Math.PI*0.5)<0.108;
+    if(doorGap||altarGap||exitGap)continue;
     const chord=2*R*Math.sin(dphi/2)+0.07;
     const panel=new THREE.Mesh(new THREE.PlaneGeometry(chord,H,1,5),rwMat);
     panel.position.set(Math.sin(phi)*R,H/2,CZ+Math.cos(phi)*R);
@@ -1440,6 +1453,31 @@ function buildPump(){
   add("环形墙",ringGrp);
   const lintel=add("环厅门楣",new THREE.Mesh(new THREE.BoxGeometry(3.6,H-2.9,0.45),rwMat));
   lintel.position.set(0,(2.9+H)/2,CZ+R-0.18);
+  /* 东墙员工通道：本班工作完成后变成“下班”出口（按 E 黑场 → outdoor.html） */
+  const exitGrp=add("员工通道门",new THREE.Group());
+  const exMat=psMat({color:0x5d6660,side:THREE.DoubleSide});
+  [-1.35,1.35].forEach(dz=>{const post=new THREE.Mesh(new THREE.BoxGeometry(0.26,2.95,0.24),exMat);
+    post.position.set(R-0.13,1.475,CZ+dz);exitGrp.add(post);});
+  const exBar=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.26,2.95),exMat);
+  exBar.position.set(R-0.13,2.82,CZ);exitGrp.add(exBar);
+  [-1,1].forEach(s=>{const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.08,2.56,1.16),psMat({color:0x454c56}));
+    leaf.position.set(R-0.15,1.28,CZ+s*0.62);exitGrp.add(leaf);
+    const win=new THREE.Mesh(new THREE.PlaneGeometry(0.86,0.48),new THREE.MeshBasicMaterial({color:0x16202c}));
+    win.position.set(R-0.195,1.74,CZ+s*0.62);win.rotation.y=-Math.PI/2;exitGrp.add(win);});
+  const exitSignLocked=labelTexture(["员工通道","本班工作完成后","方可离开"],"#20262a","#8b929c",{size:18,w:160,h:110});
+  const exitSignReady=labelTexture(["下 班","→ 停车场","CLOCK OUT"],"#1d2320","#cfe3a0",{size:18,w:160,h:110});
+  const exitSign=new THREE.Mesh(new THREE.PlaneGeometry(1.2,0.82),new THREE.MeshBasicMaterial({map:exitSignLocked}));
+  exitSign.position.set(R-0.28,2.28,CZ);exitSign.rotation.y=-Math.PI/2;exitGrp.add(exitSign);
+  const exitStrip=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.06,2.4),new THREE.MeshBasicMaterial({color:0x8fe0a0}));
+  exitStrip.position.set(R-0.3,2.8,CZ);exitGrp.add(exitStrip);
+  const exitHeader=new THREE.Mesh(new THREE.BoxGeometry(0.3,H-3.0,3.5),rwMat);
+  exitHeader.position.set(R-0.08,(H+3.0)/2,CZ);exitGrp.add(exitHeader);
+  const exitBack=new THREE.Mesh(new THREE.PlaneGeometry(4.4,H+1.2),new THREE.MeshBasicMaterial({color:0x07090c,side:THREE.DoubleSide}));
+  exitBack.position.set(R+0.55,(H+1.2)/2,CZ);exitBack.rotation.y=-Math.PI/2;exitGrp.add(exitBack);
+  const exitLight=new THREE.PointLight(0x9fb7d8,0.9,7);exitLight.position.set(R-1.4,2.4,CZ);
+  g.add(exitLight);lights.push(exitLight);
+  updates.push(()=>{const m=(GAME.done.bottles||GAME.done.altar)?exitSignReady:exitSignLocked;
+    if(exitSign.material.map!==m){exitSign.material.map=m;exitSign.material.needsUpdate=true;}});
   const dome=add("圆顶",new THREE.Mesh(new THREE.ConeGeometry(R,3.4,32,1,true),psMat({map:ceilTex,color:0x8c98a4,side:THREE.DoubleSide})));
   dome.position.set(0,H+1.7,CZ);
   colliders.push({type:'round',x:0,z:CZ,r:R,H,gap:{a:-1.7,b:1.7},gapW:{half:1.7},
@@ -1710,7 +1748,8 @@ const GAME={
      {id:'mezz',text:'⑥ 上 2F 夹层俯瞰全厅'},
      {id:'tape',text:'⑦ 找回 3 盘磁带（休息室收音机 + 冷藏室）'}],
     [{id:'bottles',text:'⑧ 集齐五口味印记，接上母液接口（E）'},
-     {id:'altar',text:'⑨ 20/20 开西墙祭坛：供五瓶 → 跳奶蛙舞'}]
+     {id:'altar',text:'⑨ 20/20 开西墙祭坛：供五瓶 → 跳奶蛙舞'},
+     {id:'leave',text:'⑩ 下班：走到东墙员工通道，按 E 离开'}]
   ]
 };
 
@@ -1754,6 +1793,7 @@ function refreshGoals(){
   const box=document.getElementById("hudGoal");if(!box)return;
   box.innerHTML="";
   (GAME.obj[S.scene]||[]).forEach(o=>{
+    if(o.id==="leave"&&!act3Cleared())return;
     const d=document.createElement("div");
     d.textContent=(GAME.altarOpen&&o.id==="altar")?"⑨ 西墙已开：供五瓶 → 跳奶蛙舞":o.text;
     if(GAME.done[o.id])d.className="done";
@@ -1767,6 +1807,25 @@ function finish(id,silent){
   GAME.done[id]=true;refreshGoals();
   if(!silent)showToast("✓ 目标完成",2400);
 }
+/* ===== 下班：第三幕接通母液泵后，东墙员工通道可离开 ===== */
+function act3Cleared(){return !!(GAME.done.bottles||GAME.done.altar);}
+let leavingFactory=false;
+function leaveFactory(){
+  if(leavingFactory)return;
+  leavingFactory=true;MF.setLock(true);MF.freezeClock();
+  const payload={v:1,tapes:MF.tapeCount(),marks:MF.bottleCount(),helmet:false,
+    acts:GAME.obj.map((list,i)=>i===2?act3Cleared():list.every(o=>!!GAME.done[o.id])),
+    at:Date.now()};
+  try{sessionStorage.setItem("mf_handoff",JSON.stringify(payload));}catch(e){}
+  AudioSys.play("sfx_door_creak",0.5);
+  const f=document.getElementById("leaveFade");
+  f.style.opacity="1";
+  setTimeout(()=>f.classList.add("capOn"),420);
+  setTimeout(()=>{location.href="outdoor.html?from=factory&act=3";},1200);
+}
+window.addEventListener("pageshow",e=>{if(!e.persisted)return;
+  leavingFactory=false;MF.setLock(false);
+  const f=document.getElementById("leaveFade");f.style.opacity="0";f.classList.remove("capOn");});
 function gainTape(idx){
   if(MF.state.inv.tapes[idx])return false;
   MF.state.inv.tapes[idx]=true;
@@ -2197,6 +2256,18 @@ function stepFrame(dt){
   }else{camera.position.y+=(Math.sin(t*0.9)*0.01-camera.position.y*0);camera.rotation.set(Math.sin(t*0.3)*0.015,Math.sin(t*0.22)*0.035,0);}
   syncZone(dt);
   updateGameplay(t,dt);
+  // 下班出口指引：第三幕通关后，指东墙员工通道
+  const exEl=document.getElementById("hudExit");
+  if(exEl){
+    const show=act3Cleared()&&S.scene===2;
+    exEl.style.display=show?"block":"none";
+    if(show){
+      const dx=14.9-camera.position.x,dz=-122-camera.position.z;
+      const rel=Math.atan2(-dx,-dz)-yaw;
+      document.getElementById("exitArrow").style.transform="rotate("+(-rel)+"rad)";
+      document.getElementById("exitText").textContent="下班出口 "+Math.round(Math.hypot(dx,dz))+" m";
+    }
+  }
   // 手电：奶量就是电量；shader 锥形光跟随相机
   const ms=MF.state;
   if(ms.flashOn){ms.milk=Math.max(0,ms.milk-dt*0.7);
@@ -2256,6 +2327,7 @@ function startScene(devMode){if(S.started)return;S.started=true;
 document.getElementById("btnEnter").onclick=()=>startScene(false);
 document.getElementById("btnDevEnter").onclick=()=>startScene(true);
 document.getElementById("btnOutdoor").onclick=()=>{location.href="outdoor.html";};
+document.querySelector("#leaveFade .cap").textContent=(window.MF_SHIFT||{end:"02:47"}).end+" · 奶厂停车场";
 devToggle.onclick=toggleDev;
 document.querySelectorAll(".scene-card").forEach(c=>c.onclick=()=>{
   document.querySelectorAll(".scene-card").forEach(x=>x.style.borderColor="");
@@ -2365,6 +2437,7 @@ window.__game={
     return {x:+p.x.toFixed(2),y:+p.y.toFixed(2),z:+p.z.toFixed(2)};},
   step(n,dt){dt=dt||0.05;for(let i=0;i<(n||10);i++){simTime+=dt;updateGameplay(simTime,dt);}
     return this.game();},
+  clear(id){GAME.done[id]=true;refreshGoals();return this.game();},
   at(z,r){scene.updateMatrixWorld(true);const b=new THREE.Box3(),out=[];
     actObjects.forEach(o=>{if(!o.obj)return;b.setFromObject(o.obj);if(b.isEmpty())return;
       if(b.min.z<=z+r&&b.max.z>=z-r&&b.min.y<1.75&&b.max.y>1.65&&b.min.x<0.2&&b.max.x>-0.2)
@@ -2844,6 +2917,10 @@ function setupProps(){
       MF.startDance(()=>{GAME.endingAltar=true;finish("altar",true);
         AudioSys.play("sfx_godfrog_stomp",0.6);MF.ending("god");});
     }});
+  /* 东墙员工通道：第三幕通关（接通母液泵 / 或已开祭坛）后 → 下班黑场跳转回家路 */
+  MF.register({id:"clockout",pos:{x:14.9,z:-122},radius:2.6,
+    label:()=>act3Cleared()?"下班 · 走出大门":null,
+    action(){if(!act3Cleared())return;leaveFactory();}});
 }
 
 /* 启动：默认第一幕（未进入时先构建预览） */
