@@ -2092,8 +2092,12 @@ function update(dt){
   const yawRate=S.speed*Math.tan(S.steer*maxLock)/2.72;
   const curv=roadAt(S.dist).k;
   S.psi+=(yawRate-curv*S.speed*Math.cos(S.psi))*dt;
-  /* 回正力：松手方向盘自己回中，跟真车一样；困了手发虚，回正和车道保持都变弱 */
-  S.psi-=S.psi*(1.2+1.7*Math.min(1,S.speed/14))*(1-0.7*kd)*dt;
+  /* 回正力：松手方向盘自己回中。回正目标不是"世界正前方"，而是"顺着当前弯道走"
+     的前馈角 trim——否则路一弯，松手车就一直往路肩飘。困意只削弱车道保持，
+     不削弱这个前馈，免得困到后面直接开出路。 */
+  const hold=1.2+1.7*Math.min(1,S.speed/14);
+  const trim=Math.max(-0.20,Math.min(0.20,curv*S.speed/hold));
+  S.psi+=(trim-S.psi)*hold*dt;
   /* 车道保持：手轻轻扶着方向盘，车会自己回到车道中间；贴到边线再用力带回来 */
   const edgeR=S.lateral-1.9, edgeL=-1.9-S.lateral;
   if(!steerDir){
