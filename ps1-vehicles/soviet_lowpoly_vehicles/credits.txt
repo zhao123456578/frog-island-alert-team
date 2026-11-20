@@ -1,0 +1,10 @@
+Pack of extremply low poly soviet vehicles in pixel art style.
+Contains:
+Vaz Classics: 2101 Yellow, grey, 2105 green, baklajan, police, 2106 blue, red.
+Bobik (Uaz 469) : grey, khaki and police  modifications
+Buhanka (Uaz 459) : grey, khaki, police, ER modifications
+Bus liaz 677. Contains 1-frame opening door animation (UV coords shift {0.0, 0.5})
+Tramway KTM5. Contains 1-frame opening door animation (UV coords shift {0.0, 0.5})
+
+License CC0. 
+2025 MadMedicSoft
