@@ -1,3 +1,7 @@
+/* 本次室外返工的本地备份与抓帧草稿，不入库 */
+_rework_backup_*/
+_rework_evidence_*/
+_glb_json_probe.json
 node_modules/
 _shots/
 
