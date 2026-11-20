@@ -1809,7 +1809,7 @@ const S={
   brokenHit:false,
   radioSayT:0,radioSayText:'',
   /* 本轮玩法状态：困意漂移 / 刹车踏板迟滞 / 碰撞惩罚 / 开局前车 */
-  wobT:0,brk:0,noAccelT:0,severe:0,
+  wobT:0,brk:0,noAccelT:0,severe:0,graceT:0,
   openZ:0,openV:0,openBt:0,openPhase:0,openDone:false,openBrakeAt:-1,
   _workPass:false,_camRes:false,_brokenPass:false,
   dozing:false,dozeT:0,wakeCount:0,
@@ -2073,6 +2073,7 @@ function update(dt){
   S.distPrev=S.dist;
   if(S.gearDip>0)S.gearDip-=dt;
   if(S.noAccelT>0)S.noAccelT-=dt;
+  if(S.graceT>0)S.graceT-=dt;   /* 撞后免撞窗口：防止停死时被人一辆接一辆顶，永远起不来 */
   /* 困到 65% 以后，踏板反应从 0.07 秒拖到 0.40 秒 —— 得提前踩 */
   const kd=Math.max(0,Math.min(1,(S.drowsy-65)/30));
   S.wobT+=dt;
@@ -2216,18 +2217,28 @@ function update(dt){
       c.dir>0?0:Math.PI);
     /* 扫掠检测：上一帧到这一帧的 z 区间与 4.8 米碰撞窗求交，低帧率也穿不过去 */
     const zLo=Math.min(zPrev,c.z),zHi=Math.max(zPrev,c.z);
-    if(!recycled&&trafficVis>0.35&&!c.bumped&&zHi>=-6.2&&zLo<=-1.4&&
+    if(!recycled&&trafficVis>0.35&&!c.bumped&&S.graceT<=0&&zHi>=-6.2&&zLo<=-1.4&&
        Math.abs(S.lateral+LANE_LAT-c.lane)<1.18){
       const rel=Math.abs(S.speed+(c.dir>0?-c.v:c.v));
       const severe=rel>15;
       c.bumped=true;S.bumps++;S.bumpT=c.dir>0?0.32:0.6;flash(0.35,true);
+      S.graceT=1.6;   /* 撞完先给 1.6 秒免撞，别在原地被后车连顶 */
       if(severe){
-        /* 差速 >15 m/s：直接怼停，两秒缓不过来，小票记严重 */
-        S.speed=0;S.noAccelT=2;S.severe++;
+        /* 严重碰撞：大幅减速但不彻底停死，也别把油门锁死两秒。
+           原来 speed=0 + noAccelT=2 会让车赖在左车道被对向车反复顶，
+           每次都重置计时器，玩家就永久卡在"踩油门没反应"。 */
+        S.speed=Math.min(S.speed,3.2);
+        S.noAccelT=0.6;
+        S.severe++;
         S.drowsy=Math.min(100,S.drowsy+8);
-        if(c.dir<0)c.v=0;
-        toast(c.dir>0?'追尾了——车停死，脚踩不动油门。':'撞上对向来车了——车停死了，脚踩不动油门。');
-        radioSay('刚才那下不轻，缓两秒再走。');
+        /* 撞了对向车说明车已经歪进左车道，帮忙把车头、车身推回右车道，
+           否则停在逆行道上会一直挨撞 */
+        if(c.dir<0){
+          S.lateral=Math.max(S.lateral,0.6);
+          S.psi=Math.max(0,S.psi)*0.3;
+        }
+        toast(c.dir>0?'追尾了——缓一下，还能走。':'撞上对向来车了——方向拉回来，慢慢开。');
+        radioSay('刚才那下不轻，稳住方向盘。');
       }else{
         S.speed=Math.max(0,S.speed*0.32);
         S.drowsy=Math.min(100,S.drowsy+4);
@@ -2259,10 +2270,11 @@ function update(dt){
       /* 贴到 12 米内：撞一次，停死 2 秒 + 红闪 + 困意 +15，退回 80 米，不直接结束 */
       if(S.chaserGap<12&&S.chaserHitT<=0){
         S.chaserHitT=3.2;S.chaserGap=80;
-        S.speed=0;S.noAccelT=2;S.drowsy=Math.min(100,S.drowsy+15);
+        S.speed=Math.min(S.speed,3.2);S.noAccelT=0.6;S.graceT=1.6;
+        S.drowsy=Math.min(100,S.drowsy+15);
         flash(0.65,true);
-        toast('后车顶上来了——车停死，脚踩不动油门。');
-        radioSay('刚才那下不轻，人没事吧？缓两秒再走。');
+        toast('后车顶上来了——稳住，还能走。');
+        radioSay('刚才那下不轻，人没事吧？稳住方向盘。');
       }
       if(S.chaserHitT>0)S.chaserHitT-=dt;
       placeRoad(chaser,S.dist-S.chaserGap,2.2+Math.sin(tnow*0.37)*0.07,0);
@@ -2808,7 +2820,7 @@ window.__game={
     reverse:S.reverse,cones:S.cones,
     fines:S.fines,gasStop:S.gasStop,bbq:S.bbq,catHit:S.catHit,brokenHit:S.brokenHit,
     psi:+S.psi.toFixed(3),gear:S.gear,rpm:+S.rpm.toFixed(2),
-    severe:S.severe,noAccelT:+S.noAccelT.toFixed(2),openPhase:S.openPhase,
+    severe:S.severe,noAccelT:+S.noAccelT.toFixed(2),graceT:+S.graceT.toFixed(2),openPhase:S.openPhase,
     elapsed:+(S.startTime?(performance.now()-S.startTime)/1000:0).toFixed(1),
     dozing:!!S.dozing,wakeCount:S.wakeCount,diff:DIFF,
     chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
