@@ -302,19 +302,21 @@ box(0.2,1.1,4.4,mat(0x33383d),-16.5,1.0,13.6);
 
 /* ============ 停车棚 ============ */
 var canopyMat=mat(0x2b3138);
-box(13.6,0.22,9.4,canopyMat,7.6,3.5,-2.4);
-box(13.6,0.1,9.6,mat(0x1b2026),7.6,3.34,-2.4);
-for(var cx=-1;cx<=16;cx+=5.6){
-  box(0.32,3.42,0.32,mat(0x3a4046),cx,1.71,1.9);
-  box(0.32,3.42,0.32,mat(0x3a4046),cx,1.71,-6.7);
+/* 车棚压低到 3.0 m、柱距从 5.6 收到 2.8：夜里走进去像一条有顶的夹道，
+   不是一片开阔的停车场。 */
+box(13.6,0.22,9.4,canopyMat,7.6,3.08,-2.4);
+box(13.6,0.1,9.6,mat(0x1b2026),7.6,2.92,-2.4);
+for(var cx=-1;cx<=16;cx+=2.8){
+  box(0.26,3.00,0.26,mat(0x3a4046),cx,1.50,1.9);
+  box(0.26,3.00,0.26,mat(0x3a4046),cx,1.50,-6.7);
 }
 /* 棚下两盏灯 */
 [[3.4],[11.4]].forEach(function(p){
   var h=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.1,0.22),
     new THREE.MeshBasicMaterial({color:0xffe6b8}));
-  h.position.set(p[0],3.28,-2.4);scene.add(h);
-  glow(0xffd79a,1.5,0.32,p[0],3.24,-2.4);
-  var l=new THREE.PointLight(0xffd6a0,1.5,12,2);l.position.set(p[0],3.1,-2.4);scene.add(l);
+  h.position.set(p[0],2.86,-2.4);scene.add(h);
+  glow(0xffd79a,1.5,0.32,p[0],2.84,-2.4);
+  var l=new THREE.PointLight(0xffd6a0,1.5,12,2);l.position.set(p[0],2.75,-2.4);scene.add(l);
 });
 /* 车位线 + 编号 */
 for(var i=0;i<4;i++){
@@ -760,6 +762,65 @@ function startAudio(){
   }catch(e){}
 }
 
+/* ============ 碰撞：停车场里的硬东西 ============
+   之前只有车身一个圆形排斥，柱子、叉车、油桶、门卫室全都能直接穿过去。
+   现在按"圆 + 轴对齐矩形"建一批简单碰撞体：玩家半径 0.42，
+   解算时沿最小穿透轴推出去（不是直接归零），所以贴着柱角走会自然滑动，
+   不会被硬卡死在障碍边上。不需要物理引擎，一帧最多三次迭代。 */
+var PR=0.42;
+var solids=[];
+function blockRect(x,z,hw,hd){solids.push({x:x,z:z,hw:hw,hd:hd});}
+function blockCircle(x,z,r){solids.push({x:x,z:z,r:r});}
+function collide(px,pz){
+  for(var it=0;it<3;it++){
+    var hit=false;
+    for(var i=0;i<solids.length;i++){
+      var s=solids[i];
+      if(s.r){
+        var dx=px-s.x,dz=pz-s.z,d=Math.hypot(dx,dz),m=s.r+PR;
+        if(d<m&&d>1e-4){px=s.x+dx/d*m;pz=s.z+dz/d*m;hit=true;}
+      }else{
+        var ax=px-s.x,az=pz-s.z;
+        var ox=s.hw+PR-Math.abs(ax),oz=s.hd+PR-Math.abs(az);
+        if(ox>0&&oz>0){
+          /* 谁浅推谁：从短边出去，长边方向保留位移＝沿墙滑动 */
+          if(ox<oz)px=s.x+(ax>=0?1:-1)*(s.hw+PR);
+          else pz=s.z+(az>=0?1:-1)*(s.hd+PR);
+          hit=true;
+        }
+      }
+    }
+    if(!hit)break;
+  }
+  return [px,pz];
+}
+
+/* 登记停车场里的实体障碍（坐标与上面的建模一一对应）。
+   厂房前墙两段（中间门洞留空）、装卸平台、车棚四排立柱、门卫室、
+   叉车、旧车、料堆、油桶、托盘、垃圾桶、消防栓、路灯、电杆、导视牌。 */
+(function(){
+  blockRect(-12.8,17,11,0.5);blockRect(12.8,17,11,0.5);
+  blockRect(-13,13.6,3.5,2.2);
+  [-1,1.8,4.6,7.4,10.2,13.0,15.8].forEach(function(cx){
+    blockRect(cx,1.9,0.13,0.13);blockRect(cx,-6.7,0.13,0.13);
+  });
+  blockRect(-16.6,-9.2,1.7,1.5);
+  blockCircle(-9.6,4.4,1.5);      /* 叉车 */
+  blockCircle(-11.5,-8.2,1.9);    /* 旧车 */
+  blockCircle(-14.6,-2.6,2.6);    /* 苫布料堆 */
+  [[-15.8,5.2],[-15.2,5.8],[-16.4,5.9],[14.2,-8.2],[14.8,-7.6]]
+    .forEach(function(p){blockCircle(p[0],p[1],0.36);});
+  [[-12.4,11.2,0.85],[-14.6,8.4,0.8],[13.6,0.6,0.8]]
+    .forEach(function(p){blockCircle(p[0],p[1],p[2]);});
+  blockCircle(-16.4,10.9,0.45);
+  blockCircle(-7.2,12.2,0.28);
+  [[-6.4,4.6],[4.2,6.4],[-11.4,-3.2],[9.8,-10.2],[14.4,-9.4]]
+    .forEach(function(p){blockCircle(p[0],p[1],0.24);});
+  blockCircle(-18.4,-2.2,0.2);blockCircle(-18.4,7.4,0.2);
+  /* 自己那辆车：矩形比圆准，走到车门旁就停住，不会陷进车身 */
+  blockRect(carG.position.x,carG.position.z,0.96,2.18);
+})();
+
 /* ============ 控制 ============ */
 var keys={},dragging=false,lastX=0,lastY=0,started=false,leaving=false;
 window.addEventListener('keydown',function(e){
@@ -803,6 +864,13 @@ function tryBoard(){
   setTimeout(function(){location.href='outdoor.html?from=factory&act=3';},2100);
 }
 
+/* 验收用：读/摆玩家位置，不参与游戏逻辑 */
+window.__yard={
+  p:function(){return {x:+player.x.toFixed(2),z:+player.z.toFixed(2)};},
+  set:function(x,z){player.x=x;player.z=z;},
+  solids:function(){return solids.length;}
+};
+
 /* ============ 主循环 ============ */
 var clock=new THREE.Clock();
 var tAll=0;
@@ -828,15 +896,12 @@ function loop(){
     var len=Math.hypot(mx,mz);
     if(len>0){
       mx/=len;mz/=len;walking=true;
-      player.x=Math.max(-19,Math.min(19,player.x+mx*sp));
-      player.z=Math.max(-12.6,Math.min(18.2,player.z+mz*sp));
-      /* 别让玩家钻进车里 */
-      var cdx=player.x-carG.position.x,cdz=player.z-carG.position.z;
-      var cd=Math.hypot(cdx,cdz);
-      if(cd<2.5&&cd>0.001){
-        player.x=carG.position.x+cdx/cd*2.5;
-        player.z=carG.position.z+cdz/cd*2.5;
-      }
+      var nx=Math.max(-19,Math.min(19,player.x+mx*sp));
+      var nz=Math.max(-12.6,Math.min(18.2,player.z+mz*sp));
+      /* 先走过去，再沿最小穿透轴推出来：贴着柱子/车/围栏走会滑动，不会卡死 */
+      var rp=collide(nx,nz);
+      player.x=Math.max(-19,Math.min(19,rp[0]));
+      player.z=Math.max(-12.6,Math.min(18.2,rp[1]));
       /* 角色朝移动方向转身（平滑），不是瞬移。
          模型脸朝 -z：rotation.y=θ 时朝向 (-sinθ,-cosθ)，
          所以要朝 (mx,mz) 走，θ=atan2(-mx,-mz)。之前写成 atan2(mx,-mz)，
