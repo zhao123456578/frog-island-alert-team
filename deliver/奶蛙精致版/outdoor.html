@@ -1824,7 +1824,7 @@ function winOf(k){
 function inWin(k,d){const w=winOf(k);return d>w[0]&&d<w[1];}
 function drowsyRate(){return DIFF==='easy'?0.42:0.62;}
 const PARK_SPEED=22;   /* km/h */
-const PARK_LAT=1.5;    /* 米，向右离开车道中心 */
+const PARK_LAT=1.0;    /* 米，向右离开车道中心。原来 1.5 太深，正常靠边根本够不到 */
 const keys={};
 addEventListener('keydown',e=>{
   keys[e.key.toLowerCase()]=true;
@@ -2087,27 +2087,30 @@ function update(dt){
   S.reverse=!!(brake&&nearBay&&S.speed<0.5);
   /* 方向盘给的是偏航率，不是横向位置：车往哪走，是偏航一点点积出来的 */
   const steerDir=(right?1:0)-(left?1:0);
-  S.steer+=(steerDir-S.steer)*Math.min(1,dt*(steerDir?5.4:9.0));
-  const maxLock=0.12/(1+S.speed*0.125);       /* 越快，方向越沉 */
+  S.steer+=(steerDir-S.steer)*Math.min(1,dt*(steerDir?6.0:10.0));
+  /* 转向权威：低速时方向盘要给得动，才能在停车窗口里把车挪到路边。
+     原来 0.12 的舵角太小，回正和车道保持一压，按住 D 三秒才挪 0.15 米，
+     停车却要求靠右 1.5 米——玩家会觉得车被焊在车道中心。 */
+  const maxLock=0.30/(1+S.speed*0.13);
   const yawRate=S.speed*Math.tan(S.steer*maxLock)/2.72;
   const curv=roadAt(S.dist).k;
   S.psi+=(yawRate-curv*S.speed*Math.cos(S.psi))*dt;
-  /* 回正力：松手方向盘自己回中。回正目标不是"世界正前方"，而是"顺着当前弯道走"
-     的前馈角 trim——否则路一弯，松手车就一直往路肩飘。困意只削弱车道保持，
-     不削弱这个前馈，免得困到后面直接开出路。 */
+  /* 回正：只在松手时把车拉回"顺着弯道走"的角度 trim。按着方向键时不跟你抢方向盘 */
   const hold=1.2+1.7*Math.min(1,S.speed/14);
   const trim=Math.max(-0.20,Math.min(0.20,curv*S.speed/hold));
-  S.psi+=(trim-S.psi)*hold*dt;
-  /* 车道保持：手轻轻扶着方向盘，车会自己回到车道中间；贴到边线再用力带回来 */
-  const edgeR=S.lateral-1.9, edgeL=-1.9-S.lateral;
+  if(!steerDir)S.psi+=(trim-S.psi)*hold*dt;
+  /* 车道保持：松手后轻轻回中，但不再强到把车焊死在车道中心 */
+  const edgeR=S.lateral-2.6, edgeL=-2.6-S.lateral;
   if(!steerDir){
-    S.psi-=S.lateral*0.22*(1-0.9*kd)*dt*Math.min(1,S.speed/9);
+    S.psi-=S.lateral*0.12*(1-0.9*kd)*dt*Math.min(1,S.speed/9);
     if(edgeR>0)S.psi-=edgeR*0.8*(1-0.6*kd)*dt*Math.min(1,S.speed/8);
     if(edgeL>0)S.psi+=edgeL*0.5*(1-0.6*kd)*dt*Math.min(1,S.speed/8);
   }
   /* 困意写进操控：方向盘低频发漂，车自己往路上两边跑，人不修正就压边线 */
   if(kd>0)S.psi+=Math.sin(S.wobT*0.62+2.1)*0.10*kd*dt;
-  S.psi=Math.max(-0.42,Math.min(0.42,S.psi));
+  /* 偏航上限随速度收紧：低速能大角度靠边，高速不让你一打方向就飞出路面 */
+  const psiCap=0.38/(1+S.speed*0.05);
+  S.psi=Math.max(-psiCap,Math.min(psiCap,S.psi));
   if(S.reverse)S.dist=Math.max(1540,S.dist-6.5*dt);
   else{
     S.dist+=S.speed*Math.cos(S.psi)*dt;
