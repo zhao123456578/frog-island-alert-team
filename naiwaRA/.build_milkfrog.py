@@ -219,7 +219,7 @@ for i in range(n):
         continue
     p = wco[i]
     # 手：用位置遮罩罩住整只手（Dijkstra 从外侧种子只能染到指尖）
-    tz = smooth((p.z - 0.76) / 0.06) * (1.0 - smooth((p.z - 0.99) / 0.06))
+    tz = smooth((p.z - 0.66) / 0.05) * (1.0 - smooth((p.z - 0.95) / 0.06))
     tx = smooth((abs(p.x) - 0.34) / 0.06)
     ty = 1.0 - smooth((abs(p.y) - 0.10) / 0.08)
     fh = tz * tx * ty
