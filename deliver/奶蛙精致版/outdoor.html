@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
 <title>奶蛙 · 夜班回家路</title>
 <style>
   :root{--milk:#e6e2cf;--warm:#ffc27a;--dim:#8b929c;}
@@ -54,6 +55,7 @@
     align-items:center;justify-content:center;background:rgba(4,6,9,.92);
     text-align:center;z-index:5;transition:opacity .5s;}
   #title h1{font-size:34px;letter-spacing:.14em;margin:0 0 6px;color:var(--milk);}
+  #title .shotline{color:var(--warm);font-size:12px;letter-spacing:.32em;margin-bottom:14px;opacity:.8;}
   #title .sub{color:var(--dim);letter-spacing:.2em;margin-bottom:34px;}
   #title .keys{color:#a2a89a;font-size:12px;line-height:2;margin-bottom:30px;}
   #diffPick{margin:-14px 0 26px;font-size:12px;color:#a2a89a;letter-spacing:.12em;}
@@ -105,6 +107,30 @@
   @media (orientation:portrait){
     #touch.on ~ #rotateHint{display:block;}
   }
+  /* ---- 场外开场：贴近场景的交互提示，出现才显示，不长期浮屏 ---- */
+  #introHint{position:fixed;left:50%;bottom:20%;transform:translateX(-50%);z-index:6;
+    padding:9px 18px;font-size:13px;letter-spacing:.14em;color:#0e1013;white-space:nowrap;
+    background:rgba(255,198,132,.94);border:1px solid #ffd39a;
+    box-shadow:0 0 18px rgba(255,180,110,.35);
+    opacity:0;transition:opacity .4s;pointer-events:none;}
+  #introHint.on{opacity:1;}
+  #introHint .k{display:inline-block;padding:1px 7px;margin-right:8px;
+    background:rgba(14,16,19,.85);color:#ffd39a;border:1px solid rgba(255,211,154,.5);}
+  #introSkip{position:fixed;right:16px;top:14px;z-index:6;font-size:11px;letter-spacing:.1em;
+    color:rgba(207,210,192,.5);opacity:0;transition:opacity .5s;pointer-events:none;}
+  #introSkip.on{opacity:1;}
+  /* 竖屏 390×844：标题/操作文字完整换行，不左右裁切 */
+  @media (max-width:540px){
+    #title h1{font-size:25px;letter-spacing:.06em;}
+    #title .shotline{font-size:10px;letter-spacing:.16em;margin-bottom:10px;}
+    #title .sub{font-size:12px;letter-spacing:.08em;margin-bottom:20px;}
+    #title .keys,#hKeys{font-size:11px;line-height:1.75;white-space:normal!important;
+      padding:0 14px;word-break:break-word;}
+    #title{max-width:100vw;padding:0 12px;}
+    #diffPick{margin:0 0 20px;font-size:11px;}
+    button{font-size:13px;padding:10px 18px;letter-spacing:.1em;}
+    #introHint{font-size:12px;bottom:24%;padding:8px 14px;}
+  }
 </style>
 </head>
 <body>
@@ -124,16 +150,19 @@
   <div class="pill" id="hSpeed">0 km/h</div>
   <div class="pill" id="hRadio">电台 <b>深夜交通台</b><br><span id="hRadioLine"></span></div>
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
-  <div class="pill" id="hKeys">拖动画面 环视 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · 1-4 换台 · F 喝咖啡</div>
+  <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · 1-4 换台 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
   <div id="hGuide"></div>
 </div>
 <div id="toast"></div>
+<div id="introHint"><span class="k" id="introKey">E</span><span id="introHintText">拉开车门</span></div>
+<div id="introSkip">点击 / 任意键 跳过</div>
 <div id="title">
+  <div class="shotline">奶厂停车场 · 车灯亮起</div>
   <h1>夜班 · 回家路</h1>
   <div class="sub">一个普通的周三 02:47</div>
-  <div class="keys">W 油门 · S 刹车 · A/D 变道<br>拖动画面环视座舱 · 松手回到正前方<br>SPACE 按住开窗提神 · R 雨刷 · 1-4 换电台 · F 喝咖啡<br>到小区门口减速靠右，按 E 停车<br>手机：左下油门/刹车 · 右下左右 · 滑动画面环视</div>
+  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 变道 · E 停车 · SPACE 开窗 · R 雨刷 · F 咖啡 · 1-4 换台<br><span style="opacity:.72">更多操作会在路上慢慢告诉你</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视<br><span style="opacity:.72">停车时停在车位白线内，点「停」</span></span></div>
   <div id="diffPick">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
-  <button id="btnStart">出发</button>
+  <button id="btnStart">打卡下班 →</button>
 </div>
 <div id="end">
   <h2>到家了</h2>
@@ -292,6 +321,32 @@ function glowSprite(color,scale,opacity){
     transparent:true,opacity:opacity,blending:THREE.AdditiveBlending,depthWrite:false}));
   s.scale.set(scale,scale,1);return s;
 }
+/* —— 场景美术重制的共享材质与低模 helper（放在所有地标之前，避免暂时性死区）—— */
+const artDark=new THREE.MeshLambertMaterial({color:0x14181f,emissive:0x05070a});
+const artSteel=new THREE.MeshLambertMaterial({color:0x39414a,emissive:0x080b0f});
+const artMilk=new THREE.MeshBasicMaterial({color:0xcfd3c6});
+const artSick=new THREE.MeshBasicMaterial({color:0xbfe6cf});          /* 病态乳白 / 荧光绿 */
+const artAmber=new THREE.MeshBasicMaterial({color:0xffc27a});
+function bx(parent,w,h,d,mat,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z);parent.add(m);return m;}
+function cy(parent,rt,rb,h,mat,x,y,z,seg){const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg||7),mat);
+  m.position.set(x,y,z);parent.add(m);return m;}
+/* 通用低分辨率招牌纹理生成器：底 + 边框 + 标题 + 副标题 */
+function artSignTex(opt){
+  return mkTex(opt.w||256,opt.h||96,(x,w,h)=>{
+    x.fillStyle=opt.bg||'#0d1712';x.fillRect(0,0,w,h);
+    if(opt.stripe){x.fillStyle=opt.stripe;x.fillRect(0,0,w,8);x.fillRect(0,h-8,w,8);}
+    x.strokeStyle=opt.border||'#3f8f64';x.lineWidth=5;x.strokeRect(4,4,w-8,h-8);
+    x.textAlign='center';x.textBaseline='middle';
+    x.fillStyle=opt.fg||'#eaf5ea';x.font='700 '+(opt.size||40)+'px "Microsoft YaHei",sans-serif';
+    x.fillText(opt.title,w/2,opt.titleY||h*0.42);
+    if(opt.sub){x.fillStyle=opt.subC||'#8fc8a6';x.font='700 '+(opt.subSize||22)+'px "Microsoft YaHei",sans-serif';
+      x.fillText(opt.sub,w/2,opt.subY||h*0.74);}
+  });
+}
+function artSign(parent,tex,w,h,x,y,z,ry){const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+  new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));
+  m.position.set(x,y,z);if(ry)m.rotation.y=ry;parent.add(m);return m;}
 const poolGeo=new THREE.PlaneGeometry(10,10);
 /* 车头灯在地面的投影：椭圆渐变 + 模糊，避免聚光灯在地面上切出硬边 */
 const beamTex=mkTex(128,256,(x,w,h)=>{
@@ -578,7 +633,7 @@ for(let i=0;i<10;i++){
       opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}));
   streak.rotation.x=-Math.PI/2;streak.position.set(-side*1.7,0.013,4.4);g.add(streak);
   g.position.set(side*5.6,0,-i*30);
-  scene.add(g);lamps.push({grp:g,light:null,base:1,side:side,z:-i*30,head,pool,streak});
+  scene.add(g);lamps.push({grp:g,light:null,base:1,side:side,z:-i*30,head,pool,streak,halo});
 }
 /* 十盏路灯共用四盏点光源：每帧挑最近的四根灯杆挪过去。
    远处的灯靠灯头高光、地面光斑和湿路倒影撑场面，座舱里看不出少了几盏 */
@@ -1003,6 +1058,75 @@ car.add(spillLight);car.add(spillLight.target);
 const dashGlow=new THREE.Mesh(new THREE.BoxGeometry(1.05,0.006,0.014),
   new THREE.MeshBasicMaterial({color:0x4a3018}));
 dashGlow.position.set(0.02,0.968,-0.945);car.add(dashGlow);
+
+/* ===== 场外开场：车外镜头用的完整车身外壳 =====
+   平时隐藏；开场"走到车门/拉门入座"时显示，坐进车里后隐藏，
+   这样车外不会看到空壳座舱，车里也不会被自己的钣金挡住视线。
+   车漆带腰线/门缝/轮眉，绝不是一整块无材质灰盒。 */
+const introShell=new THREE.Group();car.add(introShell);introShell.visible=false;
+const paintMat=new THREE.MeshLambertMaterial({color:0x11181c,emissive:0x020304});
+const paintTrim=new THREE.MeshLambertMaterial({color:0x0a0e11});
+const paintHi=new THREE.MeshBasicMaterial({color:0x33434a});   /* 车漆高光条，夜里勾一条冷色轮廓 */
+[-1,1].forEach(s=>{
+  bx(introShell,0.07,0.92,3.85,paintMat,s*1.155,0.83,-0.15);    /* 下车体大面 */
+  bx(introShell,0.085,0.018,3.8,paintHi,s*1.175,1.10,-0.15);     /* 车漆高光条 */
+  bx(introShell,0.08,0.05,3.8,paintTrim,s*1.17,1.14,-0.15);      /* 腰线 */
+  bx(introShell,0.08,0.86,0.02,paintTrim,s*1.17,0.82,-0.95);     /* 前门缝 */
+  bx(introShell,0.08,0.86,0.02,paintTrim,s*1.17,0.82,0.86);      /* 后门缝 */
+  [-1.4,1.5].forEach(z=>{                                         /* 轮眉弧 */
+    const w=new THREE.Mesh(new THREE.TorusGeometry(0.37,0.085,6,10,Math.PI),paintTrim);
+    w.position.set(s*1.18,0.52,z);w.rotation.y=Math.PI/2;w.rotation.z=Math.PI;
+    introShell.add(w);
+  });
+  /* 侧窗玻璃（深色半透明）+ B 柱：让车外看到的是一辆完整的车，不是空框架 */
+  [[-0.55,1.05],[0.60,1.05]].forEach(([z,w],i)=>{
+    const win=new THREE.Mesh(new THREE.PlaneGeometry(w,0.5),
+      new THREE.MeshBasicMaterial({color:0x0c151c,transparent:true,opacity:0.72,side:THREE.DoubleSide}));
+    win.position.set(s*1.165,1.40,z);win.rotation.y=Math.PI/2;introShell.add(win);
+  });
+  bx(introShell,0.09,0.56,0.10,paintTrim,s*1.17,1.40,0.05);      /* B 柱 */
+});
+[[-1.16,-1.4],[1.16,-1.4],[-1.16,1.5],[1.16,1.5]].forEach(([x,z])=>{
+  const wheel=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,0.22,10),cabinDark);
+  wheel.rotation.z=Math.PI/2;wheel.position.set(x,0.35,z);introShell.add(wheel);
+  const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.24,8),paintTrim);
+  hub.rotation.z=Math.PI/2;hub.position.set(x,0.35,z);introShell.add(hub);
+});
+bx(introShell,2.3,0.22,0.16,paintTrim,0,0.62,2.32);              /* 后保险杠 */
+[-0.82,0.82].forEach(x=>{
+  const tl=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.12,0.05),
+    new THREE.MeshBasicMaterial({color:0x7a1c14}));
+  tl.position.set(x,0.95,2.36);introShell.add(tl);
+});
+/* 驾驶侧可开的车门：铰链在前缘 z=-0.95，向外(-x)绕 y 轴转开 */
+const driverDoor=new THREE.Group();driverDoor.position.set(-1.16,0,-0.95);introShell.add(driverDoor);
+bx(driverDoor,0.06,0.92,1.78,paintMat,0,0.83,0.90);
+bx(driverDoor,0.065,0.05,1.78,paintTrim,-0.01,1.14,0.90);
+bx(driverDoor,0.05,0.05,0.20,new THREE.MeshLambertMaterial({color:0x4a524f}),-0.05,1.02,0.62);
+const doorHandleGlow=glowSprite(0xffc27a,0.26,0);
+doorHandleGlow.position.set(-0.14,1.02,0.62);driverDoor.add(doorHandleGlow);
+
+/* ===== 侧视遮挡淡出：大幅环视时把近侧 A 柱/门板/B 柱淡化，露出窗外 =====
+   从车里向右看到的就是自己的副驾门板，距离太近会变成"巨大灰块"。
+   把这些部件换成独立材质，按环视角度降低不透明度。 */
+const cabinOccluders=[];
+function tagOccluder(mesh,sign){
+  mesh.material=mesh.material.clone();mesh.material.transparent=true;
+  mesh.userData.baseOp=(mesh.material.opacity!==undefined)?mesh.material.opacity:1;
+  cabinOccluders.push({mesh,sign});
+}
+/* A 柱 / 门板 / 窗台 / 侧窗 / 扶手 / 喇叭 / 后视镜壳：侧视时正对相机的整片板件都要能透出去。
+   范围放宽到 |x| 1.0~1.22（含后视镜 1.19），但排除车头翼子板(z=-1.83)和仪表台(x≈0)。
+   另外把副驾座椅(seatMat=0x24262b，x≈0.3~0.6)也算作右侧遮挡：向右看到它同样是一大块灰板。
+   注意都是"随环视角淡出"，正面看 fade=0 保持不透明，不会让座舱穿帮。*/
+car.children.forEach(m=>{
+  if(!m.isMesh||!m.geometry)return;
+  const p=m.position;
+  const side=(Math.abs(p.x)>1.0 && Math.abs(p.x)<1.22 && p.y>0.5 && p.y<1.5 && p.z>-1.3 && p.z<1.4);
+  const seat=(m.material&&m.material.color&&m.material.color.getHex()===0x24262b
+              && p.x>0.24 && p.x<0.72 && p.z>0.18 && p.z<0.72);
+  if(side||seat)tagOccluder(m,Math.sign(p.x)||1);
+});
 /* 内后视镜：真的把车后画面渲染一遍再贴上去 */
 const mirrorRT=new THREE.WebGLRenderTarget(768,192,
   {minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,generateMipmaps:false});
@@ -1289,6 +1413,12 @@ const chaser=new THREE.Group();
   chaser.userData.eyes=eyes;chaser.userData.glows=glows;
 }
 chaser.visible=false;scene.add(chaser);
+/* 追逐者的地面倒影：车灯色温从暖白转冷绿的一大片湿路反光，
+   铺在玩家身后的路面上——不回头也能从余光/湿路察觉"后面有东西"。 */
+const chaserRefl=new THREE.Mesh(new THREE.PlaneGeometry(5.2,15),
+  new THREE.MeshBasicMaterial({map:glowTex,color:0x9fd8b8,transparent:true,
+    opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+chaserRefl.rotation.x=-Math.PI/2;chaserRefl.visible=false;scene.add(chaserRefl);
 
 /* ---------- 雨：粒子 + 挡风玻璃水膜 + 雨刷 ---------- */
 const rainCount=900;
@@ -1297,7 +1427,8 @@ const rainPos=new Float32Array(rainCount*6);
 for(let i=0;i<rainCount;i++){
   rainHead[i*3]=(Math.random()-0.5)*34;
   rainHead[i*3+1]=Math.random()*14;
-  rainHead[i*3+2]=-Math.random()*58;
+  /* 雨丝只在挡风玻璃外侧（车前方 z<=-2.5）生成，绝不越过座舱画到仪表台/方向盘上 */
+  rainHead[i*3+2]=-2.5-Math.random()*56;
 }
 const rainGeo=new THREE.BufferGeometry();
 rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
@@ -1370,8 +1501,11 @@ const lensCtx=lensCanvas.getContext('2d');
 const lensTex=new THREE.CanvasTexture(lensCanvas);
 lensTex.minFilter=THREE.LinearFilter;lensTex.magFilter=THREE.LinearFilter;
 const lensDrops=[];
+/* 水珠只在挡风视野区（画布上半）生成；画布下半留给仪表台/方向盘，
+   这样镜头水珠看起来贴在玻璃外侧，不会穿进座舱。 */
+const LENS_SKY=178;
 for(let i=0;i<130;i++)lensDrops.push({
-  x:Math.random()*512,y:Math.random()*288,r:0.5+Math.random()*0.9,
+  x:Math.random()*512,y:Math.random()*LENS_SKY,r:0.5+Math.random()*0.9,
   v:5+Math.random()*11,a:0.16+Math.random()*0.26});
 const lens=new THREE.Mesh(new THREE.PlaneGeometry(1.5,0.86),
   new THREE.MeshBasicMaterial({map:lensTex,transparent:true,opacity:0,
@@ -1384,14 +1518,18 @@ function drawLens(dt){
   for(let i=0;i<lensDrops.length;i++){
     const d=lensDrops[i];
     d.y+=d.v*dt;
-    if(d.y>292){d.y=-6;d.x=Math.random()*512;}
+    if(d.y>LENS_SKY+4){d.y=-6;d.x=Math.random()*512;}
+    /* 靠近画布下沿(座舱方向)逐渐淡出，避免水珠压到仪表台/方向盘 */
+    const edge=Math.min(1,Math.max(0,(LENS_SKY-d.y)/34));
+    const a=d.a*edge;
+    if(a<0.015)continue;
     const g=lensCtx.createRadialGradient(d.x-d.r*0.3,d.y-d.r*0.4,0.2,d.x,d.y,d.r*2.1);
-    g.addColorStop(0,'rgba(238,247,255,'+(d.a*1.5).toFixed(2)+')');
-    g.addColorStop(0.55,'rgba(190,210,226,'+(d.a*0.55).toFixed(2)+')');
+    g.addColorStop(0,'rgba(238,247,255,'+(a*1.5).toFixed(2)+')');
+    g.addColorStop(0.55,'rgba(190,210,226,'+(a*0.55).toFixed(2)+')');
     g.addColorStop(1,'rgba(170,192,210,0)');
     lensCtx.fillStyle=g;
     lensCtx.beginPath();lensCtx.arc(d.x,d.y,d.r*2.1,0,Math.PI*2);lensCtx.fill();
-    lensCtx.strokeStyle='rgba(255,255,255,'+(d.a*0.9).toFixed(2)+')';
+    lensCtx.strokeStyle='rgba(255,255,255,'+(a*0.9).toFixed(2)+')';
     lensCtx.lineWidth=0.6;
     lensCtx.beginPath();lensCtx.arc(d.x,d.y,d.r*0.95,Math.PI*1.05,Math.PI*1.75);
     lensCtx.stroke();
@@ -1469,6 +1607,60 @@ const toll=new THREE.Group();
   toll.userData.lampMat=lampBand.material;
   const gateGlow=glowSprite(0xff5040,1.4,0.5);gateGlow.position.set(0,5.05,-0.4);toll.add(gateGlow);
   toll.userData.glow=gateGlow;
+  /* ——— 重做轮廓：远看是一道发光的门，不再是一条白线 ——— */
+  /* 顶部整排灯带：门架横梁上每隔一段一个暖白灯头，组成连续的发光横条 */
+  const barLights=[];
+  for(let x=-4.2;x<=4.2;x+=1.4){
+    const b=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.12,0.3),
+      new THREE.MeshBasicMaterial({color:0xffe6bc}));
+    b.position.set(x,4.98,-0.42);toll.add(b);
+    const g=glowSprite(0xffdca8,1.5,0.5);g.position.set(x,4.9,-0.45);toll.add(g);
+    barLights.push(g);
+  }
+  toll.userData.barLights=barLights;
+  /* 车道上方的绿色"通行"指示大牌，远看就知道这是收费口 */
+  const laneTex=artSignTex({w:256,h:96,bg:'#10301f',border:'#5fae7f',
+    title:'↓',sub:' ETC 通行 ',size:52,subSize:22,subC:'#bfe6cf'});
+  artSign(toll,laneTex,2.6,0.98,0,6.7,-0.5,0);
+  /* 两侧红色状态灯柱：一列三个，未通过时红，通过后转绿 */
+  const statusMats=[];
+  [-4.4,4.4].forEach(px=>{
+    const col=[];
+    for(let k=0;k<3;k++){
+      const dot=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,6),
+        new THREE.MeshBasicMaterial({color:0xd8402c}));
+      dot.position.set(px,4.4-k*0.55,-0.45);toll.add(dot);col.push(dot.material);statusMats.push(dot.material);
+      const dg=glowSprite(0xff4a34,0.7,0.6);dg.position.set(px,4.4-k*0.55,-0.48);toll.add(dg);
+      col[col.length-1].userData.glow=dg;
+    }
+  });
+  toll.userData.statusMats=statusMats;
+  /* 监控探头：横梁上一排小盒子 + 红点，正对来车 */
+  [-3,0,3].forEach(x=>{
+    bx(toll,0.18,0.18,0.42,artSteel,x,4.55,-1.15);
+    const eye=glowSprite(0xff5a44,0.5,0.75);eye.position.set(x,4.5,-1.4);toll.add(eye);
+  });
+  /* 车牌照明：地面两道冷白光斑，暗示"这里会拍你" */
+  [-1.1,1.1].forEach(x=>{
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(1.6,0.7),
+      new THREE.MeshBasicMaterial({map:glowTex,color:0xbfe0ff,transparent:true,
+        opacity:0.28,blending:THREE.AdditiveBlending,depthWrite:false}));
+    p.rotation.x=-Math.PI/2;p.position.set(x,0.03,-1.6);toll.add(p);
+  });
+  /* 减速震荡标线：门前地面几道白色横条，远看就有"要减速"的构图提示 */
+  for(let i=0;i<4;i++){
+    const st=new THREE.Mesh(new THREE.BoxGeometry(6.6,0.02,0.16),
+      new THREE.MeshBasicMaterial({color:0xcfc9ad,transparent:true,opacity:0.5}));
+    st.position.set(0,0.025,-8-i*1.4);toll.add(st);
+  }
+  /* 两根高杆灯塔：远在六七十米外，先看到这两点冷白光，就知道前面是关卡 */
+  [-4.4,4.4].forEach(px=>{
+    bx(toll,0.16,5.0,0.16,artSteel,px,8.2,0);
+    const cap=glowSprite(0xdfeaf2,2.0,0.7);cap.position.set(px,10.7,0);toll.add(cap);
+  });
+  const farTex=artSignTex({w:256,h:72,bg:'#10201c',border:'#e8e6d6',
+    title:'收 费 站',sub:'TOLL',size:44,subSize:20,subC:'#ffcf92'});
+  artSign(toll,farTex,5.0,1.4,0,8.6,-0.4,0);
 }
 toll.position.set(0,0,-320);scene.add(toll);
 
@@ -1521,6 +1713,38 @@ const park=new THREE.Group();
     new THREE.MeshBasicMaterial({map:glowTex,color:0xffb972,transparent:true,
       opacity:0.14,blending:THREE.AdditiveBlending,depthWrite:false}));
   bayPool.rotation.x=-Math.PI/2;bayPool.position.set(4.4,0.03,0);park.add(bayPool);
+  /* ——— 终点辨识度：远处先看到小区入口拱门 + 门卫室的暖光 ———
+     注意 park 组内 local -z 才是"前方"（+z 朝车尾），拱门必须放负 z，
+     否则会在车身边形成贴脸的大遮挡。 */
+  /* 入口拱门横跨路面上方（压低到 5.5 m 进视野），挂小区名牌 */
+  [-6.5,6.5].forEach(x=>bx(park,0.5,5.6,0.5,artSteel,x,2.8,-16));
+  bx(park,14,0.5,0.6,artSteel,0,5.5,-16);
+  const archTex=artSignTex({w:512,h:96,bg:'#1a2330',border:'#e8b96a',stripe:'#7a5a2a',
+    title:'幸 福 里 小 区',sub:'12 号楼 · 夜班请轻声',size:48,subSize:24,subC:'#ffd79a'});
+  artSign(park,archTex,9.6,1.8,0,4.5,-16,-0.02);
+  /* 门卫室：右侧小屋 + 亮着的窗，生活感 */
+  bx(park,3.2,2.8,3.0,new THREE.MeshLambertMaterial({color:0x303a42,emissive:0x080b0e}),10.5,1.4,-15);
+  const guardWin=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.0),
+    new THREE.MeshBasicMaterial({color:0xffd79a}));
+  guardWin.position.set(8.9,1.7,-15);guardWin.rotation.y=-Math.PI/2;park.add(guardWin);
+  const guardGlow=glowSprite(0xffd79a,2.4,0.35);guardGlow.position.set(8.7,1.7,-15);park.add(guardGlow);
+  /* 车位线加强：加一道更亮的白色导引线，远看就是两块白框 */
+  const brightLine=new THREE.MeshBasicMaterial({color:0xe8e2c8,transparent:true,opacity:0.75});
+  [-3,3].forEach(z=>{const m=new THREE.Mesh(new THREE.BoxGeometry(2.6,0.02,0.12),brightLine);
+    m.position.set(3.75,0.025,z);park.add(m);});
+  [2.5,5.0].forEach(x=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.02,6.1),brightLine);
+    m.position.set(x,0.025,0);park.add(m);});
+  park.userData.brightLine=brightLine;
+  /* 门口串灯：一排小暖灯，把终点衬成"有人在等"的地方 */
+  for(let i=0;i<6;i++){
+    const g=glowSprite(0xffcf92,0.9,0.55);g.position.set(-5+i*2,5.0,-16.2);park.add(g);
+  }
+  /* 12 号楼顶的发光楼牌：几十米外就能认出"到家了"的那片暖光 */
+  const roofTex=artSignTex({w:256,h:72,bg:'#16233a',border:'#ffcf92',
+    title:'幸 福 里 · 12',size:40,sub:'HOME',subSize:20,subC:'#ffd79a'});
+  const roofSign=artSign(park,roofTex,7.2,2.0,7.2,12.4,-9,-Math.PI/2);
+  const roofGlow=glowSprite(0xffcf92,6.5,0.28);roofGlow.position.set(7.0,12.4,-9);park.add(roofGlow);
+  park.userData.roofSign=roofSign;
 }
 park.position.set(0,0,-200);scene.add(park);
 
@@ -1693,6 +1917,35 @@ const gasStation=new THREE.Group();
   const totemGlow=glowSprite(0x7fe0a8,2.4,0.2);totemGlow.position.set(6.3,2.4,7.7);gasStation.add(totemGlow);
   const parked=buildTrafficCar('car',1);
   parked.position.set(10.6,0,2.8);parked.rotation.y=Math.PI;gasStation.add(parked);
+  /* ——— 远处第一眼：高耸的奶蛙灯塔，隔几百米就是黑暗里的一枚暖色坐标 ——— */
+  bx(gasStation,0.34,7.4,0.34,steel,6.6,3.7,10.5);
+  const beaconFace=mkTex(256,256,(x,w,h)=>{
+    x.fillStyle='#0e2a1e';x.fillRect(0,0,w,h);
+    x.strokeStyle='#8fe8b0';x.lineWidth=12;x.beginPath();x.arc(w/2,h/2,104,0,6.283);x.stroke();
+    x.fillStyle='#eaf5ea';x.textAlign='center';x.textBaseline='middle';
+    x.font='700 84px "Microsoft YaHei",sans-serif';x.fillText('奶蛙',w/2,h/2-16);
+    x.fillStyle='#ffd79a';x.font='700 30px "Microsoft YaHei",sans-serif';x.fillText('石化 24h',w/2,h/2+58);
+  });
+  const beacon=new THREE.Mesh(new THREE.PlaneGeometry(2.6,2.6),
+    new THREE.MeshBasicMaterial({map:beaconFace,side:THREE.DoubleSide}));
+  beacon.position.set(6.6,6.6,10.5);beacon.rotation.y=-0.25;gasStation.add(beacon);
+  const beaconGlow=glowSprite(0xffd79a,4.5,0.42);beaconGlow.position.set(6.6,6.6,10.4);gasStation.add(beaconGlow);
+  const beaconTop=glowSprite(0x8fe8b0,1.6,0.7);beaconTop.position.set(6.6,7.8,10.5);gasStation.add(beaconTop);
+  gasStation.userData.beacon=beaconGlow;
+  /* 奶蛙涂鸦：便利店侧墙上的荧光绿脸，怪诞的小细节 */
+  const graff=mkTex(128,128,(x,w,h)=>{
+    x.clearRect(0,0,w,h);
+    x.strokeStyle='#8fe8a8';x.lineWidth=9;x.lineJoin='round';
+    x.beginPath();x.arc(w/2,h/2+6,40,0.15,Math.PI-0.15);x.stroke();   /* 大嘴 */
+    x.fillStyle='#8fe8a8';
+    x.beginPath();x.ellipse(w/2-20,h/2-30,10,15,0,0,6.283);x.fill();
+    x.beginPath();x.ellipse(w/2+20,h/2-30,10,15,0,0,6.283);x.fill();
+    x.fillStyle='#0e1a14';x.beginPath();x.arc(w/2-20,h/2-28,4,0,6.283);x.fill();
+    x.beginPath();x.arc(w/2+20,h/2-28,4,0,6.283);x.fill();
+  });
+  const gTag=new THREE.Mesh(new THREE.PlaneGeometry(2.2,2.2),
+    new THREE.MeshBasicMaterial({map:graff,transparent:true,side:THREE.DoubleSide}));
+  gTag.position.set(13.56,1.9,-3.4);gTag.rotation.y=-Math.PI/2;gasStation.add(gTag);
 }
 scene.add(gasStation);
 /* 收费站后面：一辆双闪的车停在咱们道上，人站在车边打电话 */
@@ -1796,6 +2049,234 @@ const cat=new THREE.Group();
 }
 scene.add(cat);
 
+/* ============================================================
+   场外场景美术重制（面向比赛演示）
+   原则：低模大轮廓 + CanvasTexture 低分辨率贴图 + 选择性发光；
+   复用现有材质/几何，不新增灯光、不加渲染 pass（后视镜已是瓶颈）。
+   每段一个"英雄地标 + 安静路 + 小异常"，远看有轮廓、中景能认、近景有细节。
+   ============================================================ */
+/* ---------- 0–300 m：奶厂外围（看得见的"不正常起点"） ---------- */
+const dairyGate=new THREE.Group();
+{
+  /* 铁丝网：网格纹理 + 斜拉刺网，沿路两侧各一段，远看是连续的栅栏轮廓 */
+  const fenceTex=mkTex(64,64,(x,w,h)=>{
+    x.fillStyle='rgba(20,26,30,.35)';x.fillRect(0,0,w,h);
+    x.strokeStyle='#5a646c';x.lineWidth=3;
+    for(let i=0;i<=w;i+=16){x.beginPath();x.moveTo(i,0);x.lineTo(i,h);x.stroke();}
+    for(let j=0;j<=h;j+=16){x.beginPath();x.moveTo(0,j);x.lineTo(w,j);x.stroke();}
+  });
+  fenceTex.repeat.set(14,2);
+  const fenceMat=new THREE.MeshBasicMaterial({map:fenceTex,transparent:true,opacity:0.72,
+    side:THREE.DoubleSide,depthWrite:false});
+  [-1,1].forEach(side=>{
+    const f=new THREE.Mesh(new THREE.PlaneGeometry(84,2.6),fenceMat);
+    f.position.set(side*10.5,1.35,0);f.rotation.y=Math.PI/2;dairyGate.add(f);
+    for(let i=-3;i<=3;i++)cy(dairyGate,0.06,0.075,2.7,artSteel,side*10.5,1.35,i*12,5);
+  });
+  /* 厂门横跨道路的门架：两根粗柱 + 横梁，比普通路灯粗一倍，远看是个"门" */
+  [-8.2,8.2].forEach(x=>bx(dairyGate,0.5,7.2,0.5,artSteel,x,3.6,0));
+  bx(dairyGate,17,0.7,0.6,artSteel,0,7.0,0);
+  const gateTex=artSignTex({w:512,h:96,bg:'#10231c',border:'#5fae7f',stripe:'#2f6b4a',
+    title:'奶 厂 · 夜 班 通 道',sub:'LAST DROP  ·  02:47 交班',size:46,subSize:24,subC:'#9fd8b4'});
+  artSign(dairyGate,gateTex,11,2.06,0,5.6,0,0);
+  /* 奶罐车：低模罐体 + 驾驶室，停在厂门内侧，罐身有奶渍与 13 号标记 */
+  const tanker=new THREE.Group();tanker.position.set(-14,0,6);tanker.rotation.y=0.12;dairyGate.add(tanker);
+  bx(tanker,2.5,0.7,7.6,artSteel,0,1.0,0);
+  const drum=cy(tanker,1.25,1.25,5.4,artMilk,0,2.05,-0.7,10);drum.rotation.x=Math.PI/2;
+  cy(tanker,1.28,1.28,0.16,artSteel,0,2.05,-3.3,10).rotation.x=Math.PI/2;
+  cy(tanker,1.28,1.28,0.16,artSteel,0,2.05,1.9,10).rotation.x=Math.PI/2;
+  bx(tanker,2.3,1.9,2.0,artSteel,0,1.5,3.4);
+  bx(tanker,2.1,0.7,0.06,artMilk,0,2.0,4.42);
+  /* 罐身 13 号试饮员标记 + 蛙形轮廓 */
+  const tankMark=artSignTex({w:128,h:128,bg:'#173a29',border:'#bfe6cf',title:'13',sub:'试 饮 员',size:70,subSize:22});
+  const mark=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6),new THREE.MeshBasicMaterial({map:tankMark}));
+  mark.position.set(-1.27,2.05,-0.7);mark.rotation.y=-Math.PI/2;tanker.add(mark);
+  /* 冒汽管道：三根立管 + 乳白蒸汽（蒸汽用 sprite，近景才显，几乎零开销） */
+  [-18,-16.6,-15.2].forEach((x,i)=>{
+    cy(dairyGate,0.22,0.26,3.6+i*0.5,artSteel,x,(3.6+i*0.5)/2,13);
+    const s=glowSprite(0xd6ddd6,2.2,0.22);s.position.set(x,4.1+i*0.5,13);dairyGate.add(s);
+  });
+  /* 停车场灯（高杆），暖白光晕 */
+  [-11,11].forEach(x=>{
+    cy(dairyGate,0.09,0.12,8.2,artSteel,x,4.1,20);
+    const h=glowSprite(0xffe6bd,3.0,0.5);h.position.set(x,8.15,20);dairyGate.add(h);
+  });
+  /* 出口指示箭头，立在右侧路肩 */
+  const exitTex=artSignTex({w:256,h:96,bg:'#123a26',border:'#8fd8a8',title:'出口 →',sub:'夜班车辆',size:48,subSize:22});
+  artSign(dairyGate,exitTex,2.4,0.9,8.6,2.4,26,-0.5);
+}
+scene.add(dairyGate);dairyGate.visible=false;
+
+/* ---------- 停车场近景 25–90 m：左右两侧补足，经得住 ±70° 环视 ----------
+   左侧（x<0）：门卫室、值守灯箱、货堆、设备箱、停放车辆、厂区墙面、监控器；
+   右侧（x>0）：围栏内的停车车辆、货箱、熄灯厂房轮廓、一辆闪灯的"异常"车。
+   全部低模 + 已有材质，不加灯光不加 pass，远看有轮廓、近看有细节。 */
+const yardProps=new THREE.Group();
+{
+  const brick=new THREE.MeshLambertMaterial({color:0x3a332c,emissive:0x0a0908});
+  const glassWarm=new THREE.MeshBasicMaterial({color:0xd9ab6a});
+  const glassDark=new THREE.MeshBasicMaterial({color:0x121922});
+
+  /* ---- 左侧：门卫室（有值守灯窗、门、屋顶编号灯箱）---- */
+  const guard=new THREE.Group();guard.position.set(-16,0,-4);yardProps.add(guard);
+  bx(guard,5.2,3.0,4.0,brick,0,1.5,0);
+  bx(guard,5.5,0.28,4.3,artDark,0,3.14,0);                 /* 屋檐 */
+  bx(guard,1.8,1.2,0.08,glassWarm,-1.2,1.9,-2.04);         /* 值守窗（暖光） */
+  bx(guard,1.8,0.08,0.1,paintTrim,-1.2,1.28,-2.09);
+  bx(guard,0.95,2.0,0.08,artDark,1.5,1.0,-2.04);           /* 门 */
+  const guardSign=artSignTex({w:256,h:80,bg:'#101b18',border:'#6faf8a',
+    title:'值 守 室',sub:'NIGHT SHIFT',size:40,subSize:18});
+  artSign(guard,guardSign,2.6,0.82,0,3.55,-2.1,0);
+  const guardLamp=glowSprite(0xffc07a,2.4,0.5);
+  guardLamp.position.set(-1.2,2.55,-2.3);guard.add(guardLamp);
+  /* 门卫室外墙上的监控摄像头：小盒子 + 镜头红点 */
+  bx(guard,0.5,0.3,0.5,artSteel,2.1,2.7,-2.1);
+  const camEye=glowSprite(0xd8483a,0.5,0.7);
+  camEye.position.set(2.1,2.55,-2.4);guard.add(camEye);
+
+  /* ---- 左侧：货堆 + 设备箱（不同高度，避免一条直线）---- */
+  [[-19,-10,0],[-17.4,-10.6,1.3],[-19.2,-9.2,0.9]].forEach(([x,z,h])=>{
+    bx(yardProps,1.6,1.3+h,1.4,artDark,x,(1.3+h)/2,z);
+    bx(yardProps,1.64,0.05,1.44,paintTrim,x,1.3+h+0.02,z);
+  });
+  [-20.5,-18.9].forEach((x,i)=>{
+    bx(yardProps,1.1,0.9,1.1,i?artSteel:brick,x,0.45,-14);
+  });
+  /* 厂区墙面：长条矮墙 + 顶部铁丝网延伸，补左侧纵深 */
+  bx(yardProps,0.5,2.2,40,brick,-22.5,1.1,-6);
+  for(let z=-24;z<=14;z+=3){bx(yardProps,0.16,0.9,0.16,artSteel,-22.5,2.65,z);}
+
+  /* ---- 左侧：停放的一辆小货车（低模但有轮子/驾驶室/货斗）---- */
+  const van=new THREE.Group();van.position.set(-13.5,0,-15);van.rotation.y=0.1;yardProps.add(van);
+  bx(van,2.0,1.5,2.2,paintMat,0,1.05,-1.1);               /* 驾驶室 */
+  bx(van,2.05,1.35,3.4,artSteel,0,0.98,1.2);              /* 货斗 */
+  bx(van,1.7,0.7,0.06,glassDark,0,1.35,-2.22);            /* 前风挡 */
+  [-1.05,1.05].forEach(s=>[-2.0,1.9].forEach(z=>{
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,0.2,8),artDark);
+    w.rotation.z=Math.PI/2;w.position.set(s*1.02,0.4,z);van.add(w);
+  }));
+
+  /* ---- 右侧：围栏内停放车辆 + 货箱 + 远处熄灯厂房轮廓 ---- */
+  [[13.5,-11],[15.8,-18]].forEach(([x,z],i)=>{
+    bx(yardProps,2.0,1.25,4.0,i?brick:paintMat,x,0.85,z);
+    bx(yardProps,1.8,0.7,0.06,glassDark,x,1.45,z-2.02);
+    [-0.9,0.9].forEach(s=>[-1.5,1.5].forEach(dz=>{
+      const w=new THREE.Mesh(new THREE.CylinderGeometry(0.36,0.36,0.18,8),artDark);
+      w.rotation.z=Math.PI/2;w.position.set(x+s*1.0,0.38,z+dz);yardProps.add(w);
+    }));
+  });
+  [[12.5,-24],[14.8,-25.5]].forEach(([x,z])=>bx(yardProps,1.5,1.2,1.5,artSteel,x,0.6,z));
+  /* 右侧远处熄灯厂房轮廓：几个高低错落的方块 + 一根烟囱，只留极暗边 */
+  bx(yardProps,9,7,6,artDark,26,3.5,-34);
+  bx(yardProps,6,10,5,artDark,34,5,-38);
+  cy(yardProps,0.9,1.1,16,artDark,30,8,-37,8);
+
+  /* ---- 奶蛙异常细节：值守室屋顶一只荧光绿的青蛙剪影（病态乳白/绿）---- */
+  const frog=new THREE.Group();frog.position.set(-16,3.55,-2);yardProps.add(frog);
+  const fb=bx(frog,0.7,0.42,0.5,artSick,0,0.25,0);
+  bx(frog,0.5,0.32,0.45,artSick,0,0.58,-0.05);
+  [-0.14,0.14].forEach(s=>{
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.1,6,5),artDark);
+    eye.position.set(s,0.72,-0.2);frog.add(eye);
+  });
+  const frogGlow=glowSprite(0x8fe8a0,1.1,0.28);
+  frogGlow.position.set(0,0.5,0);frog.add(frogGlow);
+}
+scene.add(yardProps);yardProps.visible=false;
+
+/* ---------- 300–650 m：城市高架（失真广告 / 破损隔音墙 / 烟囱） ---------- */
+const overpass=new THREE.Group();
+{
+  /* 横跨道路的旧天桥：两个桥墩 + 桥面 + 栏杆。压低到 6 m 出头，
+     让横梁落进坐进车里的视野（相机才 1.26 m 高，太高的桥只能看见桥墩） */
+  [-9.5,9.5].forEach(x=>bx(overpass,1.3,6.2,1.3,artSteel,x,3.1,0));
+  bx(overpass,21,0.9,4.2,artSteel,0,6.2,0);
+  bx(overpass,21,0.35,0.35,artMilk,0,6.8,-1.9);
+  for(let x=-9;x<=9;x+=1.5)bx(overpass,0.07,0.7,0.07,artSteel,x,6.75,-1.9);
+  /* 巨大失真的奶类广告牌：字被拉长、错位，病态乳白 + 荧光绿描边 */
+  const adTex=mkTex(512,256,(x,w,h)=>{
+    x.fillStyle='#0c1a16';x.fillRect(0,0,w,h);
+    x.strokeStyle='#2f7d59';x.lineWidth=10;x.strokeRect(8,8,w-16,h-16);
+    x.textAlign='center';x.textBaseline='middle';
+    /* 错位重影营造失真 */
+    x.fillStyle='rgba(120,220,160,.5)';x.font='700 92px "Microsoft YaHei",sans-serif';
+    x.fillText('鲜 奶',w/2-6,h/2-8);
+    x.fillStyle='#e8f2df';x.fillText('鲜 奶',w/2+5,h/2+2);
+    x.fillStyle='#bfe6cf';x.font='700 30px "Microsoft YaHei",sans-serif';
+    x.fillText('吸附一整夜的鲜活',w/2,h*0.78);
+    /* 撕裂的划痕 */
+    x.fillStyle='rgba(8,14,12,.8)';x.fillRect(60,40,180,7);x.fillRect(280,150,150,5);
+  });
+  /* 广告牌立在路右前方（左侧被 A 柱挡死）。水平角要压在 FOV 半角内，
+     否则一靠近就被画面右缘裁掉：18 m 外 x 不得超过 ~10.8 */
+  artSign(overpass,adTex,6,3,9,4.9,-8,-0.32);
+  bx(overpass,0.16,3.0,0.16,artSteel,7.8,1.5,-8);
+  bx(overpass,0.16,3.0,0.16,artSteel,10.2,1.5,-8);
+  /* 破损隔音墙：路两侧的板，故意留缺口与不同高度 */
+  const wallTex=mkTex(128,128,(x,w,h)=>{
+    x.fillStyle='#2a3138';x.fillRect(0,0,w,h);
+    x.fillStyle='#20262c';for(let i=0;i<w;i+=22)x.fillRect(i,0,4,h);
+    x.fillStyle='rgba(10,12,14,.6)';x.fillRect(0,h*0.6,w,6);
+  });
+  wallTex.repeat.set(6,1);
+  const wallMat=new THREE.MeshBasicMaterial({map:wallTex,side:THREE.DoubleSide});
+  [-1,1].forEach(side=>{
+    for(let i=0;i<5;i++){
+      if(i===2&&side>0)continue;   /* 缺口 */
+      const hgt=2.6+((i%3)-1)*0.5;
+      const p=new THREE.Mesh(new THREE.PlaneGeometry(9,hgt),wallMat);
+      p.position.set(side*8.4,hgt/2,-i*10+16);p.rotation.y=Math.PI/2;overpass.add(p);
+    }
+  });
+  /* 远处奶厂烟囱：高塔 + 顶端红色航空灯 + 缓缓的烟 */
+  const stack=cy(overpass,1.1,1.6,26,artSteel,20,13,-30,9);
+  cy(overpass,1.4,1.4,0.5,artMilk,20,26,-30,9);
+  const stackLamp=glowSprite(0xff5a44,1.1,0.7);stackLamp.position.set(20,26.6,-30);overpass.add(stackLamp);
+  const smoke=glowSprite(0xb9c2bd,5.5,0.16);smoke.position.set(21,29,-30);overpass.add(smoke);
+  overpass.userData.stackLamp=stackLamp;overpass.userData.smoke=smoke;
+}
+scene.add(overpass);overpass.visible=false;
+
+/* ---------- ~1005 m：猫路段的"不对劲"前兆（异常只占 10%） ---------- */
+const oddZone=new THREE.Group();
+{
+  /* 路面荧光图腾：一只简笔蛙脸 + 13 号，像有人用荧光漆喷在路上。
+     只有车灯扫到才隐约反光，是"有东西会突然出现"的暗示，不是明示。 */
+  const totem=mkTex(256,256,(x,w,h)=>{
+    x.clearRect(0,0,w,h);
+    x.strokeStyle='rgba(150,230,170,.62)';x.lineWidth=7;x.lineJoin='round';
+    x.beginPath();x.arc(w/2,h/2,86,0.25,Math.PI-0.25);x.stroke();     /* 蛙嘴 */
+    x.fillStyle='rgba(150,230,170,.55)';
+    x.beginPath();x.ellipse(w/2-42,h/2-52,17,24,0,0,6.283);x.fill();
+    x.beginPath();x.ellipse(w/2+42,h/2-52,17,24,0,0,6.283);x.fill();
+    x.fillStyle='rgba(12,20,15,.8)';
+    x.beginPath();x.arc(w/2-42,h/2-48,7,0,6.283);x.fill();
+    x.beginPath();x.arc(w/2+42,h/2-48,7,0,6.283);x.fill();
+    x.fillStyle='rgba(190,240,200,.8)';x.textAlign='center';x.textBaseline='middle';
+    x.font='700 40px "Courier New",monospace';x.fillText('13',w/2,h/2+58);
+  });
+  const tg=new THREE.Mesh(new THREE.PlaneGeometry(3.4,3.4),
+    new THREE.MeshBasicMaterial({map:totem,transparent:true,opacity:0.5,
+      blending:THREE.AdditiveBlending,depthWrite:false}));
+  tg.rotation.x=-Math.PI/2;tg.position.set(2.3,0.02,-6);oddZone.add(tg);
+  oddZone.userData.totem=tg;
+  /* 路肩上的蛙形图腾木牌，歪着，像被人匆忙立下 */
+  const idTex=artSignTex({w:128,h:128,bg:'#101a14',border:'#5a9e72',
+    title:'13',sub:'勿 喂 养',size:66,subSize:22,subC:'#9fd8b4'});
+  artSign(oddZone,idTex,1.5,1.5,7.4,1.7,-9,0.2);
+  cy(oddZone,0.06,0.08,1.8,artSteel,7.4,0.9,-9,5);
+  /* 熄灭的路灯：灯头不亮，只剩一个焦黑的轮廓（对比前面的暖光） */
+  [-1,1].forEach(side=>{
+    cy(oddZone,0.09,0.12,6.2,artSteel,side*5.9,3.1,2);
+    bx(oddZone,1.4,0.1,0.1,artSteel,side*5.9-side*0.6,6.15,2);
+    bx(oddZone,0.4,0.12,0.22,artDark,side*5.9-side*1.3,6.05,2);
+  });
+  /* 猫出现前半秒的反光剪影：草丛里两点荧光绿，先于猫本体亮起 */
+  const omen=glowSprite(0x9fe8a8,0.7,0);omen.position.set(6.4,0.5,-3);oddZone.add(omen);
+  oddZone.userData.omen=omen;
+}
+scene.add(oddZone);oddZone.visible=false;
+
 /* ---------- 状态 ---------- */
 const S={
   started:false,speed:0,dist:0,lateral:0,steer:0,
@@ -1814,7 +2295,24 @@ const S={
   _workPass:false,_camRes:false,_brokenPass:false,
   dozing:false,dozeT:0,wakeCount:0,
   chaserOn:false,chaserGap:120,chaserLowT:0,chaserHitT:0,chaserEye:0,
-  psi:0,accS:0,latS:0,bob:0,bobV:0,seam:0,gear:0,gearDip:0,rpm:0.2
+  chaserStage:0,   /* 追逐升级阶段 0未出现 1镜中异样 2跟车灯 3逼近 */
+  psi:0,accS:0,latS:0,bob:0,bobV:0,seam:0,gear:0,gearDip:0,rpm:0.2,
+  /* ---- 手感层：全部是数学/材质/WebAudio，不加渲染 pass 也不加灯 ---- */
+  rollVis:0,          /* 视觉侧倾（平滑跟随横向加速度） */
+  camLagYaw:0,        /* 镜头偏航：滞后于车身，松手后慢慢回正 */
+  steerLead:0,        /* 转向提前量：方向盘给一点前馈，车头跟得上 */
+  recover:0,          /* 提神恢复反馈（咖啡/开窗/休息）：镜头收一点、画面临时清醒 */
+  brakeSlam:0,        /* 急刹计时：刹车点头 + 胎噪尖峰 */
+  arriveT:0,          /* 到家停稳后的结尾镜头停留 */
+  windRush:0,         /* 开窗风声的包络 */
+  phase:0,            /* 情绪阶段 0出发 1 routine 2不安 3被追 4到家 */
+  /* 场外开场序列：门口低机位→走到驾驶侧车门→拉门→入座→开放驾驶。
+     active 期间锁住驾驶输入，由 introUpdate 独占相机；结束交还 update。 */
+  intro:{active:false,phase:0,t:0,full:false,door:0,skipped:false,flashed:false},
+  coneSound:0,        /* 压锥回声计时 */
+  catReact:'',        /* 猫事件结果：seen/avoid/hit */
+  catSeen:false,
+  _windWas:false
 };
 /* ===== 休息窗口 / 难度数值 ===== */
 function winOf(k){
@@ -1830,6 +2328,8 @@ addEventListener('keydown',e=>{
   keys[e.key.toLowerCase()]=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
   if(!S.started||S.ended)return;
+  /* 开场序列：任意键推进/拉门/跳过，屏蔽换台等其它操作 */
+  if(S.intro.active){introInteract();return;}
   if(e.key==='1'||e.key==='2'||e.key==='3'||e.key==='4')setStation(+e.key-1);
   if(e.key.toLowerCase()==='r'){S.wiperOn=!S.wiperOn;
     toast(S.wiperOn?'雨刷 开。':'雨刷 关。');}
@@ -1840,7 +2340,12 @@ addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
 
 /* ---------- 触屏：左下油门/刹车，右下左右，停/咖啡按需出现 ---------- */
 const isTouch=('ontouchstart' in window)||navigator.maxTouchPoints>0||q.has('touch');
-if(isTouch)document.getElementById('touch').classList.add('on');
+if(isTouch){
+  document.getElementById('touch').classList.add('on');
+  /* 触控设备绝不显示 W/S/A/D 教学，只显示触控说明 */
+  document.querySelectorAll('.kbdHelp').forEach(el=>el.style.display='none');
+  document.querySelectorAll('.touchHelp').forEach(el=>el.style.display='');
+}
 function bindHold(id,key){
   const el=document.getElementById(id);if(!el)return;
   const on=e=>{e.preventDefault();el.classList.add('act');
@@ -1857,13 +2362,19 @@ function bindTap(id,fn){
 if(isTouch){
   bindHold('tGas','w');bindHold('tBrake','s');
   bindHold('tLeft','a');bindHold('tRight','d');
-  bindTap('tE',tryPark);bindTap('tF',drinkCoffee);
+  bindTap('tE',()=>{if(S.intro.active)introInteract();else tryPark();});
+  bindTap('tF',drinkCoffee);
+  /* 开场期间把"停"按钮当"上车"用 */
 }
 
-/* ---------- 环视：拖动画面看副驾、后视镜，松手弹回正前方 ---------- */
-const look={yaw:0,pitch:0,ty:0,tp:0,drag:false,px:0,py:0};
+/* ---------- 环视：拖动画面看副驾、后视镜，松手再平滑回正 ----------
+   松手不立即清零：行驶留 160ms 稳定期、停车留 1.2s（方便观察停车场），
+   到点后把目标角缓慢收回 0，避免瞬间拉回造成眩晕。 */
+const look={yaw:0,pitch:0,ty:0,tp:0,drag:false,px:0,py:0,released:false,releaseT:0};
 canvas.addEventListener('pointerdown',e=>{
-  look.drag=true;look.px=e.clientX;look.py=e.clientY;
+  /* 开场：点画面即推进/拉门/跳过，不做环视 */
+  if(S.intro.active){introInteract();return;}
+  look.drag=true;look.released=false;look.px=e.clientX;look.py=e.clientY;
   canvas.classList.add('grabbing');
   try{if(canvas.setPointerCapture)canvas.setPointerCapture(e.pointerId);}catch(err){}
 });
@@ -1874,7 +2385,8 @@ canvas.addEventListener('pointermove',e=>{
   look.px=e.clientX;look.py=e.clientY;
 });
 ['pointerup','pointercancel'].forEach(t=>canvas.addEventListener(t,()=>{
-  look.drag=false;look.ty=0;look.tp=0;canvas.classList.remove('grabbing');
+  look.drag=false;look.released=true;look.releaseT=performance.now();
+  canvas.classList.remove('grabbing');
 }));
 
 /* ---------- 电台 ---------- */
@@ -1914,6 +2426,7 @@ function setStation(i){
 }
 /* ---------- 音效：底噪 + 引擎 ---------- */
 let actx=null,noiseGain=null,engOsc=null,engOsc2=null,engLp=null,engGain=null,rainGain=null,wiperBuf=null,tireGain=null;
+let windGain=null,rumbleGain=null;
 let wiperCycle=-1;
 function initAudio(){
   if(actx)return;
@@ -1950,6 +2463,16 @@ function initAudio(){
     tireGain=actx.createGain();tireGain.gain.value=0;
     tsrc.connect(tbp);tbp.connect(tireGain);tireGain.connect(actx.destination);
     tsrc.start();
+    /* 开窗风声：带通噪声，开度越高、车越快越响（暗处也能“听出速度”） */
+    const wsrc=actx.createBufferSource();wsrc.buffer=buf;wsrc.loop=true;
+    const wbp=actx.createBiquadFilter();wbp.type='bandpass';wbp.frequency.value=780;wbp.Q.value=0.4;
+    windGain=actx.createGain();windGain.gain.value=0;
+    wsrc.connect(wbp);wbp.connect(windGain);windGain.connect(actx.destination);wsrc.start();
+    /* 低频路噪：路面传进底盘的闷响，随速度抬起，开窗时更明显 */
+    const rsrc2=actx.createBufferSource();rsrc2.buffer=buf;rsrc2.loop=true;
+    const rlp=actx.createBiquadFilter();rlp.type='lowpass';rlp.frequency.value=110;
+    rumbleGain=actx.createGain();rumbleGain.gain.value=0;
+    rsrc2.connect(rlp);rlp.connect(rumbleGain);rumbleGain.connect(actx.destination);rsrc2.start();
     wiperBuf=buf;
   }catch(e){}
 }
@@ -1973,6 +2496,37 @@ function staticBurst(t){
   noiseGain.gain.setValueAtTime(0.14,now);
   noiseGain.gain.exponentialRampToValueAtTime(0.012,now+t);
 }
+/* 提神/休息的完整反馈：一个干净的上行双音 + 镜头恢复 + 画面回清。
+   喝咖啡、进加油站、吃烤串都走这里，让“数值变化”变成能被听见的事件。 */
+function chime(base){
+  if(!actx)return;
+  const t=actx.currentTime,f=base||520;
+  [0,0.09].forEach((dtv,i)=>{
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.type='sine';o.frequency.value=f*(i?1.5:1);
+    g.gain.setValueAtTime(0.0001,t+dtv);
+    g.gain.exponentialRampToValueAtTime(0.085,t+dtv+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dtv+0.42);
+    o.connect(g);g.connect(actx.destination);
+    o.start(t+dtv);o.stop(t+dtv+0.44);
+  });
+}
+function refreshFx(){
+  S.recover=2.2;chime(520);
+}
+/* 通用短音：猫叫、撞杆、过站提示，一次性的小音效，不占常驻节点 */
+function tone(freq,dur,type,vol,slideTo){
+  if(!actx)return;
+  const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
+  o.type=type||'sine';o.frequency.setValueAtTime(freq,t);
+  if(slideTo)o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol||0.08,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+dur+0.02);
+}
+function meow(){tone(760,0.28,'sawtooth',0.06,420);}
+function thud(){tone(90,0.22,'sine',0.16,45);}
 /* 心跳：55 Hz 正弦 + 短包络；被追到 25 米内才响，0.92 秒一次 */
 let heartT=0;
 function heartbeatTick(dt,on){
@@ -2012,7 +2566,9 @@ function radioSay(msg){
 function drinkCoffee(){
   if(!S.coffee||S.coffeeUsed||S.ended)return;
   S.coffeeUsed=true;coffee.visible=false;
-  S.drowsy=Math.max(0,S.drowsy-38);toast('咖啡下肚，眼睛睁开了。');
+  S.drowsy=Math.max(0,S.drowsy-38);refreshFx();
+  toast('咖啡下肚，眼睛睁开了。');
+  radioSay('这口咖啡，值。');
 }
 function tryPark(){
   if(S.ended||S.parked||S.dozing)return;
@@ -2020,7 +2576,7 @@ function tryPark(){
   if(!S.gasStop&&inWin('gas',S.dist)){
     if(S.speed*3.6>PARK_SPEED){toast('太快了——减速到 '+PARK_SPEED+' km/h 以下再进站。');return;}
     if(S.lateral<PARK_LAT){toast('往右靠一点，别停在车道上。');return;}
-    S.gasStop=true;S.drowsy=Math.max(0,S.drowsy-20);
+    S.gasStop=true;S.drowsy=Math.max(0,S.drowsy-20);refreshFx();
     toast('加满 300，顺手拿了瓶水。人清醒了点。');
     radioSay('加完油再上桥，雨天慢点。');
     return;
@@ -2029,8 +2585,9 @@ function tryPark(){
   if(!S.bbq&&inWin('bbq',S.dist)){
     if(S.speed*3.6>PARK_SPEED){toast('慢点，摊子前别冲。');return;}
     if(S.lateral<PARK_LAT){toast('靠右停，别挡着后车。');return;}
-    S.bbq=true;S.drowsy=Math.max(0,S.drowsy-22);
+    S.bbq=true;S.drowsy=Math.max(0,S.drowsy-22);refreshFx();
     toast('老板塞了两串，趁热。胃里一暖，眼睛也亮了。');
+    radioSay('吃饱了，最后一程慢慢开。');
     return;
   }
   if(S.dist<1540||S.dist>1660){
@@ -2038,7 +2595,20 @@ function tryPark(){
   if(S.speed*3.6>PARK_SPEED){S.parkTries++;toast('太快了，先踩刹车再靠边。');return;}
   if(S.lateral<PARK_LAT){S.parkTries++;toast('再往右靠一点，车身还在车道里。');return;}
   S.parked=true;S.speed=0;S.reverse=false;
-  finish('到家');
+  arriveCinematic();
+}
+/* 到家结尾镜头：车停稳，先不弹小票。镜头转向车窗外亮灯的住户和挂着的小蛙，
+   配一句电台收尾，2.4 秒后再出现“夜班小票”。 */
+function arriveCinematic(){
+  /* 截图/测试模式直接出票，避免 2.4 秒等待打断自动化 */
+  if(q.has('shot')||q.has('parked')||window.__skipCinematic){finish('到家');return;}
+  chime(430);
+  toast('到了。熄了火，车里一下子安静了。');
+  radioSay('到家了。楼里还亮着灯——明天再说吧。');
+  /* 镜头从正前方缓缓转向右侧车窗（住户灯光）再落到小蛙挂件。
+     只给目标角，update() 里原有的缓动会平滑转过去，不另起定时器抢相机。 */
+  look.ty=-0.42;look.tp=-0.10;
+  setTimeout(()=>{finish('到家');},2400);
 }
 /* 第一次困到 100%：强制靠边停 + 黑屏 3 秒，然后还能继续开 */
 function dozeOff(){
@@ -2061,7 +2631,12 @@ function loop(now){
   requestAnimationFrame(loop);
   loopFrames++;
   const dt=Math.min(0.05,(now-last)/1000);last=now;
-  if(S.started&&!S.ended)update(dt);
+  if(S.started&&!S.ended){
+    /* 开场：世界照常按桩号布置(奶罐车/灯箱/厂区就位)、车速锁 0，
+       随后相机由开场序列覆盖；开场结束自然交还给 update。 */
+    update(dt);
+    if(S.intro.active)applyIntroCam(dt);
+  }
   blinkLights.forEach(o=>{o.s.material.opacity=0.22+0.58*(0.5+0.5*Math.sin(now*0.0021+o.ph));});
   render(dt);
 }
@@ -2074,13 +2649,30 @@ function update(dt){
   if(S.gearDip>0)S.gearDip-=dt;
   if(S.noAccelT>0)S.noAccelT-=dt;
   if(S.graceT>0)S.graceT-=dt;   /* 撞后免撞窗口：防止停死时被人一辆接一辆顶，永远起不来 */
+  if(S.recover>0)S.recover-=dt; /* 提神恢复反馈（2 秒），收一点晃动/暗角 */
+  /* 情绪阶段：电台台词和提示口径跟着走，纯状态不花渲染 */
+  S.phase=S.dist<150?0:S.dist<880?1:S.dist<1300?2:S.dist<1560?3:4;
   /* 困到 65% 以后，踏板反应从 0.07 秒拖到 0.40 秒 —— 得提前踩 */
   const kd=Math.max(0,Math.min(1,(S.drowsy-65)/30));
   S.wobT+=dt;
-  if(up&&S.noAccelT<=0)S.speed+=6.4*dt*(S.gearDip>0?0.35:1);
+  /* 加速曲线：低速给足扭矩（踩下去有推背），中高速逐渐收平。
+     ~10 m/s² 起步 → 11 m/s（40km/h）后掉到 ~6 → 顶速附近 ~3.4。
+     原来恒定 6.4 的“匀加速”正是速度感弱、像沿轨道平推的根源。 */
+  if(up&&S.noAccelT<=0){
+    const vf=S.speed/27;
+    const lowKick=vf<0.18?1.12:1;                 /* 起步那一下更冲 */
+    const torque=9.0*(1-0.62*vf)*lowKick;
+    S.speed+=torque*dt*(S.gearDip>0?0.35:1);
+  }
   const tau=0.07+0.33*kd;
   S.brk+=((brake?1:0)-S.brk)*Math.min(1,dt/Math.max(tau,1e-3));
   if(S.brk>0.02)S.speed-=13*S.brk*dt;
+  /* 急刹检测：高速时一脚踩死，给“点头 + 胎噪尖峰 + 短促反馈”用 */
+  if(brake&&S.brk>0.55&&prevSpeed>11&&S.brakeSlam<=0){S.brakeSlam=0.5;
+    if(noiseGain){const n=actx.currentTime;
+      noiseGain.gain.cancelScheduledValues(n);noiseGain.gain.setValueAtTime(0.075,n);
+      noiseGain.gain.exponentialRampToValueAtTime(0.012,n+0.42);}}
+  if(S.brakeSlam>0)S.brakeSlam-=dt;
   S.speed-=S.speed*0.035*dt;
   S.speed=Math.max(0,Math.min(27,S.speed));
   /* 停车区里车停住了，按住 S 可以慢慢倒 */
@@ -2131,22 +2723,57 @@ function update(dt){
     if(S.speed>4)S.bobV-=0.05+Math.random()*0.05;}
   S.bobV+=(-S.bob*130-S.bobV*13)*dt;
   S.bob+=S.bobV*dt;
-  camera.position.x=DRIVER_X;
-  camera.position.y=1.26+S.bob+Math.sin(tnow*9)*0.0028*(0.6+S.speed*0.16);
-  /* 环视：拖动时跟手，松手慢慢回正 */
+  /* 车身侧倾：平滑跟随横向加速度，幅度压得很小——只要“有重量”，不要晃到恶心 */
+  S.rollVis+=(S.latS-S.rollVis)*Math.min(1,dt*5.5);
+  /* 镜头偏航滞后于车身：变道时身子先过去、视线慢半拍跟上，松手平滑回正 */
+  const yawWant=S.latS*0.0020;
+  S.camLagYaw+=(yawWant-S.camLagYaw)*Math.min(1,dt*(steerDir?3.2:4.6));
+  /* 高速微振：只在 12 m/s 以上出现，幅度不到一个像素，停车即归零，恢复平静 */
+  const fastK=Math.max(0,Math.min(1,(S.speed-12)/14));
+  const buzz=fastK*0.0045;
+  /* 开窗：灌进来的风让镜头轻微扰动（幅度很小，只到“能感到风”的程度） */
+  const windJitter=S.windy?Math.min(1,S.speed/16)*0.005:0;
+  camera.position.x=DRIVER_X+Math.sin(tnow*46)*buzz+Math.sin(tnow*7.3)*windJitter;
+  camera.position.y=1.26+S.bob+Math.sin(tnow*9)*0.0028*(0.6+S.speed*0.16)
+    +Math.sin(tnow*63)*buzz*0.7+Math.sin(tnow*11.7)*windJitter*0.6;
+  /* 环视：拖动时跟手；松手先稳定一段（停车 1.2s / 行驶 160ms）再平滑回正。
+     分两级：先把"目标角"慢慢收回 0，实际视角再缓动跟随目标，杜绝瞬间弹回。 */
+  if(!look.drag&&look.released){
+    const hold=(Math.abs(S.speed)<0.5)?1.2:0.16;
+    if((performance.now()-look.releaseT)*0.001>=hold){
+      const back=Math.min(1,dt*3.4);
+      look.ty+=(0-look.ty)*back;
+      look.tp+=(0-look.tp)*back;
+    }
+  }
   look.yaw+=(look.ty-look.yaw)*Math.min(1,dt*(look.drag?14:4));
   look.pitch+=(look.tp-look.pitch)*Math.min(1,dt*(look.drag?14:4));
-  /* 困了：视线发飘，还会不受控地点头 */
+  /* 侧视遮挡淡出：向右看(yaw<0)淡出右侧门板/A柱/后视镜壳，向左看(yaw>0)淡出左侧。
+     以各件原始透明度为基准淡到 0.10，且透明件不写深度——彻底露出窗外停车场，
+     只留一丝轮廓避免车身像凭空消失而穿帮。 */
+  cabinOccluders.forEach(o=>{
+    const away=o.sign>0?-look.yaw:look.yaw;   /* 转向该侧为正 */
+    const fade=Math.max(0,Math.min(1,(away-0.28)/0.52));
+    const base=o.mesh.userData.baseOp!==undefined?o.mesh.userData.baseOp:1;
+    const wantOp=base*(1-0.90*fade);
+    o.mesh.material.opacity+=(wantOp-o.mesh.material.opacity)*Math.min(1,dt*9);
+    /* 淡到明显半透后不再写深度，让窗外场景透出来；正面看时仍写深度，避免内饰穿帮 */
+    o.mesh.material.depthWrite=o.mesh.material.opacity>0.85;
+  });
+  /* 困了：视线发飘，还会不受控地点头；提神反馈会临时把 nod/sway 收掉 */
   const dz=Math.max(0,(S.drowsy-55)/45);
+  const calm=S.recover>0?0.35:1;
   let nod=0,sway=0;
-  if(dz>0){nod=Math.max(0,Math.sin(tnow*1.05))*0.05*dz;
-    sway=Math.sin(tnow*0.55)*0.03*dz;}
+  if(dz>0){nod=Math.max(0,Math.sin(tnow*1.05))*0.05*dz*calm;
+    sway=Math.sin(tnow*0.55)*0.03*dz*calm;}
   const grade=(elevOf(S.dist+7)-elevOf(S.dist-7))/14;
-  camera.rotation.y=look.yaw+S.latS*0.0022;
-  camera.rotation.x=look.pitch+nod+S.accS*0.0045+grade*0.85;
-  camera.rotation.z=S.latS*0.0105+sway;
-  /* 速度越快，视野越开一点，速度感才立得住 */
-  const fovWant=62+Math.min(7,S.speed*0.28);
+  /* 急刹点头：刹车瞬间镜头往前一顿，0.5 秒内回正 */
+  const nodBrake=-Math.sin(Math.min(1,S.brakeSlam/0.5)*Math.PI)*0.022;
+  camera.rotation.y=look.yaw+S.camLagYaw;
+  camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85;
+  camera.rotation.z=S.rollVis*0.0095+sway+Math.sin(tnow*39)*buzz*0.25;
+  /* 速度越快视野越开（62→71），停车收回 62，是第五种速度感 */
+  const fovWant=62+Math.min(9,S.speed*0.34);
   if(Math.abs(camera.fov-fovWant)>0.06){camera.fov=fovWant;camera.updateProjectionMatrix();}
   /* 车灯打进弯里：人开车过弯，灯是提前照着路的 */
   const hereTh=roadAt(S.dist).th;
@@ -2161,9 +2788,14 @@ function update(dt){
     m.position.y=elevOf(S.dist+13.5)-pose.y+0.017;
     m.rotation.x=beamPool.rotation.x;
   });
-  /* 方向盘和仪表指针跟着动 */
-  wheelG.rotation.z=-S.steer*0.52;
-  gaugeNeedle.rotation.z=2.094-Math.min(1,S.speed/26)*4.188;
+  /* 方向盘：跟随转向，但回正时带一点惯性过冲（像真方向盘回弹） */
+  S.steerLead+=(S.steer-S.steerLead)*Math.min(1,dt*(steerDir?11:5.2));
+  wheelG.rotation.z=-S.steerLead*0.54;
+  /* 仪表指针：换挡瞬间因扭矩中断回落一下，再爬上去 */
+  const needleBase=2.094-Math.min(1,S.speed/26)*4.188;
+  gaugeNeedle.rotation.z=needleBase+(S.gearDip>0?S.gearDip*0.9:0);
+  /* 开窗：夜风掠过，仪表盘反一点光；关窗恢复。只改材质色，零渲染开销 */
+  gaugeFace.material.color.setScalar(1+Math.min(0.35,S.windRush*3.2));
   /* 世界：路面按桩号重铺，路灯、反光柱、树都按自己的桩号摆 */
   const scroll=S.speed*dt;
   roadRibbons.forEach(updateRibbon);
@@ -2171,17 +2803,26 @@ function update(dt){
     placeRoad(L.grp,S.dist-L.z,L.side*5.6,0);
     /* 湿了以后灯头在路面的倒影和光斑都更亮、更长 */
     L.streak.material.opacity=0.09+0.34*S.wet;
-    L.pool.material.opacity=0.13+0.09*S.wet;});
+    L.pool.material.opacity=0.13+0.09*S.wet;
+    /* 困意上来：灯光晕开、发虚——从边缘光晕开始变，不是突然黑屏 */
+    if(L.halo){
+      const bl=Math.max(0,(S.drowsy-48)/52);   /* 48% 起开始晕 */
+      L.halo.material.opacity=0.55+0.30*bl;
+      const hs=3.4*(1+0.35*bl);L.halo.scale.set(hs,hs,1);
+    }});
   /* 四盏点光源挪到最近的灯头：远处路灯靠光晕+地面光斑，省下六盏的逐片元开销 */
   lampOrder=lamps.slice().sort((a,b)=>
     Math.abs(a.grp.position.z+6)-Math.abs(b.grp.position.z+6));
+  /* 猫路段前后的路灯集体熄灭：从 950 m 渐暗、1005 m 最黑、1060 m 恢复，
+     制造"这一段不对劲"的落差——不是靠文字，是靠光突然没了。 */
+  const darkZone=Math.max(0,1-Math.abs(S.dist-1005)/55);
   lampLights.forEach((l,i)=>{
     const L=lampOrder[i];
     if(!L||!L.base){l.intensity=0;return;}
     L.grp.updateMatrixWorld();
     L.head.getWorldPosition(lampHeadWorld);
     l.position.copy(lampHeadWorld);l.position.y-=0.18;
-    l.intensity=2.1*L.base;
+    l.intensity=2.1*L.base*(1-0.85*darkZone);
   });
   /* 头顶路灯经过时，暖光扫进座舱 */
   let spill=0;
@@ -2255,8 +2896,9 @@ function update(dt){
   if(!NOCHASER&&!S.ended){
     if(!S.chaserOn&&S.dist>500){
       S.chaserOn=true;S.chaserGap=120;S.chaserLowT=0;S.chaserHitT=0;S.chaserEye=0;
-      toast('后视镜里多了一辆车。');
-      radioSay('后面那辆，跟了有一段了。别停。');
+      S.chaserStage=1;
+      toast('后视镜里好像多了一辆车。');
+      radioSay('好像有辆车，一直跟着。也许看错了。');
     }
     if(S.chaserOn){
       if(S.speed<40/3.6)S.chaserLowT+=dt;else S.chaserLowT=0;
@@ -2267,6 +2909,13 @@ function update(dt){
       const close=S.chaserGap<25;
       S.chaserEye=close?Math.min(1,S.chaserEye+dt*2.2):Math.max(0,S.chaserEye-dt*1.6);
       heartbeatTick(dt,close);
+      /* 逐级升级：灯光清晰→逼近→贴脸，各给一次台词/心跳，别一开始就把压迫感拉满 */
+      if(S.chaserStage===1&&S.chaserGap<70){
+        S.chaserStage=2;radioSay('不是看错——那车灯，一直没拉开过。');
+        tone(180,0.3,'sine',0.05);}
+      if(S.chaserStage===2&&(S.chaserGap<35||S.dist>1180)){
+        S.chaserStage=3;radioSay('它贴上来了。别回头，别减速。');
+        tone(140,0.4,'sine',0.07);}
       /* 贴到 12 米内：撞一次，停死 2 秒 + 红闪 + 困意 +15，退回 80 米，不直接结束 */
       if(S.chaserGap<12&&S.chaserHitT<=0){
         S.chaserHitT=3.2;S.chaserGap=80;
@@ -2278,16 +2927,27 @@ function update(dt){
       }
       if(S.chaserHitT>0)S.chaserHitT-=dt;
       placeRoad(chaser,S.dist-S.chaserGap,2.2+Math.sin(tnow*0.37)*0.07,0);
+      /* 距离越近，镜里车灯越大越亮、眼睛越清楚——距离变化本身就在讲危险 */
+      const nearK=Math.max(0,Math.min(1,(90-S.chaserGap)/80));
       chaser.userData.eyes.forEach(e=>{
-        e.material.opacity=0.04+0.96*S.chaserEye;
-        const k=1+0.6*S.chaserEye;e.scale.set(k,k,1);
+        e.material.opacity=0.03+0.97*S.chaserEye;
+        const k=0.7+0.9*nearK+0.5*S.chaserEye;e.scale.set(k,k,1);
       });
       chaser.userData.glows.forEach(g=>{
-        g.material.opacity=0.72*S.chaserEye;
-        const gs=0.7+0.6*S.chaserEye;g.scale.set(gs,gs,1);
+        g.material.opacity=0.25+0.55*nearK;
+        const gs=0.55+0.9*nearK;g.scale.set(gs,gs,1);
       });
+      /* 地面倒影铺垫：阶段≥2 才出现，越近越亮；颜色从钠黄逐渐转成病态冷绿 */
+      const reflK=Math.max(0,Math.min(1,(70-S.chaserGap)/55))*(S.chaserStage>=2?1:0);
+      placeRoad(chaserRefl,S.dist-16,2.2,0);
+      chaserRefl.visible=reflK>0.02&&S.wet>0.05;
+      chaserRefl.material.opacity=reflK*0.30*Math.max(0.35,S.wet);
+      chaserRefl.material.color.setHex(S.chaserStage>=3?0x8fe0a8:0xd8c08a);
+      /* 车灯色温随阶段变冷：也跟着改追逐者自己的灯晕 */
+      if(S.chaserStage>=3)chaser.userData.glows.forEach(g=>g.material.color.setHex(0xbfe8c8));
     }
   }else heartbeatTick(dt,false);
+  if(!S.chaserOn)chaserRefl.visible=false;
   if(S.bumpT>0){S.bumpT-=dt*1.6;
     camera.position.x+=Math.sin(performance.now()*0.06)*0.06*Math.max(0,S.bumpT);}
   /* 开局前车：正常跑着，0.7 秒后一脚刹车亮灯；不踩 S 就会追尾 */
@@ -2321,6 +2981,30 @@ function update(dt){
     placeRoad(openCar,S.dist-S.openZ,2.2,0);
     if(S.openZ>150){S.openPhase=3;openCar.visible=false;}
   }
+  /* 奶厂外围 0–300：一出发就知道自己刚从什么怪地方出来 */
+  placeRoad(dairyGate,60,0,0);
+  dairyGate.visible=S.dist<300;
+  /* 停车场近景：放在车前约 42 m，左右两侧补足，出场一段都能环视到 */
+  placeRoad(yardProps,42,0,0);
+  yardProps.visible=S.dist<130;
+  /* 城市高架 300–650：天桥、失真广告牌、远处冒烟的烟囱 */
+  placeRoad(overpass,470,0,0);
+  overpass.visible=S.dist>300&&S.dist<660;
+  if(overpass.visible){
+    const sl=overpass.userData.stackLamp;
+    sl.material.opacity=0.45+0.35*(Math.sin(tnow*2.2)>0?1:-1);
+    overpass.userData.smoke.position.y=29+Math.sin(tnow*0.6)*1.2;
+  }
+  /* 猫路段异常：荧光图腾在车灯扫过时亮起；猫出现前，草丛里先闪两点绿光 */
+  placeRoad(oddZone,1005,0,0);
+  oddZone.visible=S.dist>930&&S.dist<1075;
+  if(oddZone.visible){
+    const near=Math.max(0,1-Math.abs(S.dist-1005)/70);
+    oddZone.userData.totem.material.opacity=0.18+0.55*near*(0.75+0.25*Math.sin(tnow*3));
+    /* 猫本体出现前 0.5 s（dist 约 995→1005）先给一点反光前兆 */
+    const omen=oddZone.userData.omen;
+    omen.material.opacity=S.catOn&&!S.catDone?0.35+0.45*Math.sin(tnow*6):0;
+  }
   /* 施工区：右侧车道被雪糕筒吃了 */
   placeRoad(works,450,0,0);
   works.visible=S.dist>330&&S.dist<530;
@@ -2333,7 +3017,7 @@ function update(dt){
         c.userData.hit=true;S.cones++;S.speed*=0.55;
         S.drowsy=Math.min(100,S.drowsy+3);
         c.rotation.z=1.25;c.position.y=-0.02;
-        toast('压到雪糕筒了——右侧封着呢。');
+        thud();toast('压到雪糕筒了——右侧封着呢。');
       }
     });
   }
@@ -2354,6 +3038,8 @@ function update(dt){
   /* 往路肩外再挪三米，棚檐别压在咱们车顶上方 */
   placeRoad(gasStation,758,3,0);
   gasStation.visible=S.dist>660&&S.dist<868;
+  if(gasStation.visible&&gasStation.userData.beacon)
+    gasStation.userData.beacon.material.opacity=0.34+0.12*Math.sin(tnow*1.8);
   const bz=placeRoad(broken,1382,2.2,0);
   broken.visible=S.dist>1310&&S.dist<1452;
   const hazOn=Math.sin(tnow*9)>0?0.9:0.12;
@@ -2385,9 +3071,10 @@ function update(dt){
   if(!S._gasTold&&S.dist>winOf('gas')[0]-60){S._gasTold=true;
     toast('前方可以靠边休息——加油站还开着。');
     radioSay('下个加油站要不要进去缓一口？');}
-  /* 猫：先窜到车道里愣一下，再往对面跑 */
+  /* 猫：看得见、躲得开、也撞得到——三种结果各有动作和声音，不只靠文字。
+     车头灯扫到它先照亮（发现），玩家刹车/变道算“躲”，撞上算“撞”。 */
   if(!S.catDone){
-    if(!S.catOn&&S.dist>975&&S.dist<1012){S.catOn=true;S.catT=0;}
+    if(!S.catOn&&S.dist>975&&S.dist<1012){S.catOn=true;S.catT=0;S.catReact='';}
     if(S.catOn){
       S.catT+=dt;
       const ct=S.catT;
@@ -2397,14 +3084,27 @@ function update(dt){
       else cl=2.2-8.4*Math.min(1,(ct-1.75)/0.6);
       const cz=placeRoad(cat,1005,cl,0);
       cat.visible=true;
+      /* 发现：猫进入灯光范围时喵一声 + 电台提一句，让玩家有反应时间 */
+      if(!S.catSeen&&cz>-22&&cz<-8){
+        S.catSeen=true;meow();radioSay('……前面车道里有东西，一只猫。');
+      }
+      /* 躲：玩家在猫车前明显减速或往左打方向 */
+      if(!S.catReact&&cz>-9&&cz<-2&&(S.brk>0.45||S.steer<-0.25)){
+        S.catReact='avoid';
+      }
       if(cz>-4.6&&cz<-1.2&&Math.abs(S.lateral+LANE_LAT-cl)<0.9){
-        S.catDone=true;S.catHit=true;cat.visible=false;S.bumpT=1;
-        S.speed*=0.7;S.drowsy=Math.min(100,S.drowsy+3);
-        toast('一只猫蹭到保险杠，喵了一声就跑了。');
-        radioSay('刚才那下急刹，是看见猫了吧。');
+        S.catDone=true;S.catHit=true;S.catReact='hit';cat.visible=false;
+        S.bumpT=1;thud();meow();S.speed*=0.7;S.drowsy=Math.min(100,S.drowsy+3);
+        toast('喵！——蹭到保险杠，它窜进路边草丛了。');
+        radioSay('刚才那下是撞着什么了？');
       }else if(ct>2.7){
         S.catDone=true;cat.visible=false;
-        if(!S.catHit)toast('一只猫从车前蹿过去，一眨眼就没影了。');
+        if(S.catReact==='avoid'){
+          meow();toast('一脚刹住——猫回头看了你一眼，慢悠悠过了马路。');
+          radioSay('躲得好。这种夜里，猫比人金贵。');
+        }else{
+          meow();toast('一只猫从车前蹿过去，一眨眼就没影了。');
+        }
       }
     }
   }else cat.visible=false;
@@ -2443,8 +3143,8 @@ function update(dt){
       rainHead[i*3+1]-=21*dt;
       rainHead[i*3+2]+=S.speed*dt*0.9;
       if(rainHead[i*3+1]<0.1){rainHead[i*3+1]=13+Math.random()*3;
-        rainHead[i*3]=(Math.random()-0.5)*34;rainHead[i*3+2]=-Math.random()*55;}
-      if(rainHead[i*3+2]>2)rainHead[i*3+2]-=60;
+        rainHead[i*3]=(Math.random()-0.5)*34;rainHead[i*3+2]=-2.5-Math.random()*55;}
+      if(rainHead[i*3+2]>-2.5)rainHead[i*3+2]-=58;
       const x=rainHead[i*3],y=rainHead[i*3+1],z=rainHead[i*3+2];
       pa[i*6]=x;pa[i*6+1]=y;pa[i*6+2]=z;
       /* 尾端顺着车速往后拖：开得越快，雨丝越斜，画面才像在往前冲 */
@@ -2492,7 +3192,14 @@ function update(dt){
   });
   if(S.rain)S.wet=Math.min(1,S.wet+(S.wiperOn?0.12:0.30)*dt);
   else S.wet=Math.max(0,S.wet-(S.wiperOn?0.34:0.05)*dt);
-  wetPlane.material.opacity=Math.min(0.52,S.wet*0.54);
+  /* 每刮一下玻璃就清一次，然后慢慢又挂上水——雨刷真正改变清晰度和画面节奏。
+     刮片到下沿（每个半周期末）最干净，中段重新起雾；关雨刷就一直糊着。 */
+  let glassPulse=1;
+  if(S.rain&&S.wiperOn){
+    const half=(S.wiperPhase%Math.PI)/Math.PI;   /* 0→1 一个单程 */
+    glassPulse=0.42+0.58*Math.min(1,half*1.5);  /* 刚刮完最清，随后回糊 */
+  }
+  wetPlane.material.opacity=Math.min(0.52,S.wet*0.54)*glassPulse;
   wetPlane.visible=S.wet>0.02;
   if(wetPlane.visible)drawDrops(dt);
   /* 镜头雨滴：雨里慢慢挂上，雨停后逐渐干；10 Hz 重画就够 */
@@ -2521,18 +3228,31 @@ function update(dt){
       S.gateWait-=dt;
       S.dist=Math.min(S.dist,1293);
       S.speed=Math.min(S.speed,4);
-      if(S.gateWait<=0){S.tollPassed=true;toast('杆抬起来了。慢点过去。');
+      if(S.gateWait<=0){S.tollPassed=true;tone(620,0.16,'sine',0.07);
+        toast('杆抬起来了。慢点过去。');
         radioSay('过了杆，还有三百米到家。');}
     }else if(S.dist>=1293&&S.dist<1306){
-      if(S.speed*3.6<=31){S.tollPassed=true;toast('收费站通过。');}
+      if(S.speed*3.6<=31){S.tollPassed=true;tone(720,0.18,'sine',0.08,960);
+        toast('收费站通过。');}
       else{S.gateWait=1.8;S.speed=0;S.dist=1291;S.drowsy=Math.min(100,S.drowsy+5);
-        toast('杆没抬起来——你急刹在杆前。');}
+        thud();toast('杆没抬起来——你急刹在杆前。');}
     }
   }
   const armTarget=S.tollPassed?-1.15:0;
   toll.userData.pivot.rotation.z+=(armTarget-toll.userData.pivot.rotation.z)*Math.min(1,dt*4);
   toll.userData.lampMat.color.setHex(S.tollPassed?0x4fd07a:0xb83a2c);
   toll.userData.glow.material.color.setHex(S.tollPassed?0x66e08a:0xff5040);
+  /* 状态灯：未过杆时逐颗红闪（像计数），过杆后整列转绿 */
+  if(toll.userData.statusMats)toll.userData.statusMats.forEach((m,i)=>{
+    if(S.tollPassed)m.color.setHex(0x4fd07a);
+    else m.color.setHex((Math.sin(tnow*4-i*0.9)>0)?0xe8482f:0x5a1c14);
+    if(m.userData.glow){m.userData.glow.material.color.copy(m.color);
+      m.userData.glow.material.opacity=S.tollPassed?0.55:0.35+0.35*(Math.sin(tnow*4-i*0.9)>0?1:0);}
+  });
+  /* 门楣灯带随时间轻微呼吸，远处看是一道活的发光门 */
+  if(toll.userData.barLights)toll.userData.barLights.forEach((g,i)=>{
+    g.material.opacity=0.4+0.14*Math.sin(tnow*1.6+i*0.5);
+  });
   /* 挂件：变道晃，困了点头、闭眼 */
   const tired=Math.min(1,Math.max(0,(S.drowsy-55)/45));
   doll.rotation.z=-S.steer*0.12+Math.sin(performance.now()*0.0016)*0.04;
@@ -2545,6 +3265,8 @@ function update(dt){
   /* 困意：专心开能撑到终点；开窗提神有衰减，停车休息才是硬解 */
   S.drowsy+=(S.speed>4?drowsyRate():0.35)*dt;
   S.windy=!!keys[' '];
+  if(S.windy&&!S._windWas){refreshFx();radioSay('车窗放下去了，风灌进来。');}
+  S._windWas=S.windy;
   if(S.windy){
     const wk=S.windTime<15?1:(S.windTime<30?0.5:0);
     S.drowsy-=3.4*wk*dt;S.windTime+=dt;
@@ -2569,9 +3291,13 @@ function update(dt){
   /* 罐子还是 700 米出现在副驾；提示挪到 880，别盖掉测速那一下 */
   if(!S.coffee&&S.dist>700){S.coffee=true;coffee.visible=true;}
   if(S.coffee&&!S._coffeeTold&&S.dist>880&&!S.coffeeUsed){S._coffeeTold=true;
-    toast('副驾上有一罐咖啡。按 F 喝。');
-    radioSay('副驾上那罐咖啡，别等凉了。');}
-  if(S.dist>1050&&!S._x1){S._x1=true;toast('电台开始串台，信号变差了。');}
+    /* 首次明显困意 + 电台异常：一串杂音 + 走调的电波 + 视线开始发虚，
+       不是只弹一句话——危险要能被提前“听见、看见”。 */
+    staticBurst(0.6);tone(330,0.5,'sine',0.05,300);
+    S.drowsy=Math.min(100,S.drowsy+6);
+    toast('眼皮有点沉，电台也开始串台了。');
+    radioSay('……今晚这段，怎么总在重播……喂？');}
+  if(S.dist>1050&&!S._x1){S._x1=true;staticBurst(0.4);toast('电台信号越来越差了。');}
   if(S.dist>1120&&!S._told1){S._told1=true;radioSay('前方收费站，限速三十。');}
   /* 电台 */
   lineTimer+=dt;
@@ -2599,6 +3325,9 @@ function update(dt){
     const aligned=S.lateral>=PARK_LAT&&S.speed*3.6<=PARK_SPEED;
     park.userData.bay.material.opacity=inBay?(aligned?0.16+Math.sin(performance.now()*0.005)*0.04:0.05):0;
     park.userData.lineMat.color.setHex(inBay&&aligned?0x8fe0a0:0xd8d5c0);
+    /* 远处白边线 → 靠近且对齐时整块车位转绿，停车引导靠构图不靠文字 */
+    if(park.userData.brightLine)
+      park.userData.brightLine.color.setHex(inBay&&aligned?0x7fe8a0:0xe8e2c8);
     if(S.dist>1660){S.dist=1660;S.speed=0;
       if(!S.overTold){S.overTold=true;
         toast('开过了。按住 S 倒车回来，看到车位再按 E。');
@@ -2638,12 +3367,19 @@ function update(dt){
   flashEl.style.opacity=flashT>0?Math.min(1,flashT*2.4).toFixed(2):'0';
   if(isTouch){
     const tE=document.getElementById('tE');
-    const inGas=!S.gasStop&&inWin('gas',S.dist);
-    const inBbq=!S.bbq&&inWin('bbq',S.dist);
-    const inPark=S.dist>1570&&S.dist<1598&&!S.parked;
-    tE.textContent=inGas?'加油':inBbq?'买串':'停';
-    tE.style.display=(inGas||inBbq||inPark)?'block':'none';
-    document.getElementById('tF').style.display=(S.coffee&&!S.coffeeUsed)?'block':'none';
+    if(S.intro.active){
+      /* 开场：右下角按钮变成"上车"，跟唯一交互提示一致 */
+      tE.textContent=S.intro.phase===2?'上车':'跳过';
+      tE.style.display='block';
+      document.getElementById('tF').style.display='none';
+    }else{
+      const inGas=!S.gasStop&&inWin('gas',S.dist);
+      const inBbq=!S.bbq&&inWin('bbq',S.dist);
+      const inPark=S.dist>1570&&S.dist<1598&&!S.parked;
+      tE.textContent=inGas?'加油':inBbq?'买串':'停';
+      tE.style.display=(inGas||inBbq||inPark)?'block':'none';
+      document.getElementById('tF').style.display=(S.coffee&&!S.coffeeUsed)?'block':'none';
+    }
   }
   if(toastT>0){toastT-=dt;if(toastT<=0)toastEl.classList.remove('on');}
   /* 音频：四挡，每挡里转速往上爬，升挡时掉一下 */
@@ -2657,7 +3393,12 @@ function update(dt){
   if(actx&&engOsc2)engOsc2.frequency.value=(38+S.rpm*58)*0.5;
   if(actx&&engLp)engLp.frequency.value=170+S.rpm*260;
   if(rainGain)rainGain.gain.value+=((S.rain?0.055:0)-rainGain.gain.value)*Math.min(1,dt*1.6);
-  if(tireGain)tireGain.gain.value+=(((S.speed/27)*0.026+(S.rain?0.006:0))-tireGain.gain.value)*Math.min(1,dt*2.2);
+  if(tireGain)tireGain.gain.value+=(((S.speed/27)*0.030+(S.rain?0.006:0))-tireGain.gain.value)*Math.min(1,dt*2.2);
+  /* 风声包络：开窗时随车速抬起来，关窗归零；五种速度感里的“耳边的风” */
+  const windWant=S.windy?(0.012+Math.min(0.075,S.speed*0.0032)):0;
+  S.windRush+=(windWant-S.windRush)*Math.min(1,dt*2.4);
+  if(windGain)windGain.gain.value=S.windRush;
+  if(rumbleGain)rumbleGain.gain.value+=((0.006+(S.speed/27)*0.014*(S.windy?1.9:1))-rumbleGain.gain.value)*Math.min(1,dt*2);
 }
 /* 内后视镜单独走一遍 RT：~30 Hz，中间帧直接复用上一张倒影 */
 let mirrorT=-1e9;
@@ -2751,15 +3492,157 @@ function render(dt){
 /* ---------- 流程 ---------- */
 const titleEl=document.getElementById('title'),endEl=document.getElementById('end');
 const ticketEl=document.getElementById('ticket');
-function startGame(){
-  if(S.started)return;
-  S.started=true;S.startTime=performance.now();
+const introHintEl=document.getElementById('introHint');
+const introKeyEl=document.getElementById('introKey');
+const introHintTextEl=document.getElementById('introHintText');
+const introSkipEl=document.getElementById('introSkip');
+const fadeInEl=document.getElementById('fadeIn'),capLineEl=document.getElementById('capLine');
+
+/* ===== 场外开场序列 =====
+   门口低机位(0.4s 黑场时间卡) → 走到驾驶侧车门 → "拉开车门"交互 →
+   门开+镜头平移降低入座 → 安全带/仪表自检/广播 → 开放驾驶。
+   from=factory 播完整版，直接体验播紧凑版；全程可点/按键跳过。 */
+const INTRO_CAM={
+  /* 世界坐标(dist≈0)。车头朝 -z，驾驶侧车门在左侧 x≈-1.16，车头约 z=-2.5。
+     厂区/奶罐车/灯箱在车前方更远处(z≈-40)。 */
+  start :new THREE.Vector3(-2.0,1.15,-9.0),   /* 厂区门口低机位：车在身后，先看厂区 */
+  door  :new THREE.Vector3(-4.4,1.30,-1.20),  /* 车外斜前方约 3.5m，能看整车轮廓+门把手高亮 */
+  seat  :new THREE.Vector3(DRIVER_X,1.26,0.22),/* 驾驶位 */
+  lookGate:new THREE.Vector3(-3.0,1.7,-46),   /* 先看厂区：奶罐车/灯箱/铁丝网 */
+  lookDoor:new THREE.Vector3(-1.16,1.02,-0.28),/* 再看门把手 */
+  lookFwd :new THREE.Vector3(DRIVER_X,1.25,-34)/* 坐稳后朝前 */
+};
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=t=>t<0?0:t>1?1:t*t*(3-2*t);
+function camLerp(out,a,b,u){out.lerpVectors(a,b,smooth(u));}
+function facePoint(cam,tx,ty,tz){
+  /* camera.rotation.order=YXZ：先求 yaw/pitch 再赋给 look（受 update 叠加影响，这里开场独占） */
+  const dx=tx-cam.position.x,dy=ty-cam.position.y,dz=tz-cam.position.z;
+  introLook.yaw=Math.atan2(-dx,-dz);
+  introLook.pitch=Math.atan2(dy,Math.hypot(dx,dz));
+}
+const introLook={yaw:0,pitch:0};
+
+function startIntro(full){
+  const I=S.intro;
+  I.active=true;I.phase=0;I.t=0;I.full=!!full;I.door=0;I.skipped=false;
+  S.started=true;S.startTime=performance.now();S.speed=0;
   titleEl.style.opacity='0';setTimeout(()=>titleEl.style.display='none',500);
-  hud.classList.add('on');
   initAudio();
+  /* 开场把车灯压暗，拧钥匙时渐亮 */
+  spots.forEach(s=>{s.intensity=0.10;});
+  hud.classList.remove('on');
+  /* 黑场 + 时间卡 */
+  capLineEl.textContent=SHIFT.end+' · 夜班结束';
+  fadeInEl.style.transition='none';fadeInEl.style.opacity='0.95';fadeInEl.style.display='block';
+  introHintEl.classList.remove('on');introSkipEl.classList.remove('on');
+  requestAnimationFrame(()=>{
+    fadeInEl.style.transition='opacity .7s';fadeInEl.style.opacity='0';
+    capLineEl.classList.add('on');
+  });
+  setTimeout(()=>capLineEl.classList.remove('on'),900);
+  setTimeout(()=>{if(!I.active)return;fadeInEl.style.display='none';},1000);
+  /* 车灯渐亮：像下班拧钥匙那一下 */
+  let lit=0;const litIv=setInterval(()=>{
+    lit+=0.2;spots.forEach(s=>{s.intensity=Math.min(1.45,0.10+1.35*lit);});
+    if(lit>=1)clearInterval(litIv);
+  },70);
+  if(isTouch){introKeyEl.textContent='点';introHintTextEl.textContent='上车';}
+  else{introKeyEl.textContent='E';introHintTextEl.textContent='拉开车门';}
+}
+
+/* 开场交互：过场中→跳到车门提示；车门提示→拉门；入座中→立即坐稳 */
+function introInteract(){
+  const I=S.intro;if(!I.active)return;
+  if(I.phase===0||I.phase===1){
+    I.phase=2;I.t=0;introSkipEl.classList.remove('on');
+    introHintEl.classList.add('on');   /* 跳过过场也要亮出"拉开车门"提示 */
+    tone(240,0.08,'square',0.03);
+  }else if(I.phase===2){
+    I.phase=3;I.t=0;
+    introHintEl.classList.remove('on');introSkipEl.classList.remove('on');
+    thud();tone(420,0.1,'square',0.04,260); /* 门锁弹开 */
+  }else if(I.phase===3){
+    finishIntro(); /* 跳过入座动画：立即坐稳（同步 introSkip 也能安全退出） */
+  }
+}
+function finishIntro(){
+  const I=S.intro;if(!I.active)return;
+  I.active=false;I.phase=5;
+  introShell.visible=false;driverDoor.rotation.y=0;
+  doorHandleGlow.material.opacity=0;
+  introHintEl.classList.remove('on');introSkipEl.classList.remove('on');
+  camera.rotation.order='YXZ';look.yaw=0;look.ty=0;look.pitch=0;look.tp=0;
+  camera.position.set(DRIVER_X,1.26,0.22);
+  hud.classList.add('on');
+  /* 坐稳反馈：安全带扣合 + 仪表自检 + 车机点亮 + 开局广播 */
+  thud();chime(560);
+  if(!S.ended)radioSay('今晚就这一趟。出了厂门，靠右，慢慢开。');
   toast('系好安全带。');
-  /* 先告诉玩家这是一段有终点的路，再让前车教他刹车 */
-  setTimeout(()=>{if(S.started&&!S.ended)toast('过了前面三个路口就到家。');},2000);
+  setTimeout(()=>{if(S.started&&!S.ended)toast('过了前面三个路口就到家。');},2600);
+  /* 键盘提示 5 秒后自动淡出——两个入口统一在这里处理，保持一致 */
+  setTimeout(()=>{keysHintOff=true;
+    if(elKeysHint){elKeysHint.style.transition='opacity .8s';elKeysHint.style.opacity='0';}},5000);
+}
+function applyIntroCam(dt){
+  const I=S.intro;I.t+=dt;
+  const C=INTRO_CAM;
+  camera.rotation.order='YXZ';
+  if(I.phase===0){                       /* 黑场：站在门口低机位 */
+    camera.position.copy(C.start);facePoint(camera,C.lookGate.x,C.lookGate.y,C.lookGate.z);
+    if(I.t>0.45){I.phase=1;I.t=0;}
+  }else if(I.phase===1){                 /* 走到驾驶侧车门 + 由看厂区转向看门把手 */
+    const dur=I.full?2.6:1.5;
+    const u=smooth(Math.min(1,I.t/dur));
+    camera.position.lerpVectors(C.start,C.door,u);
+    const lx=lerp(C.lookGate.x,C.lookDoor.x,u),ly=lerp(C.lookGate.y,C.lookDoor.y,u),
+          lz=lerp(C.lookGate.z,C.lookDoor.z,u);
+    facePoint(camera,lx,ly,lz);
+    introShell.visible=true;doorHandleGlow.material.opacity=0.25+0.35*u;
+    /* 远处停着的车闪一下灯 + 一声短鸣，用声音把视线引向车/门 */
+    if(!I.flashed&&u>0.52){I.flashed=true;
+      tone(920,0.09,'square',0.035);setTimeout(()=>tone(680,0.12,'square',0.03),130);}
+    if(I.t>0.6)introSkipEl.classList.add('on');
+    if(I.t>=dur){I.phase=2;I.t=0;
+      introHintEl.classList.add('on');introSkipEl.classList.remove('on');}
+  }else if(I.phase===2){                 /* 停在车门旁，等待"拉开车门" */
+    camera.position.copy(C.door);facePoint(camera,C.lookDoor.x,C.lookDoor.y,C.lookDoor.z);
+    introShell.visible=true;introHintEl.classList.add('on');
+    doorHandleGlow.material.opacity=0.5+0.4*(0.5+0.5*Math.sin(performance.now()*0.004));
+    /* 兜底：等太久自动开门，避免任何情况下卡住 */
+    if(I.t>9)introInteract();
+  }else if(I.phase===3){                 /* 门开 + 镜头平移进驾驶位、座位降低 */
+    const dur=1.5,u=smooth(Math.min(1,I.t/dur));
+    camLerp(camera.position,C.door,C.seat,u);
+    camera.position.y+=0.24*Math.sin(Math.PI*u);          /* 抬身→坐下的弧线 */
+    const lx=lerp(C.lookDoor.x,C.lookFwd.x,u),ly=lerp(C.lookDoor.y,C.lookFwd.y,u),
+          lz=lerp(C.lookDoor.z,C.lookFwd.z,u);
+    facePoint(camera,lx,ly,lz);
+    introShell.visible=u<0.92;
+    driverDoor.rotation.y=-1.15*u;                        /* 驾驶侧门向外打开 */
+    doorHandleGlow.material.opacity=0.9*(1-u);
+    if(I.t>=dur)finishIntro();
+  }
+  camera.rotation.y=introLook.yaw;
+  camera.rotation.x=introLook.pitch;
+  camera.rotation.z=0;
+}
+
+function startGame(skipIntro){
+  if(S.started)return;
+  if(skipIntro===true||q.has('shot')){
+    S.started=true;S.startTime=performance.now();
+    titleEl.style.opacity='0';setTimeout(()=>titleEl.style.display='none',500);
+    initAudio();hud.classList.add('on');
+    setupHudFade();
+  }else{
+    startIntro(FROM_FACTORY);
+  }
+}
+/* 统一的键盘提示淡出入口（跳过开场/截图也走这里） */
+function setupHudFade(){
+  setTimeout(()=>{keysHintOff=true;
+    if(elKeysHint){elKeysHint.style.transition='opacity .8s';elKeysHint.style.opacity='0';}},5000);
 }
 function finish(kind){
   S.ended=true;S.started=false;
@@ -2796,7 +3679,7 @@ function finish(kind){
   endEl.classList.add('on');
   hud.classList.remove('on');
 }
-document.getElementById('btnStart').onclick=startGame;
+document.getElementById('btnStart').onclick=()=>startGame(false);
 document.getElementById('btnAgain').onclick=()=>{
   const u=new URL(location.href);u.searchParams.set('diff',DIFF);location.href=u.toString();
 };
@@ -2824,22 +3707,27 @@ window.__game={
     elapsed:+(S.startTime?(performance.now()-S.startTime)/1000:0).toFixed(1),
     dozing:!!S.dozing,wakeCount:S.wakeCount,diff:DIFF,
     chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
-    chaserLowT:+S.chaserLowT.toFixed(2),
-    lookYaw:+look.yaw.toFixed(2),lookPitch:+look.pitch.toFixed(2)};},
-  start:startGame,
+    chaserLowT:+S.chaserLowT.toFixed(2),chaserStage:S.chaserStage,
+    catOn:S.catOn,catDone:S.catDone,catReact:S.catReact,catSeen:S.catSeen,
+    phase:S.phase,brakeSlam:+S.brakeSlam.toFixed(2),recover:+S.recover.toFixed(2),
+    rollVis:+S.rollVis.toFixed(3),camLagYaw:+S.camLagYaw.toFixed(3),windRush:+S.windRush.toFixed(3),
+    lookYaw:+look.yaw.toFixed(2),lookPitch:+look.pitch.toFixed(2),
+    introActive:S.intro.active,introPhase:S.intro.phase,introT:+S.intro.t.toFixed(2)};},
+  start:(skip)=>startGame(skip===true),
+  introInteract,introSkip:()=>{let g=0;while(S.intro.active&&g++<12){introInteract();}},
   finish(kind){finish(kind||'到家');},
   park:tryPark,
   set(o){Object.assign(S,o);},
   input(){return {...keys};},
   camX(){return +camera.position.x.toFixed(2);},
   scene,camera,traffic,
-  props:{limitSign,speedCam,gasStation,broken,bbqStall,cat},
+  props:{limitSign,speedCam,gasStation,broken,bbqStall,cat,yardProps,introShell},
   trafficAt(i,z){const c=traffic[i];if(!c)return null;
     c.z=z;return {lane:c.lane,dir:c.dir};},
   tick(dt){if(S.started&&!S.ended)update(dt||0.016);},
   shot(name){renderMirror();render(0);
     return fetch('/_save?name='+(name||'outdoor')+'.png',{method:'POST',
-      body:renderer.domElement.toDataURL('image/png')}).then(r=>r.text());},
+      body:renderer.domElement.toDataURL('image/png')}).then(r=>r.text()).catch(()=>'');},
   /* 粗测：一帧完整管线（含后视镜摊到平均 + 辉光），ms */
   bench(n){n=n||15;const t0=performance.now();
     for(let i=0;i<n;i++)render(0);
@@ -2881,26 +3769,19 @@ const btnBackEl=document.getElementById('btnBack');
 btnBackEl.onclick=()=>{location.href='index.html';};
 document.querySelector('#title .sub').textContent='一个普通的周三 '+SHIFT.end;
 
-/* ---------- 工厂 → 回家路：黑场 + 字幕 + 1 s 淡入（只认 ?from=factory） ---------- */
+/* ---------- 工厂 → 回家路：走完整版场外开场（只认 ?from=factory） ---------- */
 if(FROM_FACTORY){
-  const fadeEl=document.getElementById('fadeIn'),capEl=document.getElementById('capLine');
   titleEl.style.display='none';
   btnBackEl.style.display='';
-  capEl.textContent=SHIFT.end+' · 奶厂停车场';
-  fadeEl.style.transition='none';fadeEl.style.opacity='1';
-  requestAnimationFrame(()=>{fadeEl.style.transition='opacity 1s';capEl.classList.add('on');});
-  startGame();
-  setTimeout(()=>{fadeEl.style.opacity='0';},250);
-  setTimeout(()=>{capEl.classList.remove('on');},600);
-  setTimeout(()=>{fadeEl.style.display='none';},1400);
+  /* 完整开场（黑场时间卡→走到车门→拉门→入座）由 startIntro 统一播放；
+     提示淡出也在 finishIntro 里处理，两个入口完全一致。 */
+  startGame(false);
   if(HANDOFF){
-    /* 本班成绩：电台念一句，并留在交通台的轮播里 */
+    /* 本班成绩：电台念一句，并留在交通台的轮播里（等开场广播之后再念） */
     const gradeLine=HANDOFF.tapes>=3?'今晚那台泵，总算没再叫了。':'有盘磁带还留在里面。';
     STATIONS[0].lines.unshift(gradeLine);
-    setTimeout(()=>{if(!S.ended)radioSay(gradeLine);},5200);
+    setTimeout(()=>{if(!S.ended&&!S.intro.active)radioSay(gradeLine);},7200);
   }
-  /* 按键说明：进入 6 秒后自动淡出，之后不再被停车引导点亮 */
-  setTimeout(()=>{keysHintOff=true;elKeysHint.style.transition='opacity .8s';elKeysHint.style.opacity='0';},6000);
 }
 if(q.has('shot')){
   setTimeout(()=>{
@@ -2909,7 +3790,7 @@ if(q.has('shot')){
     for(let i=0;i<warm;i++)if(S.started&&!S.ended)update(1/60);
     render(0);
     fetch('/_save?name='+q.get('shot')+'.png',{method:'POST',
-      body:renderer.domElement.toDataURL('image/png')});},1800);
+      body:renderer.domElement.toDataURL('image/png')}).catch(()=>{});},1800);
 }
 requestAnimationFrame(loop);
 </script>

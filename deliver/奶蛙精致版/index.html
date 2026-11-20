@@ -34,7 +34,26 @@
     padding:9px 16px;font-size:12px;letter-spacing:.06em;transition:.15s;}
   .btn:hover{background:#262a1c;border-color:var(--fluor);color:#eaffd0;}
   .btn.dev{border-color:var(--fluor);color:var(--fluor);}
-  .boot-btns{display:flex;gap:10px;justify-content:center;margin-top:18px;}
+  .boot-btns{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap;}
+  /* 竖屏 / 窄屏 / 矮屏：标题与操作说明完整换行，不左右裁切 */
+  @media (max-width:540px){
+    .boot-card{padding:20px 16px;width:min(680px,96vw);}
+    .boot-title{font-size:24px;letter-spacing:.03em;}
+    .boot-title span{font-size:11px;letter-spacing:.28em;}
+    .boot-kicker{font-size:9px;letter-spacing:.18em;}
+    .scene-pick{gap:6px;}
+    .scene-card{padding:10px 8px;}
+    .scene-card .t{font-size:14px;}
+    .scene-card .d{font-size:10px;line-height:1.5;}
+    .boot-foot{font-size:10px;line-height:1.9;padding:0 4px;word-break:break-word;white-space:normal;}
+    .btn{font-size:11px;padding:8px 10px;}
+  }
+  @media (max-height:460px){
+    .boot-card{padding:14px 18px;}
+    .boot-line{margin:10px 0;}
+    .boot-foot{margin-top:10px;font-size:10px;line-height:1.6;}
+    .boot-btns{margin-top:10px;}
+  }
 
   /* HUD */
   #hud{position:fixed;inset:0;z-index:10;pointer-events:none;opacity:0;transition:opacity .6s;}
