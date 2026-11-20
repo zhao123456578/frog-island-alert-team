@@ -23,6 +23,9 @@ python -m http.server 8899
 | `assets/` | 角色与道具 GLB、Blender 源文件、45 个 WAV 音效 |
 | `assets/interaction.js` | 背包物品、门锁与交互判定 |
 | `assets/paperbot/` | 纸片人角色：序列帧脚本与贴图 |
+| `assets/milkfrog_halfbody.*` | 奶蛙半身模型（blend / glb）与骨架脚本 |
+| `assets/audio/` | 音效库，含 `memes/` 梗音效与夜曲 piano |
+| `output/playwright/` | 场景复查截图（工厂/厂区/夜驾坐标修订） |
 | `cabinet_lab.html` | 躲藏柜单件测试场 |
 | `paperbot_test.html` | 纸片人行为测试场 |
 | `milkfrog_model.html` | 奶蛙 NO.13 角色建模检视 |

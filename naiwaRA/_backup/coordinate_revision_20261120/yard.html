@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>奶厂 · 停车场</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;
+    font-family:Consolas,"Courier New",monospace;}
+  #view{width:100%;height:100%;display:block;image-rendering:auto;}
+  #hud{position:fixed;inset:0;pointer-events:none;}
+  #hint{position:fixed;left:50%;bottom:8%;transform:translateX(-50%);
+    color:#cfe3a0;background:rgba(8,10,8,.78);border:1px solid #3c4a2e;
+    padding:9px 18px;font-size:12px;letter-spacing:.1em;opacity:0;transition:opacity .35s;}
+  #hint.on{opacity:1;}
+  #tip{position:fixed;left:50%;top:8%;transform:translateX(-50%);color:#8fa878;
+    font-size:11px;letter-spacing:.24em;opacity:.75;}
+  #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
+    transition:opacity .5s;z-index:50;}
+  #cap{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    color:#d8d3bd;font-size:13px;letter-spacing:.34em;opacity:0;
+    transition:opacity .5s;z-index:51;white-space:nowrap;}
+  #cap.on{opacity:.9;}
+  #start{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 45%,#161a14,#08080c 75%);}
+  #start .box{text-align:center;color:#c8c4b0;}
+  #start h1{margin:0 0 10px;font-size:22px;letter-spacing:.2em;color:#e6e2cf;}
+  #start p{margin:0 0 22px;font-size:11px;letter-spacing:.16em;color:#7f826f;line-height:2;}
+  #start button{font-family:inherit;cursor:pointer;background:#1a1c17;color:#e6e2cf;
+    border:1px solid #6a6a55;padding:10px 26px;font-size:12px;letter-spacing:.16em;}
+  #start button:hover{background:#262a1c;border-color:#86c24b;color:#eaffd0;}
+  #musicToggle{position:fixed;right:14px;bottom:14px;z-index:70;cursor:pointer;
+    font:12px Consolas,"Courier New",monospace;color:#e6e2cf;background:rgba(8,10,8,.85);
+    border:1px solid #6a6a55;padding:9px 12px;}
+  #musicToggle:hover,#musicToggle:focus-visible{border-color:#86c24b;}
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="tip">奶厂 · 员工出口 · 停车场</div>
+<div id="hint">按 E 上车</div>
+<div id="fade"></div>
+<div id="cap">02:47 · 上车</div>
+<div id="start"><div class="box">
+  <h1>奶 厂 · 停 车 场</h1>
+  <p>WASD 移动 · 拖动鼠标转视角<br>走到车边，按 E 上车</p>
+  <button id="btnGo">走出厂房</button>
+</div></div>
+<button id="musicToggle" type="button" aria-pressed="false">声音：开启 · M静音</button>
+<script src="vendor/three.min.js"></script>
+<script src="assets/night_music.js"></script>
+<script>
+'use strict';
+/* 交接只读：保留主入口写入的 branch / act 等进度，不把提前离厂改成第三幕。 */
+var routeQuery=new URLSearchParams(location.search);
+var FROM_FACTORY=routeQuery.get('from')==='factory';
+var HANDOFF=(function(){
+  if(!FROM_FACTORY)return null;
+  try{var data=JSON.parse(sessionStorage.getItem('mf_handoff')||'null');
+    return data&&typeof data==='object'&&!Array.isArray(data)?data:null;
+  }catch(e){return null;}
+})();
+var ROUTE=['early','investigate','wean'].includes(routeQuery.get('route'))?routeQuery.get('route'):
+  (HANDOFF&&['early','investigate','wean'].includes(HANDOFF.branch)?HANDOFF.branch:'');
+var EARLY=ROUTE==='early';
+if(EARLY){
+  document.title='提前离厂 · 停车场';
+  document.querySelector('#start h1').textContent='提前离厂 · 停车场';
+  document.querySelector('#start p').innerHTML='厂里的事还没有答案，你先走进了雨里。<br>WASD 移动 · 拖动鼠标转视角 · 车边按 E 上车';
+  document.getElementById('tip').textContent='提前离厂 · 真相仍留在厂房里';
+  document.getElementById('cap').textContent='提前离厂 · 上车';
+}else if(ROUTE==='investigate'){
+  document.querySelector('#start h1').textContent='调查之后 · 停车场';
+  document.getElementById('cap').textContent='离开奶厂 · 上车';
+}
+var musicToggle=document.getElementById('musicToggle');
+function syncSound(){
+  var state=window.NightMusic.status();
+  musicToggle.textContent=state.muted?'声音：已静音 · M开启':
+    (state.blocked?'音乐未播放 · 点击重试':'声音：开启 · M静音');
+  musicToggle.setAttribute('aria-pressed',String(state.muted));
+  musicToggle.title=state.blocked?state.error:'点击或按 M 切换音乐与环境音';
+  if(actx){
+    var quiet=state.muted||state.hidden||state.suspended||state.handedOff;
+    var op=quiet?(actx.state==='running'?actx.suspend():null):
+      (actx.state==='suspended'?actx.resume():null);
+    if(op)op.catch(function(){});
+  }
+}
+function toggleSound(){
+  var muted=window.NightMusic.toggleMute();
+  if(!muted&&started)window.NightMusic.start();
+}
+musicToggle.onclick=function(){
+  var state=window.NightMusic.status();
+  if(state.blocked&&!state.muted)window.NightMusic.start();
+  else toggleSound();
+};
+window.addEventListener('nightmusicchange',syncSound);
+syncSound();
+/* ============ 基础 ============ */
+var canvas=document.getElementById('view');
+var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.0;
+/* 阴影关掉：实测这一项在游戏里几乎看不出，却把帧率从 33 压到 29，
+   低配机器上更明显。流畅不卡比那点阴影重要得多——卡就是晕的根源。 */
+renderer.shadowMap.enabled=false;
+var scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0b1018);
+scene.fog=new THREE.FogExp2(0x0d1520,0.014);
+var camera=new THREE.PerspectiveCamera(60,16/9,0.08,260);
+/* 固定 640×360 内部分辨率，CSS 拉伸铺满窗口。
+   实测软件渲染下 1250 宽只有 12 帧、960 宽 19 帧、640 宽 33 帧，
+   只有 640 才流畅。材质/车灯/雨那些质感照旧保留，只是渲染底子用低分辨率。 */
+renderer.setSize(640,360,false);
+camera.aspect=16/9;camera.updateProjectionMatrix();
+/* ---- 第三人称相机（GTA 式）----
+   player：角色脚下位置，角色模型就画在这儿。
+   yaw/pitch：相机绕角色的角度（yaw=0 在角色正后方）。
+   相机不直接贴着角色，而是隔 4.6 米、用弹簧阻尼慢慢跟过去——
+   角色急停急转时画面不会跟着猛甩，这是不晕的核心。 */
+var player={x:0,z:8.4,face:0};
+var CAM_DIST=4.6,CAM_H=2.15;
+var yaw=0,pitch=0.16,yawTarget=0,pitchTarget=0.16;
+var camPos=new THREE.Vector3(0,CAM_H,player.z+CAM_DIST);
+var camLook=new THREE.Vector3(0,1.1,player.z);
+camera.position.copy(camPos);
+camera.lookAt(camLook);
+
+scene.add(new THREE.AmbientLight(0x3d4d6b,0.46));
+scene.add(new THREE.HemisphereLight(0x6d82a6,0x11161d,0.38));
+var moon=new THREE.DirectionalLight(0x7e9ac2,0.42);moon.position.set(-9,15,7);
+moon.castShadow=true;
+moon.shadow.mapSize.set(1024,1024);
+moon.shadow.camera.left=-30;moon.shadow.camera.right=30;
+moon.shadow.camera.top=30;moon.shadow.camera.bottom=-30;
+moon.shadow.camera.near=1;moon.shadow.camera.far=70;
+moon.shadow.bias=-0.0008;
+scene.add(moon);
+
+/* ============ 程序化贴图 ============ */
+function mkTex(w,h,draw){
+  var c=document.createElement('canvas');c.width=w;c.height=h;
+  var x=c.getContext('2d');draw(x,w,h);
+  var t=new THREE.CanvasTexture(c);t.anisotropy=1;return t;
+}
+/* 水泥地：水渍、裂缝、轮胎印、旧漆线 */
+var concreteTex=mkTex(256,256,function(x,w,h){
+  x.fillStyle='#2b2d31';x.fillRect(0,0,w,h);
+  for(var i=0;i<9000;i++){
+    var g=(30+Math.random()*22)|0;
+    x.fillStyle='rgba('+g+','+(g+1)+','+(g+3)+',0.55)';
+    x.fillRect(Math.random()*w,Math.random()*h,2,2);
+  }
+  /* 大块水渍：比周围深、偏冷 */
+  for(var k=0;k<26;k++){
+    var cx=Math.random()*w,cy=Math.random()*h,r=8+Math.random()*26;
+    var gd=x.createRadialGradient(cx,cy,0,cx,cy,r);
+    gd.addColorStop(0,'rgba(16,20,26,0.55)');
+    gd.addColorStop(0.7,'rgba(20,24,30,0.22)');
+    gd.addColorStop(1,'rgba(0,0,0,0)');
+    x.fillStyle=gd;x.beginPath();x.arc(cx,cy,r,0,6.284);x.fill();
+  }
+  /* 裂缝 */
+  for(var c2=0;c2<6;c2++){
+    x.strokeStyle='rgba(16,18,22,0.45)';x.lineWidth=1;
+    var px=Math.random()*w,py=Math.random()*h;x.beginPath();x.moveTo(px,py);
+    for(var s=0;s<7;s++){px+=(Math.random()-0.5)*26;py+=(Math.random()-0.5)*26;x.lineTo(px,py);}
+    x.stroke();
+  }
+  /* 旧漆线：褪成灰黄 */
+  x.strokeStyle='rgba(150,146,118,0.20)';x.lineWidth=6;
+  x.beginPath();x.moveTo(0,196);x.lineTo(w,190);x.stroke();
+});
+concreteTex.wrapS=concreteTex.wrapT=THREE.RepeatWrapping;
+concreteTex.repeat.set(14,14);
+
+/* 压型钢板：竖向棱 + 锈迹 */
+var sidingTex=mkTex(128,128,function(x,w,h){
+  x.fillStyle='#2e3135';x.fillRect(0,0,w,h);
+  for(var i=0;i<w;i+=8){
+    x.fillStyle='rgba(255,255,255,0.045)';x.fillRect(i,0,2,h);
+    x.fillStyle='rgba(0,0,0,0.20)';x.fillRect(i+4,0,2,h);
+  }
+  for(var r=0;r<10;r++){
+    var rx=Math.random()*w,ry=Math.random()*h*0.6;
+    var gd=x.createLinearGradient(rx,ry,rx,ry+30+Math.random()*40);
+    gd.addColorStop(0,'rgba(112,66,32,0.28)');
+    gd.addColorStop(1,'rgba(112,66,32,0)');
+    x.fillStyle=gd;x.fillRect(rx,ry,2+Math.random()*3,30+Math.random()*40);
+  }
+  x.fillStyle='rgba(0,0,0,0.22)';x.fillRect(0,h-16,w,16);
+});
+sidingTex.wrapS=sidingTex.wrapT=THREE.RepeatWrapping;
+sidingTex.repeat.set(6,1.6);
+
+/* 铁丝网：透明底 + 菱形网格 */
+var chainTex=mkTex(64,64,function(x,w,h){
+  x.clearRect(0,0,w,h);
+  x.strokeStyle='rgba(150,160,168,0.62)';x.lineWidth=2;
+  for(var i=-w;i<w*2;i+=16){
+    x.beginPath();x.moveTo(i,0);x.lineTo(i+h,h);x.stroke();
+    x.beginPath();x.moveTo(i,h);x.lineTo(i+h,0);x.stroke();
+  }
+});
+chainTex.wrapS=chainTex.wrapT=THREE.RepeatWrapping;
+chainTex.repeat.set(48,2);
+
+/* 径向光晕 */
+var glowTex=mkTex(64,64,function(x,w,h){
+  var g=x.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);
+  g.addColorStop(0,'rgba(255,246,224,1)');
+  g.addColorStop(0.28,'rgba(255,222,168,0.55)');
+  g.addColorStop(1,'rgba(255,196,132,0)');
+  x.fillStyle=g;x.fillRect(0,0,w,h);
+});
+function glow(color,size,op,x,y,z,parent){
+  var s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:color,
+    transparent:true,opacity:op,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+  s.scale.set(size,size,1);s.position.set(x,y,z);(parent||scene).add(s);return s;
+}
+
+/* 水花涟漪 */
+var ringTex=mkTex(48,48,function(x,w,h){
+  x.clearRect(0,0,w,h);
+  x.strokeStyle='rgba(198,216,232,0.85)';x.lineWidth=3;
+  x.beginPath();x.arc(w/2,h/2,w/2-4,0,6.284);x.stroke();
+});
+
+/* 门牌 / 厂牌 */
+function textTex(txt,sub,w,h,fg,bg,fs){
+  return mkTex(w,h,function(x){
+    x.fillStyle=bg;x.fillRect(0,0,w,h);
+    x.strokeStyle='rgba(230,226,207,0.5)';x.lineWidth=3;x.strokeRect(4,4,w-8,h-8);
+    x.fillStyle=fg;x.textAlign='center';x.textBaseline='middle';
+    x.font='700 '+fs+'px "Microsoft YaHei",sans-serif';
+    x.fillText(txt,w/2,sub?h*0.42:h/2);
+    if(sub){x.font='700 '+(fs*0.5|0)+'px "Microsoft YaHei",sans-serif';
+      x.fillStyle='rgba(220,214,190,0.72)';x.fillText(sub,w/2,h*0.76);}
+  });
+}
+var signTex=textTex('员工出口','夜班  禁止返岗',256,112,'#efe9d6','#2b3641',44);
+var gateSignTex=textTex('奶 厂','NO.3  DAIRY',224,88,'#f2edda','#26313b',40);
+/* 安全生产标语 */
+var bannerTex=mkTex(384,48,function(x,w,h){
+  x.fillStyle='#8e2420';x.fillRect(0,0,w,h);
+  x.fillStyle='rgba(0,0,0,0.18)';x.fillRect(0,0,w,4);x.fillRect(0,h-4,w,4);
+  x.fillStyle='#f0ece0';x.textAlign='center';x.textBaseline='middle';
+  x.font='700 30px "Microsoft YaHei",sans-serif';
+  x.fillText('安 全 生 产 · 人 人 有 责',w/2,h/2+1);
+});
+
+/* ============ 通用 ============ */
+function mat(color,extra){
+  var o={color:color};if(extra)for(var k in extra)o[k]=extra[k];
+  return new THREE.MeshLambertMaterial(o);
+}
+function box(w,h,d,m,x,y,z,parent){
+  var mm=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    (typeof m==='number')?mat(m):m);
+  mm.position.set(x,y,z);(parent||scene).add(mm);return mm;
+}
+function plane(w,h,m,x,y,z,rx,parent){
+  var mm=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+    (typeof m==='number')?mat(m):m);
+  mm.position.set(x,y,z);if(rx)mm.rotation.x=rx;(parent||scene).add(mm);return mm;
+}
+
+/* ============ 地面 ============ */
+/* 湿地面：PBR 低粗糙度 + 一点金属度，路灯和门光在地面拉出真实高光倒影 */
+var groundMat=new THREE.MeshStandardMaterial({map:concreteTex,color:0x4c5460,
+  roughness:0.55,metalness:0.1});
+var ground=plane(120,120,groundMat,0,-0.02,0,-Math.PI/2);
+ground.receiveShadow=true;
+/* 门口被灯照亮的一块：加色软斑，制造"暖光洒出来" */
+var doorPool=plane(9,7,new THREE.MeshBasicMaterial({map:glowTex,color:0xffbe7a,
+  transparent:true,opacity:0.15,blending:THREE.AdditiveBlending,depthWrite:false}),
+  0,-0.008,12.6,-Math.PI/2);
+/* 水洼：几块拉长的加色亮带，模拟积水映灯光 */
+var puddleMat=new THREE.MeshBasicMaterial({map:glowTex,color:0x9fc0e0,
+  transparent:true,opacity:0.14,blending:THREE.AdditiveBlending,depthWrite:false});
+[[-2.6,4.2,4.2,2.2],[3.6,-3.4,3.4,1.8],[-6.4,-6.8,5,2.4],[7.4,5.6,3.2,1.6]].forEach(function(p){
+  plane(p[2],p[3],puddleMat,p[0],0.004,p[1],-Math.PI/2);
+});
+
+/* ============ 厂房 ============ */
+var sidingMat=new THREE.MeshLambertMaterial({map:sidingTex,color:0xa8adb4});
+var wallMat=mat(0x3a3f45);
+var bodyMat=new THREE.MeshLambertMaterial({map:sidingTex,color:0xb6bcc4});
+/* 前墙（z=17）：中间留 3.6 m 门洞，洞高 3.4 */
+box(22,9.5,0.9,bodyMat,-12.8,4.75,17).castShadow=true;
+box(22,9.5,0.9,bodyMat,12.8,4.75,17).castShadow=true;
+box(3.6,6.1,0.9,bodyMat,0,6.45,17).castShadow=true;
+/* 屋顶压顶 + 檐口暗线 */
+box(48,0.5,9.2,mat(0x22262b),0,9.7,13.0);
+box(48,0.26,9.6,mat(0x191d22),0,9.44,13.0);
+/* 门洞内壁 + 内部暖光 */
+var innerMat=mat(0x241f18);
+box(3.6,0.2,2.2,innerMat,0,0.1,18.1);
+box(0.2,3.4,2.2,innerMat,-1.7,1.7,18.1);
+box(0.2,3.4,2.2,innerMat,1.7,1.7,18.1);
+box(3.6,3.4,0.2,mat(0x2a241c),0,1.7,19.1);
+/* 门里的暖光面（看得见的一团黄） */
+plane(3.2,3.0,new THREE.MeshBasicMaterial({map:glowTex,color:0xffc277,
+  transparent:true,opacity:0.5,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}),
+  0,1.7,18.9,-0,scene).rotation.y=Math.PI;
+var doorLight=new THREE.PointLight(0xffc07a,2.6,17,2);doorLight.position.set(0,2.0,17.9);scene.add(doorLight);
+/* 卷帘门卷筒（半开）+ 门框 */
+box(3.8,0.7,0.5,mat(0x4a4f55),0,3.5,16.6);
+var doorFrame=box(4.2,0.22,0.34,mat(0x5a6066),0,3.86,16.55);
+doorFrame.material.emissive=new THREE.Color(0x161310);
+/* 门口雨棚 + 檐下灯 */
+box(5.4,0.16,1.9,mat(0x3d4249),0,4.2,16.1);
+box(0.14,0.9,0.14,mat(0x3d4249),-2.4,4.7,15.4);
+box(0.14,0.9,0.14,mat(0x3d4249),2.4,4.7,15.4);
+var lampHead=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.16,0.3),
+  new THREE.MeshBasicMaterial({color:0xffe2ae}));
+lampHead.position.set(0,3.95,15.75);scene.add(lampHead);
+glow(0xffca8a,2.2,0.5,0,3.9,15.7);
+var porchLight=new THREE.PointLight(0xffc88c,1.6,11,2);porchLight.position.set(0,3.7,15.2);scene.add(porchLight);
+/* 厂牌 + 门牌 + 标语：注意全部要转 180°，朝向停车场那一侧 */
+var signP=plane(3.0,1.12,new THREE.MeshBasicMaterial({map:signTex}),-3.6,3.0,16.44);
+signP.rotation.y=Math.PI;signP.material.fog=false;
+var gateSignP=plane(2.2,0.82,new THREE.MeshBasicMaterial({map:gateSignTex}),3.9,3.1,16.44);
+gateSignP.rotation.y=Math.PI;gateSignP.material.fog=false;
+var bannerP=plane(7.2,0.9,new THREE.MeshBasicMaterial({map:bannerTex}),-8.2,5.6,16.42);
+bannerP.rotation.y=Math.PI;bannerP.material.fog=false;
+/* 立面洗墙光：不然钢板墙在夜里就是一整块纯黑 */
+var washA=new THREE.PointLight(0xffc890,1.5,15,2);washA.position.set(-7.5,5.4,14.1);scene.add(washA);
+var washB=new THREE.PointLight(0xffc890,1.4,15,2);washB.position.set(8.2,5.2,14.1);scene.add(washB);
+/* 门口一级台阶 */
+box(4.4,0.12,0.5,mat(0x3a3f45),0,0.06,16.2);
+/* 侧墙 + 外挂管道 + 通风口 */
+box(0.9,9.5,20,bodyMat,-23.2,4.75,8);
+box(0.9,9.5,20,bodyMat,23.2,4.75,8);
+var pipeMat=mat(0x50565c);
+var pipe=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,11,8),pipeMat);
+pipe.position.set(-19.6,4.6,10.4);scene.add(pipe);
+var pipe2=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,9,8),pipeMat);
+pipe2.position.set(-19.0,3.8,10.55);scene.add(pipe2);
+[-3.6,3.6].forEach(function(bx){
+  var v=new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.62,0.3,10),mat(0x3f454b));
+  v.rotation.x=Math.PI/2;v.position.set(bx,7.2,16.5);scene.add(v);
+});
+/* 装卸平台 */
+box(7,0.9,4.4,mat(0x33383d),-13,0.45,13.6);
+box(7,0.06,0.2,mat(0x8d8a72),-13,0.92,11.45);
+box(0.2,1.1,4.4,mat(0x33383d),-16.5,1.0,13.6);
+/* 平台边一只托盘堆 */
+/* （道具区统一在下面） */
+
+/* ============ 停车棚 ============ */
+var canopyMat=mat(0x2b3138);
+box(13.6,0.22,9.4,canopyMat,7.6,3.5,-2.4);
+box(13.6,0.1,9.6,mat(0x1b2026),7.6,3.34,-2.4);
+for(var cx=-1;cx<=16;cx+=5.6){
+  box(0.32,3.42,0.32,mat(0x3a4046),cx,1.71,1.9);
+  box(0.32,3.42,0.32,mat(0x3a4046),cx,1.71,-6.7);
+}
+/* 棚下两盏灯 */
+[[3.4],[11.4]].forEach(function(p){
+  var h=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.1,0.22),
+    new THREE.MeshBasicMaterial({color:0xffe6b8}));
+  h.position.set(p[0],3.28,-2.4);scene.add(h);
+  glow(0xffd79a,1.5,0.32,p[0],3.24,-2.4);
+  var l=new THREE.PointLight(0xffd6a0,1.5,12,2);l.position.set(p[0],3.1,-2.4);scene.add(l);
+});
+/* 车位线 + 编号 */
+for(var i=0;i<4;i++){
+  var lx=3.6+i*2.7;
+  var ln=plane(0.09,4.4,new THREE.MeshBasicMaterial({color:0x9aa088,
+    transparent:true,opacity:0.5}),lx,0.006,-1.6,-Math.PI/2);
+}
+['P1','P2','P3'].forEach(function(t,idx){
+  var tg=mkTex(64,64,function(x){
+    x.clearRect(0,0,64,64);x.fillStyle='rgba(214,212,190,0.55)';
+    x.font='700 34px Consolas,monospace';x.textAlign='center';x.textBaseline='middle';
+    x.fillText(t,32,34);
+  });
+  plane(0.7,0.7,new THREE.MeshBasicMaterial({map:tg,transparent:true}),
+    4.95+idx*2.7,0.008,1.55,-Math.PI/2);
+});
+
+/* ============ 围墙 / 铁丝网 / 大门 ============ */
+/* 左侧砖墙 */
+var brickTex=mkTex(128,128,function(x,w,h){
+  x.fillStyle='#33302c';x.fillRect(0,0,w,h);
+  for(var y=0;y<h;y+=10){
+    var off=(y/10)%2?8:0;
+    for(var xx=-8;xx<w;xx+=16){
+      x.fillStyle='rgba('+(52+Math.random()*22|0)+','+(48+Math.random()*16|0)+',44,1)';
+      x.fillRect(xx+off+1,y+1,14,8);
+    }
+  }
+  x.fillStyle='rgba(0,0,0,0.25)';x.fillRect(0,h-20,w,20);
+});
+brickTex.wrapS=brickTex.wrapT=THREE.RepeatWrapping;brickTex.repeat.set(9,1.4);
+box(0.6,2.6,28,new THREE.MeshLambertMaterial({map:brickTex}),-20.4,1.3,3);
+box(0.78,0.14,28,mat(0x44423c),-20.4,2.66,3);
+/* 墙上刷的字（白漆） */
+var paintTex=mkTex(256,64,function(x,w,h){
+  x.clearRect(0,0,w,h);x.fillStyle='rgba(226,222,204,0.62)';
+  x.font='700 40px "Microsoft YaHei",sans-serif';x.textAlign='center';x.textBaseline='middle';
+  x.fillText('禁止吸烟',w/2,h/2);
+});
+plane(5.0,1.25,new THREE.MeshBasicMaterial({map:paintTex,transparent:true}),
+  -20.08,1.55,9).rotation.y=Math.PI/2;
+/* 后侧铁丝网 + 立柱 + 顶杆 */
+var chainMat=new THREE.MeshBasicMaterial({map:chainTex,color:0x9fb0c0,
+  transparent:true,opacity:0.75,depthWrite:false,side:THREE.DoubleSide});
+plane(46,2.0,chainMat,0,1.0,-13.6);
+for(var fx2=-23;fx2<=23;fx2+=4){
+  box(0.13,2.25,0.13,mat(0x3c4248),fx2,1.12,-13.6);
+}
+box(46,0.1,0.1,mat(0x3c4248),0,2.2,-13.6);
+/* 大门：两扇铁门，一扇开着 */
+box(4.4,2.0,0.1,new THREE.MeshLambertMaterial({map:chainTex,color:0x9fb0c0,
+  transparent:true,opacity:0.8,side:THREE.DoubleSide}),-2.4,1.05,-13.5);
+var gateLeaf=box(4.4,2.0,0.1,new THREE.MeshLambertMaterial({map:chainTex,color:0x9fb0c0,
+  transparent:true,opacity:0.8,side:THREE.DoubleSide}),2.4,1.05,-11.6);
+gateLeaf.rotation.y=1.25;
+box(0.2,2.6,0.2,mat(0x4a5058),-4.7,1.3,-13.4);
+box(0.2,2.6,0.2,mat(0x4a5058),4.7,1.3,-13.4);
+
+/* ============ 门卫室 ============ */
+box(3.4,2.6,3.0,mat(0x3b4046),-16.6,1.3,-9.2);
+box(3.9,0.16,3.5,mat(0x232830),-16.6,2.72,-9.2);
+var winEmis=new THREE.MeshBasicMaterial({color:0xffd28a});
+plane(1.5,0.9,winEmis,-16.6,1.75,-7.68);
+glow(0xffc98c,2.6,0.32,-16.6,1.9,-7.5);
+var guardLight=new THREE.PointLight(0xffc98c,1.1,9,2);guardLight.position.set(-16.6,1.9,-7.2);scene.add(guardLight);
+box(0.12,0.5,0.12,mat(0x2a2f34),-17.9,3.05,-9.2);
+
+/* ============ 路灯 ============ */
+function lamp(x,z,h,pw){
+  box(0.2,h,0.2,mat(0x3f454c),x,h/2,z).castShadow=true;
+  box(0.14,0.14,1.6,mat(0x3f454c),x,h-0.06,z-0.8);
+  var head=box(0.62,0.14,0.3,new THREE.MeshBasicMaterial({color:0xffe4b4}),x,h-0.1,z-1.55);
+  glow(0xffca86,3.4,0.55,x,h-0.12,z-1.55);
+  var pl=new THREE.PointLight(0xffdcb8,pw,19,2);pl.position.set(x,h-0.2,z-1.55);scene.add(pl);
+  /* 地面光斑 + 湿反光条 */
+  plane(9,9,new THREE.MeshBasicMaterial({map:glowTex,color:0xffb579,
+    transparent:true,opacity:0.13,blending:THREE.AdditiveBlending,depthWrite:false}),
+    x,0.006,z-1.55,-Math.PI/2);
+  plane(1.6,10,new THREE.MeshBasicMaterial({map:glowTex,color:0xffa860,
+    transparent:true,opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}),
+    x,0.007,z+3.4,-Math.PI/2);
+}
+lamp(-6.4,4.6,6.4,2.4);
+lamp(4.2,6.4,6.0,2.2);
+lamp(-11.4,-3.2,6.6,2.0);
+lamp(9.8,-10.2,6.2,2.0);
+
+/* ============ 电线杆 + 电线 ============ */
+function pole(x,z){
+  box(0.24,7.4,0.24,mat(0x363b41),x,3.7,z);
+  box(1.9,0.12,0.12,mat(0x363b41),x,6.9,z);
+  [-0.75,0,0.75].forEach(function(o){box(0.08,0.26,0.08,mat(0x6a6f74),x+o,7.08,z);});
+  return {x:x,z:z,top:7.06};
+}
+var pa1=pole(-18.4,-2.2),pa2=pole(-18.4,7.4);
+function wire(a,b,sag,color){
+  var pts=[];
+  for(var i=0;i<=10;i++){
+    var t=i/10;
+    pts.push(new THREE.Vector3(a.x+(b.x-a.x)*t,
+      a.top+(b.top-a.top)*t-Math.sin(t*Math.PI)*sag,a.z+(b.z-a.z)*t));
+  }
+  var g=new THREE.BufferGeometry().setFromPoints(pts);
+  scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:color,fog:true})));
+}
+wire({x:-18.4,top:7.06,z:-2.2},{x:-18.4,top:7.06,z:7.4},0.9,0x1a1e24);
+wire({x:-17.7,top:7.06,z:-2.2},{x:-11.4,top:6.5,z:-3.2},0.6,0x1a1e24);
+wire({x:-19.1,top:7.06,z:-2.2},{x:-22.6,top:8.4,z:2},0.5,0x1a1e24);
+
+/* ============ 杂物：托盘 / 油桶 / 纸箱 / 垃圾桶 / 消防栓 / 叉车 ============ */
+var woodMat=mat(0x463a2d),drumMat=mat(0x364539),boxMat=mat(0x574a38);
+function pallet(x,z,rot,n){
+  var g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=rot||0;scene.add(g);
+  for(var i=0;i<n;i++){
+    box(1.15,0.09,0.95,woodMat,0,0.08+i*0.16,0,g);
+    box(1.15,0.05,0.09,mat(0x3f3228),0,0.16+i*0.16,0.4,g);
+    box(1.15,0.05,0.09,mat(0x3f3228),0,0.16+i*0.16,-0.4,g);
+  }
+  /* 顶上压两只纸箱 */
+  box(0.62,0.5,0.5,boxMat,-0.2,0.36+n*0.16,0.05,g);
+  box(0.5,0.4,0.44,boxMat,0.28,0.31+n*0.16,-0.1,g);
+  return g;
+}
+pallet(-12.4,11.2,0.2,3);
+pallet(-14.6,8.4,-0.5,2);
+pallet(13.6,0.6,0.9,2);
+
+var drumGeo=new THREE.CylinderGeometry(0.29,0.29,0.88,10);
+[[-15.8,5.2],[-15.2,5.8],[-16.4,5.9],[14.2,-8.2],[14.8,-7.6]].forEach(function(p){
+  var d=new THREE.Mesh(drumGeo,drumMat);d.position.set(p[0],0.44,p[1]);scene.add(d);
+  var rim=new THREE.Mesh(new THREE.CylinderGeometry(0.31,0.31,0.06,10),mat(0x33463a));
+  rim.position.set(p[0],0.72,p[1]);scene.add(rim);
+});
+/* 垃圾桶 */
+box(0.58,0.86,0.58,mat(0x2a3a30),-16.4,0.43,10.9);
+box(0.66,0.07,0.66,mat(0x22302a),-16.4,0.89,10.9);
+box(0.5,0.04,0.5,mat(0x141c18),-16.4,0.86,10.9);
+/* 消防栓 */
+var hyd=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.16,0.72,8),mat(0x4f211a));
+hyd.position.set(-7.2,0.36,12.2);scene.add(hyd);
+box(0.42,0.1,0.12,mat(0x4f211a),-7.2,0.5,12.2);
+box(0.16,0.12,0.16,mat(0x622c20),-7.2,0.78,12.2);
+/* 叉车 */
+(function(){
+  var g=new THREE.Group();g.position.set(-9.6,0,4.4);g.rotation.y=0.5;scene.add(g);
+  box(1.5,0.9,2.0,mat(0x7a6420),0,0.75,0,g);         /* 车身 */
+  box(1.2,0.1,1.0,mat(0x2a2f34),0,1.24,-0.2,g);      /* 座垫 */
+  box(1.3,0.7,0.7,mat(0x2a2f34),0,1.55,0.35,g);      /* 护顶架 */
+  box(0.1,1.9,0.1,mat(0x3a3f45),-0.6,1.8,0.95,g);    /* 门架 */
+  box(0.1,1.9,0.1,mat(0x3a3f45),0.6,1.8,0.95,g);
+  box(1.3,0.1,0.1,mat(0x3a3f45),0,2.72,0.95,g);
+  box(0.1,0.1,1.2,mat(0x555b60),-0.45,0.2,1.6,g);    /* 货叉 */
+  box(0.1,0.1,1.2,mat(0x555b60),0.45,0.2,1.6,g);
+  [[0.68,0.55],[-0.68,0.55],[0.68,-0.5],[-0.68,-0.5]].forEach(function(w){
+    var wh=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.24,10),mat(0x14161a));
+    wh.rotation.z=Math.PI/2;wh.position.set(w[0],0.32,w[1]);g.add(wh);
+  });
+  var hl=new THREE.PointLight(0xffd27a,0.35,5,2);hl.position.set(-9.6,1.2,3.4);scene.add(hl);
+})();
+/* 装卸平台边的塑料布 / 垃圾袋 */
+[[-16.2,12.4],[-15.4,12.9]].forEach(function(p){
+  var b=new THREE.Mesh(new THREE.SphereGeometry(0.34,7,5),mat(0x23282c));
+  b.scale.set(1,0.75,1);b.position.set(p[0],0.26,p[1]);scene.add(b);
+});
+
+/* ============ 门口近景 ============ */
+/* 台阶前沿的警戒漆（黄黑斜条，褪色） */
+var warnTex=mkTex(64,12,function(x,w,h){
+  x.fillStyle='#3c3a2e';x.fillRect(0,0,w,h);
+  for(var i=-h;i<w;i+=12){
+    x.fillStyle='rgba(150,132,52,0.75)';x.beginPath();
+    x.moveTo(i,0);x.lineTo(i+7,0);x.lineTo(i+7+h,h);x.lineTo(i+h,h);x.closePath();x.fill();
+  }
+});
+warnTex.wrapS=THREE.RepeatWrapping;warnTex.repeat.set(6,1);
+plane(4.4,0.13,new THREE.MeshLambertMaterial({map:warnTex,color:0x9a9584}),0,0.128,16.3);
+/* 门口两道轮胎痕 */
+var trackMat=new THREE.MeshBasicMaterial({map:glowTex,color:0x14171a,
+  transparent:true,opacity:0.38,depthWrite:false});
+[[-1.5,13.2,5.4],[1.9,13.4,5.0]].forEach(function(p){
+  plane(0.5,p[2],trackMat,p[0],0.011,p[1],-Math.PI/2);
+});
+/* 门前积水：把门里的暖光拉长一条 */
+plane(3.2,4.6,new THREE.MeshBasicMaterial({map:glowTex,color:0xffbe7a,
+  transparent:true,opacity:0.13,blending:THREE.AdditiveBlending,depthWrite:false}),
+  0.4,0.013,13.4,-Math.PI/2);
+
+/* ============ 中景：让空地上有东西可看 ============ */
+/* 减速带：黄黑斜条 */
+var humpTex=mkTex(128,16,function(x,w,h){
+  x.fillStyle='#35322a';x.fillRect(0,0,w,h);
+  for(var i=-h;i<w;i+=16){
+    x.fillStyle='#5a5226';x.beginPath();
+    x.moveTo(i,0);x.lineTo(i+8,0);x.lineTo(i+8+h,h);x.lineTo(i+h,h);
+    x.closePath();x.fill();
+  }
+});
+humpTex.wrapS=THREE.RepeatWrapping;humpTex.repeat.set(14,1);
+plane(16,0.34,new THREE.MeshLambertMaterial({map:humpTex}),1.5,0.04,3.2,-Math.PI/2);
+box(16,0.07,0.34,mat(0x3a382c),1.5,0.035,3.4);
+/* 排水篦子 */
+var grateTex=mkTex(64,32,function(x,w,h){
+  x.fillStyle='#1b1f24';x.fillRect(0,0,w,h);
+  for(var i=2;i<w;i+=8){x.fillStyle='#33383e';x.fillRect(i,2,4,h-4);}
+});
+plane(6.4,0.42,new THREE.MeshLambertMaterial({map:grateTex}),0,0.014,15.2,-Math.PI/2);
+[[-4.2,2.6],[9.8,-8.4]].forEach(function(p){
+  plane(1.5,0.7,new THREE.MeshLambertMaterial({map:grateTex}),p[0],0.012,p[1],-Math.PI/2);
+});
+/* 出口导视牌 */
+var exitTex=mkTex(160,80,function(x,w,h){
+  x.fillStyle='#1d2a33';x.fillRect(0,0,w,h);
+  x.strokeStyle='#cfcbb4';x.lineWidth=3;x.strokeRect(4,4,w-8,h-8);
+  x.fillStyle='#e2ddc6';x.textAlign='center';x.textBaseline='middle';
+  x.font='700 30px "Microsoft YaHei",sans-serif';x.fillText('出 口',w/2-10,h/2);
+  x.beginPath();x.moveTo(w-30,h/2-11);x.lineTo(w-12,h/2);x.lineTo(w-30,h/2+11);
+  x.closePath();x.fill();
+});
+(function(){
+  box(0.09,2.2,0.09,mat(0x3a4046),14.4,1.1,-9.4);
+  var p=plane(1.5,0.75,new THREE.MeshBasicMaterial({map:exitTex,side:THREE.DoubleSide}),
+    14.4,2.1,-9.35);
+  p.rotation.y=Math.PI+0.5;
+  glow(0xffca86,1.1,0.18,14.4,2.1,-9.3);
+})();
+/* 苫布料堆 */
+(function(){
+  var t=box(4.6,1.1,2.8,mat(0x2b3038),-14.6,0.55,-2.6);
+  t.rotation.y=-0.22;
+  box(4.2,0.5,2.4,mat(0x353b44),-14.6,1.3,-2.6).rotation.y=-0.22;
+  box(0.06,0.9,2.6,mat(0x22262c),-12.4,0.5,-2.5).rotation.y=-0.22;
+})();
+/* 一辆停在远处的旧车（只做剪影，不抢主体） */
+(function(){
+  var g=new THREE.Group();g.position.set(-11.5,0,-8.2);g.rotation.y=0.9;scene.add(g);
+  box(1.8,0.6,4.1,mat(0x2a3038),0,0.55,0,g);
+  box(1.6,0.5,1.8,mat(0x232a32),0,1.1,-0.2,g);
+  [[0.85,1.3],[-0.85,1.3],[0.85,-1.3],[-0.85,-1.3]].forEach(function(w){
+    var wh=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.22,10),mat(0x121418));
+    wh.rotation.z=Math.PI/2;wh.position.set(w[0],0.32,w[1]);g.add(wh);
+  });
+})();
+/* 地面油渍 */
+var oilMat=new THREE.MeshBasicMaterial({map:glowTex,color:0x05070a,
+  transparent:true,opacity:0.55,depthWrite:false});
+[[5.2,-4.6,3.4,2.2],[-2.2,0.6,2.6,1.6],[11.2,-1.2,2.2,1.4]].forEach(function(p){
+  plane(p[2],p[3],oilMat,p[0],0.009,p[1],-Math.PI/2);
+});
+
+/* ============ 车 ============ */
+var carG=new THREE.Group();carG.position.set(6.5,0,-1.6);scene.add(carG);
+/* 车漆：金属漆 + 清漆高光，夜里在路灯下有明暗过渡，不再是死板一块绿 */
+var paintMat=new THREE.MeshStandardMaterial({color:0x54705b,roughness:0.3,metalness:0.55});
+var paintDark=new THREE.MeshStandardMaterial({color:0x3a4c40,roughness:0.35,metalness:0.4});
+box(1.88,0.6,4.32,paintMat,0,0.56,0,carG).castShadow=true;
+box(1.7,0.16,4.1,paintDark,0,0.9,0,carG).castShadow=true;
+/* 车顶 + 前后风挡斜切（用两个薄板做倾角）*/
+box(1.58,0.44,1.86,new THREE.MeshLambertMaterial({color:0x1a242a}),0,1.06,-0.25,carG);
+box(1.5,0.14,1.72,mat(0x41533f),0,1.34,-0.25,carG);
+var glassMat=new THREE.MeshStandardMaterial({color:0x18242c,roughness:0.12,metalness:0.7});
+var wsF=box(1.5,0.5,0.06,glassMat,0,1.16,0.9,carG);
+wsF.rotation.x=0.42;
+var wsB=box(1.5,0.48,0.06,glassMat,0,1.16,-1.4,carG);
+wsB.rotation.x=-0.36;
+/* 车窗侧面 */
+[-0.83,0.83].forEach(function(sx){
+  box(0.04,0.4,1.7,new THREE.MeshLambertMaterial({color:0x1a242a}),sx,1.16,-0.25,carG);
+});
+/* 车轮 + 轮毂 */
+[[0.88,1.34],[-0.88,1.34],[0.88,-1.32],[-0.88,-1.32]].forEach(function(w){
+  var wh=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.34,0.24,12),mat(0x121418));
+  wh.rotation.z=Math.PI/2;wh.position.set(w[0],0.34,w[1]);carG.add(wh);
+  var hb=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.17,0.26,8),mat(0x6d7378));
+  hb.rotation.z=Math.PI/2;hb.position.set(w[0],0.34,w[1]);carG.add(hb);
+});
+/* 后视镜、门把手、牌照、尾灯 */
+[-1.0,1.0].forEach(function(sx){
+  box(0.18,0.1,0.12,mat(0x2d3830),sx,1.1,0.72,carG);
+});
+[-0.86,0.86].forEach(function(sx){box(0.16,0.05,0.06,mat(0x8d9296),sx,0.82,-0.5,carG);});
+box(0.46,0.13,0.04,mat(0xcfd2b4),0,0.56,2.18,carG);
+box(0.46,0.13,0.04,mat(0xcfd2b4),0,0.56,-2.18,carG);
+[-0.58,0.58].forEach(function(sx){
+  var tl=box(0.46,0.13,0.06,mat(0xa8342a),sx,0.66,2.16,carG);
+  tl.material.emissive=new THREE.Color(0x6e1a12);
+  box(0.3,0.1,0.05,mat(0xd8d3bd),sx*0.86,0.9,2.16,carG);
+});
+glow(0xff5a3c,0.5,0.22,-0.58,0.68,2.22,carG);
+glow(0xff5a3c,0.5,0.22,0.58,0.68,2.22,carG);
+/* 前大灯：灯碗 + 冷白光晕，车头朝 -z */
+[-0.58,0.58].forEach(function(sx){
+  box(0.4,0.16,0.05,new THREE.MeshBasicMaterial({color:0xf4f6ff}),sx,0.68,-2.18,carG);
+  glow(0xdce8ff,0.85,0.55,sx,0.68,-2.22,carG);
+});
+var tailGlow=new THREE.PointLight(0xff5a3c,0.9,5,2);tailGlow.position.set(6.5,0.7,0.7);scene.add(tailGlow);
+var carLight=new THREE.PointLight(0x9fb8d8,1.3,9,2);carLight.position.set(6.5,1.5,-1.6);scene.add(carLight);
+/* 大灯打在地上的两道光锥：GTA 雨夜那味儿 */
+var headBeamMat=new THREE.MeshBasicMaterial({map:glowTex,color:0xcfe0ff,
+  transparent:true,opacity:0.13,blending:THREE.AdditiveBlending,depthWrite:false,fog:true});
+[6.5-0.58,6.5+0.58].forEach(function(px){
+  var bm=plane(1.5,11,headBeamMat,px,0.009,-8,-Math.PI/2);
+  bm.rotation.z=-0.06;
+});
+/* 车底接触阴影 */
+plane(2.6,5.4,new THREE.MeshBasicMaterial({map:glowTex,color:0x000000,
+  transparent:true,opacity:0.55,depthWrite:false}),6.5,0.003,-1.6,-Math.PI/2);
+/* 车下地面倒影（拉长的绿色暗影 + 尾灯红光） */
+plane(2.0,5.2,new THREE.MeshBasicMaterial({map:glowTex,color:0x2c3a30,
+  transparent:true,opacity:0.5,blending:THREE.AdditiveBlending,depthWrite:false}),
+  6.5,0.005,-1.6,-Math.PI/2);
+plane(1.2,3.4,new THREE.MeshBasicMaterial({map:glowTex,color:0x7a2418,
+  transparent:true,opacity:0.22,blending:THREE.AdditiveBlending,depthWrite:false}),
+  6.5,0.006,2.4,-Math.PI/2);
+
+/* ============ 玩家角色（奶蛙，第三人称的视觉锚点）============ */
+/* GTA 防晕的关键：画面里有个固定角色当参照物，相机远远跟在后面，
+   光流速度比第一人称低得多，人就不容易晕。 */
+var hero=new THREE.Group();scene.add(hero);
+/* 角色用 Basic 固定色：夜景里也要是明确的绿色，完全不受灯光和色调映射洗白 */
+var skin=new THREE.MeshBasicMaterial({color:0x4e8f34});
+var bellyMat=new THREE.MeshBasicMaterial({color:0xbfc99a});
+var eyeW=new THREE.MeshBasicMaterial({color:0xffffff});
+var eyeB=new THREE.MeshBasicMaterial({color:0x181c18});
+var torso=new THREE.Mesh(new THREE.SphereGeometry(0.36,12,10),skin);
+torso.scale.set(1,1.15,0.85);torso.position.y=0.72;hero.add(torso);
+var bellyM=new THREE.Mesh(new THREE.SphereGeometry(0.27,12,10),bellyMat);
+bellyM.scale.set(0.9,1.05,0.5);bellyM.position.set(0,0.7,-0.24);hero.add(bellyM);
+var headM=new THREE.Mesh(new THREE.SphereGeometry(0.3,12,10),skin);
+headM.position.y=1.26;headM.scale.set(1,0.9,0.95);hero.add(headM);
+/* 眼睛朝 -z：角色默认面向 -z（和相机初始朝向一致） */
+[-0.13,0.13].forEach(function(ex){
+  var ew=new THREE.Mesh(new THREE.SphereGeometry(0.1,10,8),eyeW);
+  ew.position.set(ex,1.36,-0.26);hero.add(ew);
+  var eb=new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6),eyeB);
+  eb.position.set(ex,1.36,-0.34);hero.add(eb);
+});
+/* 两条腿单独成组，走路时摆动 */
+var legL=new THREE.Group(),legR=new THREE.Group();
+[-0.16,0.16].forEach(function(lx,i){
+  var lg=i?legR:legL;lg.position.set(lx,0.5,0);hero.add(lg);
+  var lm=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.11,0.5,8),skin);
+  lm.position.y=-0.25;lg.add(lm);
+  var foot=new THREE.Mesh(new THREE.SphereGeometry(0.13,8,6),skin);
+  foot.scale.set(1,0.5,1.4);foot.position.set(0,-0.48,-0.06);lg.add(foot);
+});
+[-0.35,0.35].forEach(function(ax){
+  var arm=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.08,0.42,8),skin);
+  arm.rotation.z=ax>0?-0.35:0.35;arm.position.set(ax,0.82,0);hero.add(arm);
+});
+hero.position.set(player.x,0,player.z);
+
+/* ============ 围栏外的远景 ============ */
+/* 相邻厂房的剪影 */
+/* 远处厂房的立面用一张窗格贴图，比零星几个亮方块更像一片城 */
+var farFacadeTex=mkTex(128,128,function(x,w,h){
+  x.fillStyle='#121821';x.fillRect(0,0,w,h);
+  for(var yy=6;yy<h-8;yy+=14)for(var xx=6;xx<w-8;xx+=12){
+    if(Math.random()<0.68)continue;
+    var warm=Math.random()<0.7;
+    x.fillStyle=warm?'rgba(255,198,126,'+(0.26+Math.random()*0.5)+')'
+                    :'rgba(150,192,224,'+(0.2+Math.random()*0.35)+')';
+    x.fillRect(xx,yy,6,6);
+  }
+});
+farFacadeTex.wrapS=farFacadeTex.wrapT=THREE.RepeatWrapping;
+farFacadeTex.repeat.set(2,1.4);
+[[-34,-30,26,9],[12,-38,30,11],[38,-26,20,7]].forEach(function(b){
+  var m2=new THREE.MeshLambertMaterial({map:farFacadeTex,color:0x9aa2ac});
+  box(b[2],b[3],14,m2,b[0],b[3]/2,b[1]);
+});
+/* 烟囱 */
+var stack=new THREE.Mesh(new THREE.CylinderGeometry(0.7,1.0,26,9),mat(0x151a20));
+stack.position.set(26,13,-44);scene.add(stack);
+var stackLight=glow(0xff4436,1.0,0.5,26,26.4,-44);
+/* 远处城市光点 */
+var pts=[];
+for(var j=0;j<150;j++){
+  pts.push((Math.random()-0.5)*220, 1.5+Math.random()*16, -46-Math.random()*90);
+}
+var pg=new THREE.BufferGeometry();
+pg.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+scene.add(new THREE.Points(pg,new THREE.PointsMaterial({
+  color:0xa8bed2,size:0.5,sizeAttenuation:true,transparent:true,opacity:0.5,fog:false})));
+/* 场外两棵剪影树 */
+[[-26,-16],[30,-18]].forEach(function(p){
+  var t=new THREE.Group();t.position.set(p[0],0,p[1]);scene.add(t);
+  var trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.3,3.2,6),mat(0x0e1310));
+  trunk.position.y=1.6;t.add(trunk);
+  var c1=new THREE.Mesh(new THREE.ConeGeometry(2.4,6.4,7),mat(0x0d120f));
+  c1.position.y=5.6;t.add(c1);
+  var c2=new THREE.Mesh(new THREE.ConeGeometry(1.6,3.8,7),mat(0x0d120f));
+  c2.position.y=9.0;t.add(c2);
+});
+
+/* ============ 雨 ============ */
+var RN=1100;
+var rp=new Float32Array(RN*6),rv=new Float32Array(RN);
+for(var q=0;q<RN;q++){
+  var rx=(Math.random()-0.5)*50,ry=Math.random()*16,rz=(Math.random()-0.5)*46;
+  /* 雨丝稍微倾斜，尾端更长，落在地上溅起的感觉更像真实夜雨 */
+  rp[q*6]=rx;rp[q*6+1]=ry;rp[q*6+2]=rz;
+  rp[q*6+3]=rx+0.16;rp[q*6+4]=ry-0.82;rp[q*6+5]=rz+0.06;
+  rv[q]=9+Math.random()*5;
+}
+var rg=new THREE.BufferGeometry();
+rg.setAttribute('position',new THREE.BufferAttribute(rp,3));
+var rain=new THREE.LineSegments(rg,new THREE.LineBasicMaterial({
+  color:0xa9bed2,transparent:true,opacity:0.34}));
+rain.frustumCulled=false;scene.add(rain);
+/* 地面水花：一池小圆环，随机闪一下 */
+var ripples=[];
+for(var ri=0;ri<14;ri++){
+  var m=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.5),
+    new THREE.MeshBasicMaterial({map:ringTex,color:0xa8c0d4,transparent:true,
+      opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.y=0.008;scene.add(m);
+  ripples.push({m:m,t:Math.random()*1.2,dur:0.7+Math.random()*0.6});
+}
+function resetRipple(r){
+  r.m.position.x=(Math.random()-0.5)*34;
+  r.m.position.z=(Math.random()-0.5)*24+2;
+  r.m.material.opacity=0.5;r.m.scale.set(0.3,0.3,1);
+  r.t=0;r.dur=0.6+Math.random()*0.7;
+}
+
+/* ============ 音：雨声 ============ */
+var actx=null,rainGain=null;
+function startAudio(){
+  if(actx){syncSound();return;}
+  try{
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    var len=actx.sampleRate*2;
+    var buf=actx.createBuffer(1,len,actx.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=(Math.random()*2-1)*0.5;
+    var src=actx.createBufferSource();src.buffer=buf;src.loop=true;
+    var bp=actx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1800;bp.Q.value=0.5;
+    var lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=4200;
+    rainGain=actx.createGain();rainGain.gain.value=0.0;
+    src.connect(bp);bp.connect(lp);lp.connect(rainGain);rainGain.connect(actx.destination);
+    src.start();
+    rainGain.gain.linearRampToValueAtTime(0.055,actx.currentTime+1.5);
+    syncSound();
+  }catch(e){}
+}
+
+/* ============ 控制 ============ */
+var keys={},dragging=false,lastX=0,lastY=0,started=false,leaving=false;
+window.addEventListener('keydown',function(e){
+  if(e.key.toLowerCase()==='m'){
+    if(!e.repeat&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();toggleSound();}
+    return;
+  }
+  keys[e.key.toLowerCase()]=true;
+  if(e.key.toLowerCase()==='e')tryBoard();
+});
+window.addEventListener('keyup',function(e){keys[e.key.toLowerCase()]=false;});
+canvas.addEventListener('mousedown',function(e){dragging=true;lastX=e.clientX;lastY=e.clientY;});
+window.addEventListener('mouseup',function(){dragging=false;});
+window.addEventListener('mousemove',function(e){
+  if(!dragging)return;
+  /* 第三人称轨道镜头：往右拖＝镜头绕到角色右侧往右看，
+     只改目标角，主循环里弹簧跟随，不瞬移。 */
+  yawTarget-=(e.clientX-lastX)*0.0022;
+  pitchTarget-=(e.clientY-lastY)*0.0013;
+  pitchTarget=Math.max(-0.18,Math.min(0.55,pitchTarget));
+  lastX=e.clientX;lastY=e.clientY;
+});
+canvas.addEventListener('touchstart',function(e){
+  if(!e.touches.length)return;
+  dragging=true;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;
+},{passive:true});
+window.addEventListener('touchend',function(){dragging=false;});
+window.addEventListener('touchmove',function(e){
+  if(!dragging||!e.touches.length)return;
+  var dx=e.touches[0].clientX-lastX,dy=e.touches[0].clientY-lastY;
+  yawTarget-=dx*0.0022;pitchTarget-=dy*0.0013;
+  pitchTarget=Math.max(-0.18,Math.min(0.55,pitchTarget));
+  lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;
+},{passive:true});
+
+var hintEl=document.getElementById('hint');
+function tryBoard(){
+  if(leaving||!started)return;
+  var d=Math.hypot(player.x-carG.position.x,player.z-carG.position.z);
+  if(d>4.4)return;
+  leaving=true;
+  document.getElementById('fade').style.opacity='1';
+  if(rainGain&&actx)rainGain.gain.linearRampToValueAtTime(0,actx.currentTime+0.9);
+  setTimeout(function(){document.getElementById('cap').classList.add('on');},450);
+  setTimeout(function(){
+    var next=new URL('outdoor.html',location.href);
+    if(FROM_FACTORY)next.searchParams.set('from','factory');
+    if(ROUTE)next.searchParams.set('route',ROUTE);
+    var act=HANDOFF&&HANDOFF.act!=null?HANDOFF.act:routeQuery.get('act');
+    if(act!=null&&String(act)!=='')next.searchParams.set('act',String(act));
+    window.NightMusic.handoff();
+    location.href=next.href;
+  },2100);
+}
+
+/* ============ 主循环 ============ */
+var clock=new THREE.Clock();
+var tAll=0;
+function loop(){
+  requestAnimationFrame(loop);
+  var dt=Math.min(0.05,clock.getDelta());
+  tAll+=dt;
+  /* 角度缓动：鼠标只给目标角，慢慢跟过去 */
+  var es=Math.min(1,dt*6.5);
+  yaw+=(yawTarget-yaw)*es;
+  pitch+=(pitchTarget-pitch)*es;
+
+  var walking=false;
+  if(started&&!leaving){
+    var sp=3.0*dt;
+    /* 移动方向跟着镜头朝向：W 永远是"往画面里走" */
+    var fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+    var mx=0,mz=0;
+    if(keys['w']||keys['arrowup']){mx+=fx;mz+=fz;}
+    if(keys['s']||keys['arrowdown']){mx-=fx;mz-=fz;}
+    if(keys['a']||keys['arrowleft']){mx+=fz;mz-=fx;}
+    if(keys['d']||keys['arrowright']){mx-=fz;mz+=fx;}
+    var len=Math.hypot(mx,mz);
+    if(len>0){
+      mx/=len;mz/=len;walking=true;
+      player.x=Math.max(-19,Math.min(19,player.x+mx*sp));
+      player.z=Math.max(-12.6,Math.min(18.2,player.z+mz*sp));
+      /* 别让玩家钻进车里 */
+      var cdx=player.x-carG.position.x,cdz=player.z-carG.position.z;
+      var cd=Math.hypot(cdx,cdz);
+      if(cd<2.5&&cd>0.001){
+        player.x=carG.position.x+cdx/cd*2.5;
+        player.z=carG.position.z+cdz/cd*2.5;
+      }
+      /* 角色朝移动方向转身（平滑），不是瞬移。
+         模型脸朝 -z：rotation.y=θ 时朝向 (-sinθ,-cosθ)，
+         所以要朝 (mx,mz) 走，θ=atan2(-mx,-mz)。之前写成 atan2(mx,-mz)，
+         横移时角色正好背对前进方向倒着走，看着就"全反了"、非常晕。 */
+      var want=Math.atan2(-mx,-mz);
+      var df=want-player.face;
+      while(df>Math.PI)df-=Math.PI*2;
+      while(df<-Math.PI)df+=Math.PI*2;
+      player.face+=df*Math.min(1,dt*9);
+    }
+    var dd=Math.hypot(player.x-carG.position.x,player.z-carG.position.z);
+    hintEl.className=(dd<4.4?'on':'');
+    hintEl.textContent='按 E 上车';
+  }
+
+  /* 角色：站到玩家位置，走路摆腿。晃动只作用在角色身上，绝对不传给相机 */
+  hero.position.set(player.x,0,player.z);
+  hero.rotation.y=player.face;
+  var sw=walking?Math.sin(tAll*9)*0.5:0;
+  legL.rotation.x+=(sw-legL.rotation.x)*Math.min(1,dt*12);
+  legR.rotation.x+=(-sw-legR.rotation.x)*Math.min(1,dt*12);
+  hero.position.y=walking?Math.abs(Math.sin(tAll*9))*0.035:0;
+
+  /* ---- 第三人称弹簧相机 ----
+     目标点：角色正后方 CAM_DIST 米、高 CAM_H，pitch 决定俯视角度。
+     用与帧率无关的指数平滑跟过去：角色动，相机慢半拍，光流平缓不晕。 */
+  var back=CAM_DIST*Math.cos(pitch);
+  var tgtX=player.x+Math.sin(yaw)*back;
+  var tgtZ=player.z+Math.cos(yaw)*back;
+  var tgtY=CAM_H+CAM_DIST*Math.sin(pitch);
+  var k=1-Math.exp(-dt*5.0);
+  camPos.x+=(tgtX-camPos.x)*k;
+  camPos.y+=(tgtY-camPos.y)*k;
+  camPos.z+=(tgtZ-camPos.z)*k;
+  camera.position.copy(camPos);
+  /* 看向角色胸口稍上方，注视点也平滑，画面不会跟着脚步跳 */
+  var lk=1-Math.exp(-dt*7.0);
+  camLook.x+=(player.x-camLook.x)*lk;
+  camLook.y+=(1.1-camLook.y)*lk;
+  camLook.z+=(player.z-camLook.z)*lk;
+  camera.lookAt(camLook);
+  /* 雨 */
+  var pa=rg.attributes.position.array;
+  for(var i=0;i<RN;i++){
+    var dy=rv[i]*dt;
+    pa[i*6+1]-=dy;pa[i*6+4]-=dy;
+    if(pa[i*6+4]<0){
+      var nx=(Math.random()-0.5)*50,nz=(Math.random()-0.5)*46+2;
+      pa[i*6]=nx;pa[i*6+1]+=16;pa[i*6+2]=nz;
+      pa[i*6+3]=nx+0.16;pa[i*6+4]+=16;pa[i*6+5]=nz+0.06;
+    }
+  }
+  rg.attributes.position.needsUpdate=true;
+  /* 水花 */
+  for(var k=0;k<ripples.length;k++){
+    var r=ripples[k];r.t+=dt;
+    if(r.t>r.dur){resetRipple(r);continue;}
+    var kk=r.t/r.dur;
+    r.m.material.opacity=0.24*(1-kk);
+    var s=0.3+kk*1.5;r.m.scale.set(s,s,1);
+  }
+  /* 烟囱顶的红灯一明一暗 */
+  stackLight.material.opacity=0.28+0.3*(0.5+0.5*Math.sin(tAll*1.5));
+  renderer.render(scene,camera);
+}
+/* 调试机位：?cam=x,y,z（第三人称下 x,z 是角色位置）&look=yaw,pitch */
+(function(){
+  var q=new URLSearchParams(location.search);
+  if(q.has('cam')){
+    var c=q.get('cam').split(',').map(Number);
+    player.x=c[0];player.z=c[2];
+    var back=CAM_DIST*Math.cos(pitch);
+    camPos.set(player.x+Math.sin(yaw)*back,CAM_H+CAM_DIST*Math.sin(pitch),
+      player.z+Math.cos(yaw)*back);
+    camLook.set(player.x,1.1,player.z);
+    camera.position.copy(camPos);camera.lookAt(camLook);
+    hero.position.set(player.x,0,player.z);
+    if(q.has('look')){var l=q.get('look').split(',').map(Number);
+      yaw=yawTarget=l[0];pitch=pitchTarget=l[1]||0.16;}
+  }
+  if(q.has('start')){document.getElementById('start').style.display='none';started=true;}
+})();
+loop();
+
+document.getElementById('btnGo').onclick=function(){
+  window.NightMusic.start();
+  document.getElementById('start').style.display='none';
+  started=true;
+  startAudio();
+};
+</script>
+</body>
+</html>

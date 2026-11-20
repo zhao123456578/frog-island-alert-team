@@ -232,21 +232,46 @@ function dancing() { return !!dance; }
 const props = [];
 let active = null;
 let locked = false;
+let visibilityTest = null, inputGuard = null;
+function setVisibilityTest(fn) { visibilityTest = typeof fn === "function" ? fn : null; }
+function setInputGuard(fn) { inputGuard = typeof fn === "function" ? fn : null; }
 function setLock(v) { locked = v; if (v) { active = null; hint(null); } }
-function register(p) { p.radius = p.radius || 2.2; props.push(p); return p; }
+function getProp(id) { return props.find(p => p.id === id); }
+function unregister(id) {
+  const i = props.findIndex(p => p.id === id);
+  if (i < 0) return;
+  const p = props.splice(i, 1)[0];
+  if (active === p) { active = null; hint(null); }
+  return p;
+}
+function register(p) {
+  p.radius = p.radius || 2.2;
+  const i = p.id == null ? -1 : props.findIndex(prop => prop.id === p.id);
+  if (i < 0) props.push(p);
+  else {
+    if (active === props[i]) { active = null; hint(null); }
+    props[i] = p;
+  }
+  return p;
+}
 function clearProps() { props.length = 0; active = null; }
 function update(px, pz) {
-  if (locked || dialogOpen() || confirmOpen() || dancing() || els.ending.classList.contains("on")) { active = null; hint(null); return; }
+  if ((inputGuard && inputGuard() === false) || locked || dialogOpen() || confirmOpen() || dancing() || els.ending.classList.contains("on")) { active = null; hint(null); return; }
   let best = null, bestD = 1e9;
   for (const p of props) {
     if (p.enabled && !p.enabled()) continue;
     const d = Math.hypot(px - p.pos.x, pz - p.pos.z);
-    if (d < p.radius && d < bestD) { const lb = p.label(); if (lb) { best = p; bestD = d; best._lb = lb; } }
+    if (d < p.radius && d < bestD) {
+      const lb = p.label();
+      if (!lb || (visibilityTest && visibilityTest(p) === false)) continue;
+      best = p; bestD = d; best._lb = lb;
+    }
   }
   active = best;
   hint(best ? "<b>[E]</b> " + best._lb : null);
 }
 function interact() {
+  if ((inputGuard && inputGuard() === false) || els.ending.classList.contains("on")) { active = null; hint(null); return; }
   if (locked) return;
   if (dialogOpen()) { advanceDialog(); return; }
   if (confirmOpen() || dancing()) return;
@@ -291,7 +316,11 @@ function refreshPanel() {
 
 /* ===== 全局按键 ===== */
 window.addEventListener("keydown", e => {
-  if (e.code === "KeyE") { e.preventDefault(); interact(); return; }
+  if (e.code === "KeyE") {
+    const target = e.target;
+    if (e.repeat || (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))) return;
+    e.preventDefault(); interact(); return;
+  }
   if (dance && danceKey(e.code)) e.preventDefault();
 });
 
@@ -302,7 +331,7 @@ return {
   getUnlocked, allMainUnlocked, clearUnlocked,
   initUI, toast, hint, dialog, dialogOpen, confirm, closeConfirm, confirmOpen, ending,
   startDance, dancing,
-  register, clearProps, update, interact, getActive, setLock,
+  register, getProp, unregister, clearProps, update, interact, getActive, setLock, setVisibilityTest, setInputGuard,
   bindPanel, refreshPanel,
 };
 })();

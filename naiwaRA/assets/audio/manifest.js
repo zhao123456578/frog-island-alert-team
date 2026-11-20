@@ -428,5 +428,165 @@ window.SFX_DATA = [
     "dur": 70.47,
     "src": "sfx_frog_laugh_raw.m4a",
     "kb": 675
+  },
+  {
+    "id": "sfx_sc_roar",
+    "zh": "你吼那么大声干什么嘛",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "2018 年那晚的原声，楼上砸窗的动静隔着楼板都听得见",
+    "dur": 1.94,
+    "src": "memes/sfx_sc_roar.wav",
+    "kb": 121
+  },
+  {
+    "id": "sfx_sc_attitude",
+    "zh": "你的态度能不能好一点哦",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "被吵醒之后的第二句，语气比台词更欠揍",
+    "dur": 1.86,
+    "src": "memes/sfx_sc_attitude.wav",
+    "kb": 116
+  },
+  {
+    "id": "sfx_sc_window",
+    "zh": "那我凭什么关窗嘛",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "逻辑闭环，毫无破绽，谁也说服不了谁",
+    "dur": 1.44,
+    "src": "memes/sfx_sc_window.wav",
+    "kb": 90
+  },
+  {
+    "id": "sfx_sc_property",
+    "zh": "那你去物管啊",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "把问题优雅地转交给物业，堪称社区纠纷标准答案",
+    "dur": 1.20,
+    "src": "memes/sfx_sc_property.wav",
+    "kb": 75
+  },
+  {
+    "id": "sfx_sc_again",
+    "zh": "你再骂",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "最后的警告，三秒之内必有回响",
+    "dur": 0.80,
+    "src": "memes/sfx_sc_again.wav",
+    "kb": 50
+  },
+  {
+    "id": "sfx_sc_revive",
+    "zh": "你复活啦？",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "凌晨三点的问候，最适合从雾里飘出来",
+    "dur": 1.46,
+    "src": "memes/sfx_sc_revive.wav",
+    "kb": 91
+  },
+  {
+    "id": "sfx_sc_whatever",
+    "zh": "你觉得是那就是",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "不狡辩，摆烂的最高境界",
+    "dur": 2.66,
+    "src": "memes/sfx_sc_whatever.wav",
+    "kb": 166
+  },
+  {
+    "id": "sfx_sc_notmybiz",
+    "zh": "关我锤子事",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "甩锅的标准发音，一个字都不多",
+    "dur": 1.10,
+    "src": "memes/sfx_sc_notmybiz.wav",
+    "kb": 69
+  },
+  {
+    "id": "sfx_sc_eat",
+    "zh": "要恰饭的嘛",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "打工人哲学，理直气壮得让人无法反驳",
+    "dur": 2.90,
+    "src": "memes/sfx_sc_eat.wav",
+    "kb": 181
+  },
+  {
+    "id": "sfx_sc_stupidq",
+    "zh": "不要问这么弱智的问题嘛",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "被问烦了的第一反应，礼貌但不多",
+    "dur": 1.74,
+    "src": "memes/sfx_sc_stupidq.wav",
+    "kb": 109
+  },
+  {
+    "id": "sfx_sc_threedays",
+    "zh": "三天之内能撒谁心里没点数",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "西南地区限定威胁，语气比内容更狠",
+    "dur": 4.18,
+    "src": "memes/sfx_sc_threedays.wav",
+    "kb": 261
+  },
+  {
+    "id": "sfx_sc_niupi",
+    "zh": "真的牛批",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "阴阳怪气三连的收尾，越听越不对味",
+    "dur": 1.82,
+    "src": "memes/sfx_sc_niupi.wav",
+    "kb": 114
+  },
+  {
+    "id": "sfx_sc_sumimasen",
+    "zh": "斯米马赛",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "日语道歉，诚意约等于零",
+    "dur": 1.48,
+    "src": "memes/sfx_sc_sumimasen.wav",
+    "kb": 93
+  },
+  {
+    "id": "sfx_sc_cat",
+    "zh": "学猫叫",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "硬核猫叫，猫听了会沉默三秒",
+    "dur": 4.96,
+    "src": "memes/sfx_sc_cat.wav",
+    "kb": 310
+  },
+  {
+    "id": "sfx_sc_elegant",
+    "zh": "我这个人非常儒雅随和",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "自我评价，与事实略有出入",
+    "dur": 9.81,
+    "src": "memes/sfx_sc_elegant.wav",
+    "kb": 613
+  },
+  {
+    "id": "sfx_sc_laohuo",
+    "zh": "真的老火",
+    "cat": "memes",
+    "catZh": "人声玩梗",
+    "desc": "四川话，气到冒烟又拿你没办法",
+    "dur": 7.16,
+    "src": "memes/sfx_sc_laohuo.wav",
+    "kb": 448
   }
 ];

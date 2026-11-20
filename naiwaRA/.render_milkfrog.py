@@ -23,7 +23,7 @@ if bg:
     bg.inputs['Strength'].default_value = 0.8
 
 # 目标中心
-target = Vector((0, 0, 0.95))
+target = Vector((0, 0, 0.90))
 
 def area(name, loc, energy, size, color=(1,1,1)):
     data = bpy.data.lights.new(name, 'AREA')
@@ -40,9 +40,9 @@ area('Rim',   (0.0, -3.5, 4.0), 260, 4.0, (1.0, 1.0, 1.0))
 cam_data = bpy.data.cameras.new('PreviewCam')
 cam = bpy.data.objects.new('PreviewCam', cam_data)
 scene.collection.objects.link(cam)
-cam.location = (2.4, 4.4, 2.3)
+cam.location = (2.1, 3.8, 2.1)
 cam.rotation_euler = (target - cam.location).to_track_quat('-Z', 'Y').to_euler()
-cam_data.lens = 50
+cam_data.lens = 55
 scene.camera = cam
 
 # 材质预览着色无需（渲染用真实材质）

@@ -237,7 +237,7 @@
   <div class="meta">
     <div><span>FILE</span><b>milkfrog_no13.glb</b></div>
     <div><span>SOURCE</span><b>Blender 5.2.1 → glTF 2.0</b></div>
-    <div><span>BASE</span><b>奶龙基模 · 重上色 + 配件</b></div>
+    <div><span>BASE</span><b>奶龙基模 · 重上色（仅本体）</b></div>
   </div>
 </header>
 
@@ -248,7 +248,7 @@
     <div class="stat"><span>顶点</span><b id="s-vert">—</b></div>
     <div class="stat"><span>尺寸 W×D×H</span><b id="s-size">—</b></div>
     <div class="stat"><span>材质槽</span><b id="s-mat">—</b></div>
-    <div class="stat"><span>构件</span><b id="s-part">—</b></div>
+    <div class="stat"><span>网格</span><b id="s-part">—</b></div>
     <div class="stat"><span>骨骼 / 动画</span><b>0 / 0 <i>静态</i></b></div>
   </section>
 
@@ -262,7 +262,7 @@
     <div class="mats" id="mats"></div>
     <div class="src">
       基模 <b>奶龙 / Nailoong</b>(WeDai)·<b>milkfrog_no13.blend</b><br>
-      改色、奶瓶盖帽、NO.13 吊牌、小奶瓶包为后加。
+      已移除帽子、吊牌、奶瓶等全部道具，只保留本体；身体配色为后加。
     </div>
   </section>
 </aside>
@@ -287,8 +287,8 @@
   </div>
 </div>
 
-<div class="hint">拖拽旋转 · 滚轮缩放 · 双击复位 · 悬停模型看构件</div>
-<div class="credit">44,709 tris · 27,754 verts<br><b>assets/milkfrog_no13.blend</b></div>
+<div class="hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>
+<div class="credit">42,129 tris · 22,702 verts<br><b>assets/milkfrog_no13.blend</b></div>
 
 <div class="tip" id="tip"></div>
 
@@ -445,36 +445,15 @@ function applyCamera(){
 
 /* ---------------- 模型 ---------------- */
 const PART_META = {
-  MilkFrog_NO13_Body: {label:'身体', en:'BODY', order:1},
-  NO13_Cap:           {label:'奶瓶盖', en:'CAP', order:2},
-  NO13_CapRim:        {label:'盖圈', en:'RIM', order:3},
-  NO13_PackBottle:    {label:'奶瓶', en:'BOTTLE', order:4},
-  NO13_PackNipple:    {label:'奶嘴', en:'NIPPLE', order:5},
-  NO13_PackStrap:     {label:'背带', en:'STRAP', order:6},
-  NO13_Tag:           {label:'吊牌', en:'TAG', order:7},
-  NO13_TagCord:       {label:'吊绳', en:'CORD', order:8}
+  MilkFrog_NO13_Body: {label:'身体', en:'BODY', order:1}
 };
 const MAT_LABEL = {
   'yellow': '病奶白 · 主体',
   '材质': '荧光绿 · 虹膜',
   '材质.001': '墨黑 · 瞳孔',
-  '材质.002': '深褐 · 口腔',
-  'Cap_MilkWhite': '奶白 · 瓶盖',
-  'Cap_RustRed': '锈红 · 盖圈',
-  'Pack_Bottle': '乳白 · 奶瓶',
-  'Pack_Nipple': '乳胶 · 奶嘴',
-  'Tag_Paper': '纸白 · 吊牌',
-  'Tag_Ink': '墨色 · 吊绳'
+  '材质.002': '深褐 · 口腔'
 };
-const EXPLODE = {
-  NO13_Cap:        [0, 0.42, 0],
-  NO13_CapRim:     [0, 0.56, 0],
-  NO13_PackBottle: [0, 0.02, 0.62],
-  NO13_PackNipple: [0, 0.24, 0.62],
-  NO13_PackStrap:  [0, 0.02, 0.62],
-  NO13_Tag:        [0, 0.02, -0.62],
-  NO13_TagCord:    [0, 0.20, -0.62]
-};
+const EXPLODE = {};
 
 let root = null;
 let parts = [];
@@ -594,6 +573,15 @@ function onLoaded(gltf){
 
   buildPartRows();
   buildMatRows(matNames);
+
+  // 只剩一个网格时，构件列表和「拆件」没有意义，直接收起
+  if (parts.length <= 1) {
+    const sec = document.getElementById('parts').closest('section');
+    if (sec) sec.style.display = 'none';
+    const eb = document.getElementById('btnExplode');
+    if (eb) eb.style.display = 'none';
+    document.getElementById('showAll').style.display = 'none';
+  }
   if (document.querySelector('.credit')) {
     document.querySelector('.credit').innerHTML =
       Math.round(tri).toLocaleString('en-US') + ' tris · ' + vert.toLocaleString('en-US') +
@@ -654,6 +642,7 @@ function clearHover(){
   setHover(null, false);
 }
 function setHover(key, fromRow){
+  if (parts.length <= 1) { tip.classList.remove('on'); return; }
   if (key === hoverKey) return;
   if (hoverKey) {
     const prev = parts.find(x => x.key === hoverKey);

@@ -246,6 +246,11 @@ bsdf.inputs['Roughness'].default_value = 0.68
 nt.links.new(vc.outputs['Color'], bsdf.inputs['Base Color'])
 nt.links.new(bsdf.outputs['BSDF'], out_node.inputs['Surface'])
 
+# ---- 道具已按需求移除：只保留本体 ----
+for o in list(bpy.data.objects):
+    if o.name.startswith('NO13_'):
+        bpy.data.objects.remove(o, do_unlink=True)
+
 # ---- 保存 BLEND ----
 bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
 print("SAVED BLEND", OUT_BLEND)

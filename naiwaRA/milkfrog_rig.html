@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>奶蛙 NO.13 · 骨架与动作</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --panel:rgba(18,20,16,.76);
+    --line:rgba(196,206,168,.14);
+    --line-soft:rgba(196,206,168,.08);
+    --ink:#ece9da;
+    --dim:#8b8f7c;
+    --dim2:#5f6355;
+    --accent:#b7d06a;
+    --mono:"Cascadia Code","Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(120% 85% at 52% 4%, #1d2118 0%, #12140f 38%, #090a08 72%, #060705 100%);
+    color:var(--ink);font-family:var(--sans);overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:"";position:fixed;left:50%;bottom:-22vh;width:80vw;height:60vh;transform:translateX(-50%);
+    background:radial-gradient(50% 50% at 50% 50%, rgba(126,158,72,.13), transparent 70%);pointer-events:none;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:60;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+    opacity:.5;mix-blend-mode:overlay;
+  }
+  #stage{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  canvas.dragging{cursor:grabbing}
+
+  .hud-top{
+    position:fixed;z-index:10;left:0;right:0;top:0;
+    display:flex;align-items:flex-start;justify-content:space-between;
+    padding:26px 30px 0;pointer-events:none;
+  }
+  .kicker{font-family:var(--mono);font-size:9.5px;letter-spacing:.28em;color:var(--accent);text-transform:uppercase;opacity:.82;margin-bottom:9px}
+  h1{font-size:27px;font-weight:500;letter-spacing:.02em;line-height:1.1;display:flex;align-items:baseline;gap:10px}
+  h1 span{font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:3px 7px 2px;transform:translateY(-3px)}
+  .sub{margin-top:8px;font-size:11.5px;color:var(--dim);letter-spacing:.06em}
+  .meta{text-align:right;font-family:var(--mono);font-size:9.5px;line-height:2;color:var(--dim2);letter-spacing:.04em}
+  .meta div span{color:var(--dim);margin-right:8px}
+  .meta b{font-weight:400;color:#b6b9a6}
+
+  .panel{
+    position:fixed;z-index:12;left:30px;top:132px;width:272px;
+    max-height:calc(100vh - 210px);overflow:auto;overscroll-behavior:contain;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    backdrop-filter:blur(14px) saturate(1.15);-webkit-backdrop-filter:blur(14px) saturate(1.15);
+    box-shadow:0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+    padding:6px 16px 14px;scrollbar-width:thin;scrollbar-color:rgba(196,206,168,.22) transparent;
+  }
+  .panel::-webkit-scrollbar{width:5px}
+  .panel::-webkit-scrollbar-thumb{background:rgba(196,206,168,.2);border-radius:3px}
+  .panel section{padding:12px 0}
+  .panel section + section{border-top:1px solid var(--line-soft)}
+  .panel h2{font-family:var(--mono);font-size:9px;font-weight:400;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+  .tree{font-family:var(--mono);font-size:9.5px;line-height:1.95;color:var(--dim);white-space:pre;letter-spacing:-.01em}
+  .tree b{color:var(--ink);font-weight:400}
+  .tree i{color:var(--dim2);font-style:normal}
+  .note{font-size:9.5px;line-height:1.7;color:var(--dim2)}
+  .note b{color:var(--dim);font-weight:400}
+
+  .clip{
+    display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;
+    border-radius:7px;padding:7px 7px;cursor:pointer;color:var(--dim);
+    font-family:var(--sans);font-size:11.5px;text-align:left;transition:background .15s,color .15s;
+  }
+  .clip:hover{background:rgba(196,206,168,.06);color:var(--ink)}
+  .clip .ic{width:16px;flex:none;font-family:var(--mono);font-size:9px;color:var(--dim2)}
+  .clip .nm{flex:1;display:flex;align-items:baseline;gap:6px}
+  .clip .nm em{font-style:normal;font-family:var(--mono);font-size:8px;color:var(--dim2);letter-spacing:.08em}
+  .clip .dur{font-family:var(--mono);font-size:9px;color:var(--dim2)}
+  .clip.on{background:rgba(183,208,106,.1);color:var(--ink)}
+  .clip.on .ic,.clip.on .dur{color:var(--accent)}
+
+  .dock{
+    position:fixed;z-index:14;left:50%;bottom:26px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:4px;padding:7px;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
+    box-shadow:0 20px 50px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+    max-width:calc(100vw - 48px);overflow:hidden;
+  }
+  .grp{display:flex;align-items:center;gap:2px}
+  .sep{width:1px;height:18px;background:var(--line);margin:0 5px;flex:none}
+  .dock button{
+    display:flex;align-items:center;gap:6px;height:29px;padding:0 11px;border:0;border-radius:999px;
+    background:none;color:var(--dim);font-family:var(--sans);font-size:11px;letter-spacing:.02em;
+    cursor:pointer;white-space:nowrap;transition:background .15s,color .15s;
+  }
+  .dock button:hover{color:var(--ink);background:rgba(196,206,168,.07)}
+  .dock button.on{background:rgba(236,233,218,.92);color:#14160f}
+  .dock .dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.28;transition:opacity .15s;flex:none}
+  .dock button.on .dot{opacity:1;box-shadow:0 0 7px currentColor}
+  .prog{position:absolute;left:14px;right:14px;bottom:3px;height:1.5px;border-radius:2px;background:rgba(196,206,168,.1);overflow:hidden}
+  .prog i{display:block;height:100%;width:0;background:var(--accent);opacity:.8}
+
+  .hint{position:fixed;z-index:10;left:30px;bottom:30px;font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--dim2);pointer-events:none}
+  .credit{position:fixed;z-index:10;right:30px;bottom:30px;font-family:var(--mono);font-size:9px;letter-spacing:.05em;color:var(--dim2);text-align:right;line-height:1.7;pointer-events:none}
+  .credit b{color:var(--dim);font-weight:400}
+
+  .loading{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#080907;transition:opacity .6s ease;font-family:var(--mono)}
+  .loading.done{opacity:0;pointer-events:none}
+  .loading p{font-size:10px;letter-spacing:.22em;color:var(--dim);text-transform:uppercase}
+  .ring{width:38px;height:38px;border-radius:50%;border:1px solid rgba(196,206,168,.14);border-top-color:var(--accent);animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  @media (max-width:1080px){ .panel{width:250px;left:20px} .hud-top{padding:22px 22px 0} .hint{left:22px} .credit{right:22px} }
+  @media (max-width:820px){
+    .panel{display:none} .meta{display:none} h1{font-size:22px}
+    .dock{bottom:16px;gap:2px;padding:6px;flex-wrap:wrap;justify-content:center;width:calc(100vw - 28px);border-radius:16px}
+    .dock button{padding:0 8px;font-size:10.5px} .sep{display:none}
+    .hint{display:none} .credit{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"><canvas id="c"></canvas></div>
+
+<header class="hud-top">
+  <div class="brand">
+    <div class="kicker">Milk Frog · Rig Lab</div>
+    <h1>奶蛙 <span>NO.13</span></h1>
+    <div class="sub">骨架与动作 · FK 绑定 · 22 根骨</div>
+  </div>
+  <div class="meta">
+    <div><span>FILE</span><b>milkfrog_no13_rigged.glb</b></div>
+    <div><span>RIG</span><b>22 bones · 1 mesh</b></div>
+    <div><span>CLIPS</span><b>Idle / Wave / Squat</b></div>
+  </div>
+</header>
+
+<aside class="panel">
+  <section>
+    <h2>骨架</h2>
+    <div class="tree">中轴  <b>Root</b> → <b>Hips</b> → Spine → Chest → Neck → <b>Head</b>
+手臂  Shoulder.L/R → UpperArm → LowerArm → Hand
+腿    Thigh.L/R → Shin → Foot → Toe</div>
+  </section>
+
+  <section>
+    <h2>示例动作</h2>
+    <button class="clip" data-clip="Idle"><span class="ic">01</span><span class="nm">呼吸<em>IDLE</em></span><span class="dur">3.0s</span></button>
+    <button class="clip" data-clip="Wave"><span class="ic">02</span><span class="nm">挥手<em>WAVE</em></span><span class="dur">2.0s</span></button>
+    <button class="clip" data-clip="Squat"><span class="ic">03</span><span class="nm">蹲下<em>SQUAT</em></span><span class="dur">1.7s</span></button>
+  </section>
+
+  <section>
+    <div class="note">
+      已移除帽子、吊牌、奶瓶等全部道具，骨架直接驱动本体。<br>
+      骨架是 FK，可直接在 Blender 里 K 帧或加 IK 控制器。
+    </div>
+  </section>
+</aside>
+
+<div class="dock" id="dock">
+  <div class="grp">
+    <button data-clip="none">静止</button>
+    <button data-clip="Idle" class="on"><i class="dot"></i>呼吸</button>
+    <button data-clip="Wave">挥手</button>
+    <button data-clip="Squat">蹲下</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnSkel" class="on"><i class="dot"></i>骨架</button>
+    <button id="btnRotate"><i class="dot"></i>自动旋转</button>
+  </div>
+  <div class="prog"><i id="progBar"></i></div>
+</div>
+
+<div class="hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>
+<div class="credit">42,129 tris · 22,702 verts<br><b>assets/milkfrog_no13_rigged.blend</b></div>
+
+<div class="loading" id="loading">
+  <div class="ring"></div>
+  <p>载入骨架</p>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script src="assets/milkfrog_rigged_data.js"></script>
+<script>
+(function(){
+'use strict';
+const canvas = document.getElementById('c');
+const loading = document.getElementById('loading');
+const LEGACY = !!(THREE.ColorManagement && THREE.ColorManagement.legacyMode);
+const srgb = hex => { const c = new THREE.Color(hex); if (LEGACY) c.convertSRGBToLinear(); return c; };
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+let renderer;
+try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, powerPreference:'high-performance'}); }
+catch(e){ fail('浏览器不支持 WebGL'); return; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.LinearToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 120);
+
+const hemi = new THREE.HemisphereLight(srgb(0xdfe6cc), srgb(0x0d0f0a), 0.24);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(srgb(0xfffdf6), 1.18);
+key.position.set(-2.9, 4.8, -4.1);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 16;
+key.shadow.camera.left = -2.4; key.shadow.camera.right = 2.4;
+key.shadow.camera.top = 3.0; key.shadow.camera.bottom = -1.2;
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 3;
+scene.add(key);
+const fill = new THREE.DirectionalLight(srgb(0xc8dce8), 0.4);
+fill.position.set(4.4, 2.4, -1.8); scene.add(fill);
+const rim = new THREE.DirectionalLight(srgb(0xdbe6c0), 0.7);
+rim.position.set(1.4, 3.2, 4.6); scene.add(rim);
+const front = new THREE.DirectionalLight(srgb(0xfff6e8), 0.22);
+front.position.set(0, 1.1, -3.4); scene.add(front);
+
+// 展台
+const disc = new THREE.Mesh(
+  new THREE.CircleGeometry(2.15, 96),
+  new THREE.MeshStandardMaterial({color: srgb(0x0d0e0b), roughness: 0.95, metalness: 0.02})
+);
+disc.rotation.x = -Math.PI / 2; disc.receiveShadow = true; scene.add(disc);
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(2.13, 2.155, 96),
+  new THREE.MeshBasicMaterial({color: srgb(0x6f7d55), transparent:true, opacity:0.2, side:THREE.DoubleSide})
+);
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; scene.add(ring);
+
+// 相机
+const VIEWS = { q:{theta:0.5, phi:1.36}, f:{theta:0, phi:1.42}, s:{theta:Math.PI/2, phi:1.42}, b:{theta:Math.PI, phi:1.42} };
+const orbit = { theta:VIEWS.q.theta, phi:VIEWS.q.phi, radius:6.2, tTheta:VIEWS.q.theta, tPhi:VIEWS.q.phi, tRadius:4.35, target:new THREE.Vector3(0,0.98,0) };
+let stageScale = 1;
+function applyCamera(){
+  const sp = Math.sin(orbit.phi), r = orbit.radius * stageScale;
+  camera.position.set(
+    orbit.target.x + r*sp*Math.sin(orbit.theta),
+    orbit.target.y + r*Math.cos(orbit.phi),
+    orbit.target.z + r*sp*Math.cos(orbit.theta)
+  );
+  camera.lookAt(orbit.target);
+}
+
+let root=null, mixer=null, skeleton=null, jointDots=null;
+let rigBones=[], tmpV=new THREE.Vector3();
+let actions={}, current=null, currentName='Idle';
+let restPose=[], meshes=[], skeletonOn=true, autoRotate=false, dragging=false;
+let triCount=0, vertCount=0;
+
+function boot(){
+  if(!window.THREE) return fail('three.js 未加载');
+  if(!window.GLTFLoader) return fail('GLTFLoader 未加载');
+  if(!window.MILKFROG_RIG_B64) return fail('骨架数据缺失：assets/milkfrog_rigged_data.js');
+  let buf;
+  try{
+    const bin = atob(window.MILKFROG_RIG_B64);
+    buf = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+  }catch(e){ return fail('数据解码失败'); }
+  new window.GLTFLoader().parse(buf.buffer, '', gltf=>{ try{ onLoaded(gltf); }catch(e){ console.error(e); fail('骨架初始化失败'); } },
+    undefined, err=>{ console.error(err); fail('模型解析失败'); });
+}
+
+function onLoaded(gltf){
+  root = gltf.scene;
+  scene.add(root);
+
+  let box = new THREE.Box3().setFromObject(root);
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.x -= c.x; root.position.z -= c.z; root.position.y -= box.min.y;
+  root.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  orbit.target.set(0, size.y*0.52, 0);
+  orbit.tRadius = Math.max(3.4, size.y*2.2);
+  orbit.radius = orbit.tRadius*1.4;
+
+  root.traverse(o=>{
+    if(o.isMesh){
+      o.castShadow = true; o.receiveShadow = true;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m=>{ if(m && m.name==='yellow'){ m.roughness = 0.68; m.metalness = 0; } });
+      meshes.push(o);
+      const g = o.geometry;
+      triCount += (g.index ? g.index.count : g.attributes.position.count)/3;
+      vertCount += g.attributes.position.count;
+    }
+    if(o.isBone){
+      restPose.push({b:o, p:o.position.clone(), q:o.quaternion.clone()});
+    }
+  });
+
+  // 骨架线
+  skeleton = new THREE.SkeletonHelper(root);
+  skeleton.material.color = srgb(0xbfe06a);
+  skeleton.material.transparent = true;
+  skeleton.material.opacity = 0.95;
+  skeleton.material.depthTest = false;
+  skeleton.material.depthWrite = false;
+  skeleton.renderOrder = 999;
+  skeleton.visible = skeletonOn;
+  scene.add(skeleton);
+
+  // 关节小球，骨架更清楚
+  jointDots = new THREE.Group();
+  const dotGeo = new THREE.SphereGeometry(0.018, 8, 6);
+  const dotMat = new THREE.MeshBasicMaterial({color: srgb(0xbfe06a), depthTest: false, depthWrite: false, transparent: true, opacity: 0.95});
+  root.traverse(o=>{
+    if(o.isBone){
+      rigBones.push(o);
+      const d = new THREE.Mesh(dotGeo, dotMat);
+      d.renderOrder = 1000;
+      jointDots.add(d);
+    }
+  });
+  jointDots.visible = skeletonOn;
+  scene.add(jointDots);
+
+  // 动画
+  mixer = new THREE.AnimationMixer(root);
+  (gltf.animations || []).forEach(clip=>{
+    const a = mixer.clipAction(clip);
+    if(clip.name === 'Idle'){ a.setLoop(THREE.LoopRepeat, Infinity); }
+    else { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+    actions[clip.name] = a;
+  });
+  mixer.addEventListener('finished', ev=>{
+    if(ev.action !== actions.Idle) playClip('Idle', 0.3);
+  });
+  playClip('Idle', 0);
+
+  document.querySelector('.credit').innerHTML =
+    Math.round(triCount).toLocaleString('en-US') + ' tris · ' + vertCount.toLocaleString('en-US') + ' verts<br><b>assets/milkfrog_no13_rigged.blend</b>';
+
+  applySkeleton(skeletonOn);
+  applyCamera();
+  onResize();
+
+  requestAnimationFrame(t=>{ last=t||0; tick(t||0); });
+  setTimeout(()=>loading.classList.add('done'), 200);
+  setTimeout(()=>{ loading.style.display='none'; }, 900);
+}
+
+function playClip(name, fade){
+  if(name === 'none'){
+    mixer.stopAllAction();
+    current = null; currentName = 'none';
+    restPose.forEach(r=>{ r.b.quaternion.copy(r.q); r.b.position.copy(r.p); });
+    updateUI();
+    return;
+  }
+  const next = actions[name];
+  if(!next) return;
+  if(current && current !== next) current.fadeOut(fade || 0.25);
+  next.reset();
+  next.setEffectiveTimeScale(1);
+  next.setEffectiveWeight(1);
+  next.fadeIn(fade === 0 ? 0.01 : (fade || 0.25));
+  next.play();
+  current = next; currentName = name;
+  updateUI();
+}
+
+function updateUI(){
+  document.querySelectorAll('[data-clip]').forEach(b=>{
+    b.classList.toggle('on', b.dataset.clip === currentName);
+  });
+  document.querySelectorAll('.clip').forEach(b=>b.classList.toggle('on', b.dataset.clip === currentName));
+}
+
+function applySkeleton(on){
+  skeletonOn = on;
+  skeleton.visible = on;
+  if(jointDots) jointDots.visible = on;
+  meshes.forEach(m=>{
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    mats.forEach(mt=>{
+      if(!mt) return;
+      if(on){
+        if(mt.userData.__op === undefined){ mt.userData.__op = mt.opacity; mt.userData.__tr = mt.transparent; mt.userData.__dw = mt.depthWrite; }
+        mt.transparent = true; mt.opacity = 0.30; mt.depthWrite = false;
+      } else if(mt.userData.__op !== undefined){
+        mt.opacity = mt.userData.__op; mt.transparent = mt.userData.__tr; mt.depthWrite = mt.userData.__dw;
+      }
+    });
+  });
+  document.getElementById('btnSkel').classList.toggle('on', on);
+}
+
+// 交互
+let lastX=0,lastY=0,down=false;
+canvas.addEventListener('pointerdown', e=>{ down=true; dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); });
+canvas.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  orbit.tTheta -= (e.clientX-lastX)*0.0055;
+  orbit.tPhi = clamp(orbit.tPhi - (e.clientY-lastY)*0.005, 0.28, 1.60);
+  lastX=e.clientX; lastY=e.clientY;
+});
+canvas.addEventListener('pointerup', e=>{ down=dragging=false; canvas.classList.remove('dragging'); if(canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); });
+canvas.addEventListener('pointercancel', ()=>{ down=dragging=false; canvas.classList.remove('dragging'); });
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); orbit.tRadius = clamp(orbit.tRadius*Math.exp(e.deltaY*0.0011), 2.0, 9.0); }, {passive:false});
+canvas.addEventListener('dblclick', ()=>{ orbit.tTheta=VIEWS.q.theta; orbit.tPhi=VIEWS.q.phi; orbit.tRadius=Math.max(3.4,(orbit.target.y/0.52)*2.2); });
+
+document.querySelectorAll('[data-clip]').forEach(b=>b.addEventListener('click', ()=>playClip(b.dataset.clip)));
+document.getElementById('btnSkel').addEventListener('click', ()=>applySkeleton(!skeletonOn));
+document.getElementById('btnRotate').addEventListener('click', e=>{ autoRotate=!autoRotate; e.currentTarget.classList.toggle('on', autoRotate); });
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click', ()=>{
+  const v=VIEWS[b.dataset.view]; if(!v) return;
+  orbit.tTheta=v.theta; orbit.tPhi=v.phi; orbit.tRadius=Math.max(3.4,(orbit.target.y/0.52)*2.2);
+}));
+window.addEventListener('resize', onResize);
+function onResize(){
+  const w=canvas.clientWidth||innerWidth, h=canvas.clientHeight||innerHeight;
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+  stageScale = camera.aspect < 1 ? 1/Math.pow(camera.aspect,0.55) : 1;
+  renderer.setSize(w,h,false);
+}
+
+let last=0;
+function tick(now){
+  requestAnimationFrame(tick);
+  if(!last) last=now;
+  const dt=Math.min(0.05, Math.max(0,(now-last)/1000)); last=now;
+  if(autoRotate && !dragging){ orbit.theta += 0.12*dt; orbit.tTheta=orbit.theta; }
+  const k=Math.min(1,dt*9);
+  orbit.theta+=(orbit.tTheta-orbit.theta)*k;
+  orbit.phi+=(orbit.tPhi-orbit.phi)*k;
+  orbit.radius+=(orbit.tRadius-orbit.radius)*k;
+  if(mixer) mixer.update(dt);
+  if(skeletonOn && jointDots){
+    for(let i=0;i<rigBones.length;i++){
+      rigBones[i].getWorldPosition(tmpV);
+      jointDots.children[i].position.copy(tmpV);
+    }
+  }
+  if(current && current.getClip()){
+    const d=current.getClip().duration||1;
+    const p=Math.min(1, (current.time % d)/d);
+    document.getElementById('progBar').style.width=(p*100).toFixed(1)+'%';
+  } else {
+    document.getElementById('progBar').style.width='0%';
+  }
+  ring.material.opacity = 0.16 + 0.05*Math.sin(now*0.0012);
+  applyCamera();
+  renderer.render(scene,camera);
+}
+
+function fail(msg){
+  loading.innerHTML = '<p style="color:#c0705c;letter-spacing:.1em">'+msg+'</p>';
+  loading.classList.remove('done');
+  loading.style.display='flex';
+}
+
+onResize();
+boot();
+})();
+</script>
+</body>
+</html>
