@@ -6,11 +6,13 @@ OUT = r"D:\gr\naiwaRA\assets\milkfrog_no13_preview.png"
 bpy.ops.wm.open_mainfile(filepath=BLEND)
 
 scene = bpy.context.scene
-scene.render.engine = 'BLENDER_EEVEE'
+scene.render.engine = 'BLENDER_EEVEE_NEXT' if 'BLENDER_EEVEE_NEXT' in [i.identifier for i in __import__('bpy').types.RenderSettings.bl_rna.properties['engine'].enum_items] else 'BLENDER_EEVEE'
 scene.render.resolution_x = 900
 scene.render.resolution_y = 900
 scene.render.resolution_percentage = 100
 scene.render.image_settings.file_format = 'PNG'
+scene.view_settings.view_transform = 'Standard'
+scene.view_settings.look = 'None'
 scene.render.film_transparent = False
 if scene.world is None:
     scene.world = bpy.data.worlds.new('World')
@@ -31,9 +33,9 @@ def area(name, loc, energy, size, color=(1,1,1)):
     o.location = loc
     o.rotation_euler = (target - o.location).to_track_quat('-Z', 'Y').to_euler()
 
-area('Key',   (3.0, 4.0, 5.0), 900, 5.0, (1.0, 0.97, 0.9))
-area('Fill',  (-4.0, 2.0, 3.0), 500, 5.0, (0.85, 0.9, 1.0))
-area('Rim',   (0.0, -3.5, 4.0), 700, 4.0, (1.0, 1.0, 1.0))
+area('Key',   (3.0, 4.0, 5.0), 320, 5.0, (1.0, 0.97, 0.9))
+area('Fill',  (-4.0, 2.0, 3.0), 170, 5.0, (0.85, 0.9, 1.0))
+area('Rim',   (0.0, -3.5, 4.0), 260, 4.0, (1.0, 1.0, 1.0))
 
 cam_data = bpy.data.cameras.new('PreviewCam')
 cam = bpy.data.objects.new('PreviewCam', cam_data)

@@ -29,7 +29,8 @@ for v in mesh.data.vertices:
     v.co = mesh.matrix_world.inverted() @ Vector((w.x-cx, w.y-cy, w.z-minz))
 bpy.context.view_layer.update()
 mn2, mx2 = bbox(mesh)
-H = mx2[2]-mn2[2]
+H = mx2[2]-mn2[2]          # 身高（沿 Z）
+DEPTH = mx2[1]-mn2[1]      # 厚度（沿 Y，脸朝 +Y）——配件前后位置必须用这个，不能用身高
 print("BBOX after", [round(v,3) for v in mn2], [round(v,3) for v in mx2])
 
 # ---- 配色改造 ----
@@ -118,7 +119,7 @@ def add_uvsphere(name, radius, loc, mat, scale=None):
 # ---- 配饰尺寸基于模型包围盒 ----
 head_z = mx2[2]                      # 头顶
 head_w = W                           # 整体宽
-cap_r = head_w * 0.26                # 奶瓶盖半径
+cap_r = head_w * 0.165               # 奶瓶盖半径：按头顶宽度（约 0.27）取，太大会像悬空碟
 print("HEAD Z", round(head_z,3), "CAP R", round(cap_r,3))
 
 # 1) 奶瓶盖帽子（歪一点）— 压到头顶，别像飞碟浮空
@@ -128,17 +129,122 @@ add_torus('NO13_CapRim', cap_r*0.98, cap_r*0.08, (0.02, -0.01, head_z + cap_r*0.
 
 # 2) NO.13 吊牌（贴胸口）— 脸朝 +Y，胸口 Y 比身体最宽处窄，故用实测值贴近
 tag_z = head_z*0.72
-tag_front = D*0.38
+tag_front = DEPTH*0.38
 tag = add_cyl('NO13_Tag', head_w*0.12, head_w*0.02, (0, tag_front, tag_z), mat_tag, verts=6, rot=(math.pi/2,0,0))
 # 吊牌绳
 add_torus('NO13_TagCord', head_w*0.11, head_w*0.008, (0, tag_front-0.01, tag_z+head_w*0.13), mat_tag_ink, rot=(math.pi/2,0,0))
 
 # 3) 小奶瓶包（背后）— 背在 -Y
 pack_z = head_z*0.48
-pack_y = -D*0.40 - head_w*0.05
+pack_y = -(DEPTH*0.5 + head_w*0.13*0.55)
 add_cyl('NO13_PackBottle', head_w*0.13, head_w*0.30, (0, pack_y, pack_z), mat_pack, verts=20)
 add_cyl('NO13_PackNipple', head_w*0.06, head_w*0.08, (0, pack_y, pack_z+head_w*0.19), mat_nipple, verts=16)
 add_box('NO13_PackStrap', (head_w*0.04, head_w*0.02, head_w*0.30), (head_w*0.13, pack_y+head_w*0.06, pack_z), mat_nipple)
+
+# ---- 减面（身体 33,980 面 → 约 24,700 面）----
+bpy.context.view_layer.objects.active = mesh
+for o in bpy.context.selected_objects:
+    o.select_set(False)
+mesh.select_set(True)
+mod = mesh.modifiers.new('LowPoly', 'DECIMATE')
+mod.decimate_type = 'COLLAPSE'
+mod.ratio = 0.62
+bpy.ops.object.modifier_apply(modifier=mod.name)
+print("DECIMATED", len(mesh.data.vertices), "verts", len(mesh.data.polygons), "faces")
+
+# ---- 顶点色：奶白身体 / 白肚皮 / 手脚黑色渐变 ----
+import heapq
+me = mesh.data
+mw = mesh.matrix_world
+wco = [mw @ v.co for v in me.vertices]
+n = len(me.vertices)
+adj = [[] for _ in range(n)]
+for e in me.edges:
+    a, b = e.vertices
+    w = (wco[a] - wco[b]).length
+    adj[a].append((b, w))
+    adj[b].append((a, w))
+
+def dijkstra(seeds):
+    INF = 1e9
+    dist = [INF] * n
+    heap = [(0.0, s) for s in seeds]
+    for s in seeds:
+        dist[s] = 0.0
+    heapq.heapify(heap)
+    while heap:
+        d, u = heapq.heappop(heap)
+        if d > dist[u] + 1e-9:
+            continue
+        for v, w in adj[u]:
+            nd = d + w
+            if nd < dist[v] - 1e-9:
+                dist[v] = nd
+                heapq.heappush(heap, (nd, v))
+    return dist
+
+hand_seeds = [i for i, p in enumerate(wco) if abs(p.x) > 0.455 and 0.80 < p.z < 1.00]
+if not hand_seeds:
+    hand_seeds = [i for i, p in enumerate(wco) if abs(p.x) > 0.44 and 0.80 < p.z < 1.00]
+foot_seeds = [i for i, p in enumerate(wco) if p.z < 0.12]
+print("SEEDS hand", len(hand_seeds), "foot", len(foot_seeds))
+dh = dijkstra(hand_seeds)
+df = dijkstra(foot_seeds)
+
+def clamp01(x):
+    return 0.0 if x < 0 else (1.0 if x > 1 else x)
+def smooth(x):
+    x = clamp01(x)
+    return x * x * (3 - 2 * x)
+
+BODY  = (0.815, 0.516, 0.086)  # 身体：参考图的暖黄 #E9BE52
+BLACK = (0.095, 0.072, 0.025)  # 手脚：深橄榄褐，不是纯黑 #57482A
+WHITE = (0.86, 0.78, 0.62)     # 肚皮：奶白 #F0E4CA
+
+# 眼睛/嘴所在材质槽不参与顶点色，给白色避免被染色
+vmat = [None] * n
+for poly in me.polygons:
+    for vi in poly.vertices:
+        if vmat[vi] is None or poly.material_index < vmat[vi]:
+            vmat[vi] = poly.material_index
+
+for aname in [a.name for a in me.color_attributes]:
+    me.color_attributes.remove(me.color_attributes[aname])
+ca = me.color_attributes.new(name='Col', type='FLOAT_COLOR', domain='POINT')
+me.color_attributes.active_color_index = 0
+
+for i in range(n):
+    if vmat[i] not in (0, None):
+        ca.data[i].color = (1.0, 1.0, 1.0, 1.0)
+        continue
+    p = wco[i]
+    # 手：用位置遮罩罩住整只手（Dijkstra 从外侧种子只能染到指尖）
+    tz = smooth((p.z - 0.76) / 0.06) * (1.0 - smooth((p.z - 0.99) / 0.06))
+    tx = smooth((abs(p.x) - 0.34) / 0.06)
+    ty = 1.0 - smooth((abs(p.y) - 0.10) / 0.08)
+    fh = tz * tx * ty
+    ff = 1.0 - smooth((df[i] - 0.05) / 0.09)   # 脚：整个脚掌深色，脚踝处收
+    f = max(fh, ff)
+    c = [BODY[k] * (1 - f) + BLACK[k] * f for k in range(3)]
+    dx = p.x / 0.40
+    dy = (p.y - 0.24) / 0.20
+    dz = (p.z - 0.80) / 0.36
+    dd = (dx * dx + dy * dy + dz * dz) ** 0.5
+    fb = (1.0 - smooth((dd - 0.55) / 0.45)) * (1.0 - f)  # 肚皮白，不盖黑手脚
+    c = [c[k] * (1 - fb) + WHITE[k] * fb for k in range(3)]
+    ca.data[i].color = (c[0], c[1], c[2], 1.0)
+
+# 材质换成顶点色（glTF 才会带 COLOR_0）
+mat = bpy.data.materials['yellow']
+nt = mat.node_tree
+nt.nodes.clear()
+out_node = nt.nodes.new('ShaderNodeOutputMaterial'); out_node.location = (320, 0)
+bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled'); bsdf.location = (40, 0)
+vc = nt.nodes.new('ShaderNodeVertexColor'); vc.location = (-260, 0)
+vc.layer_name = 'Col'
+bsdf.inputs['Roughness'].default_value = 0.68
+nt.links.new(vc.outputs['Color'], bsdf.inputs['Base Color'])
+nt.links.new(bsdf.outputs['BSDF'], out_node.inputs['Surface'])
 
 # ---- 保存 BLEND ----
 bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)

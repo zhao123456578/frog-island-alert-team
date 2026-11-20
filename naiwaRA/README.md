@@ -22,6 +22,11 @@ python -m http.server 8899
 | `motion_demo.html` | 角色运动演示（6 个 GLB + 状态切换 + 眼睛追踪） |
 | `assets/` | 角色与道具 GLB、Blender 源文件、45 个 WAV 音效 |
 | `assets/interaction.js` | 背包物品、门锁与交互判定 |
+| `assets/paperbot/` | 纸片人角色：序列帧脚本与贴图 |
+| `cabinet_lab.html` | 躲藏柜单件测试场 |
+| `paperbot_test.html` | 纸片人行为测试场 |
+| `milkfrog_model.html` | 奶蛙 NO.13 角色建模检视 |
+| `纸片人角色说明.md` | 纸片人设定与行为说明 |
 | `vendor/` | three.js + GLTFLoader（本地化，不依赖 CDN） |
 | `剧情小说与结局分章.md` | 三幕推进与七个结局的小说化文本 |
 | `场景设计与提示词.md` | 场景设定与美术提示词 |
