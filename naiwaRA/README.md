@@ -25,7 +25,11 @@ python -m http.server 8899
 | `assets/paperbot/` | 纸片人角色：序列帧脚本与贴图 |
 | `assets/milkfrog_halfbody.*` | 奶蛙半身模型（blend / glb）与骨架脚本 |
 | `assets/audio/` | 音效库，含 `memes/` 梗音效与夜曲 piano |
-| `assets/rat_models/` | 鼠类角色模型 |
+| `assets/rat_models/` | 鼠类角色模型（含 rat_pack / 卡通 / basemesh 多套） |
+| `assets/rat_pack.glb` / `rat_pack_data.js` / `rat_actor.js` | 鼠类角色运行时模型与行为脚本 |
+| `rat_demo.html` | 鼠类角色演示页 |
+| `assets/scene_props_preview/` | 场景道具参考预览图（Kenney 城市、polypizza、苏式公寓、收费站等） |
+| `.build_rat.py` | 鼠类模型构建脚本 |
 | `assets/hiding_locker.js` / `assets/shift_population.js` | 躲藏柜与班次人群逻辑 |
 | `试玩demo/` | 可玩 Demo 自包含发布包（纯前端，另见 li-code 第八章） |
 | `RAdemo.zip` | Demo 打包归档 |
