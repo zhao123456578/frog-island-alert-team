@@ -87,12 +87,22 @@
     color:#cfd2c0;font-size:13px;letter-spacing:.32em;white-space:nowrap;
     opacity:0;transition:opacity .5s;}
   #fadeIn .cap.on{opacity:.85;}
-  /* 困到极限：强制靠边，视线黑三秒 */
+  /* 困到极限：刻意设计的困倦事件。黑屏期间模拟/计时/里程全部暂停，
+     只留一句"车滑到了路肩"和明确的按键唤醒提示；醒来有保护期，不重复触发。 */
   #doze{position:fixed;inset:0;background:#000;z-index:8;display:none;
-    align-items:center;justify-content:center;opacity:0;transition:opacity .28s;pointer-events:none;}
+    flex-direction:column;align-items:center;justify-content:center;
+    opacity:0;transition:opacity .28s;pointer-events:auto;cursor:pointer;}
   #doze.on{opacity:1;}
-  #doze span{color:#cfd2c0;font-size:14px;letter-spacing:.32em;opacity:0;transition:opacity .5s .3s;}
-  #doze.on span{opacity:.9;}
+  #doze span{color:#cfd2c0;font-size:15px;letter-spacing:.32em;opacity:0;transition:opacity .5s .3s;}
+  #doze.on span{opacity:.92;}
+  #doze .wake{margin-top:22px;color:#ffb020;font-size:14px;font-weight:400;
+    letter-spacing:.26em;opacity:0;transition:opacity .5s .55s;
+    text-shadow:0 0 10px rgba(255,150,50,.35);animation:wakePulse 1.4s ease-in-out infinite;}
+  #doze.on .wake{opacity:.95;}
+  #doze .sub{margin-top:10px;color:#8b9183;font-size:11px;letter-spacing:.18em;
+    opacity:0;transition:opacity .5s .7s;}
+  #doze.on .sub{opacity:.8;}
+  @keyframes wakePulse{0%,100%{opacity:.72}50%{opacity:1}}
   #touch{position:fixed;inset:0;z-index:4;pointer-events:none;display:none;}
   #touch.on{display:block;}
   /* 触控键：半透明、低分辨率像素块，和橙色拉力 HUD 同一套颜色 */
@@ -236,7 +246,7 @@
   </div>
 </div>
 <div id="fadeIn"><span class="cap" id="capLine">02:47 · 奶厂停车场</span></div>
-<div id="doze"><span>你猛地惊醒了</span></div>
+<div id="doze"><span>眼前一黑——车滑到了路肩</span><b class="wake">按 Space / 任意键 醒来</b><i class="sub">黑屏期间车辆与计时暂停</i></div>
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/GLTFLoader.js"></script>
@@ -618,9 +628,9 @@ function emitSparks(nx,nl,intensity,part){
   for(let k=0;k<n;k++){
     const i=(sparkHead++)%SPARK_N;
     /* 抬到风挡视野里、推到车头灯照得到的地方，别被仪表台挡住 */
-    sparkPos[i*3]=side*(0.70+Math.random()*0.75);
-    sparkPos[i*3+1]=0.85+Math.random()*0.65;
-    sparkPos[i*3+2]=front?-2.6-Math.random()*1.2:(rear?1.8:-1.6-Math.random()*1.7);
+    sparkPos[i*3]=side*(0.62+Math.random()*0.80);
+    sparkPos[i*3+1]=1.04+Math.random()*0.72;
+    sparkPos[i*3+2]=front?-2.6-Math.random()*1.2:(rear?1.8:-1.7-Math.random()*1.8);
     sparkVel[i*3]=side*(0.8+Math.random()*2.2)+nx*0.4;
     sparkVel[i*3+1]=1.4+Math.random()*2.8;
     sparkVel[i*3+2]=1.5+Math.random()*3.5;
@@ -655,11 +665,13 @@ sparkPts.frustumCulled=false;scene.add(sparkPts);
    分离轴判定（pen<=0）在加权之前，所以正面怼上一堵宽墙照样是实打实的撞停。
    返回的 pen 仍是真实重叠量，只用来算阻力，不参与选轴。 */
 function obbVsBox(hs,hlat,hl,hw,psi,b){
+  const SKIN=0.015;   /* 接触皮肤：离开 1.5 cm 内仍算贴着实体的连续接触 */
   const c=Math.cos(psi),sn=Math.sin(psi);
   const bsc=(b.s0+b.s1)*0.5, blc=(b.lat0+b.lat1)*0.5;
   const ehs=(b.s1-b.s0)*0.5, elh=(b.lat1-b.lat0)*0.5;
   const dx=hs-bsc, dy=hlat-blc;
-  let best=null,latPen=0,latSgn=1;
+  const cands=[];
+  let best=null,latPen=0,latSgn=1,maxPen=-1e9;
   for(let i=0;i<4;i++){
     let ax,ay;
     if(i===0){ax=1;ay=0}
@@ -670,11 +682,17 @@ function obbVsBox(hs,hlat,hl,hw,psi,b){
     const ra=Math.abs(ax*c+ay*sn)*hl+Math.abs(-ax*sn+ay*c)*hw;
     const rb=Math.abs(ax)*ehs+Math.abs(ay)*elh;
     const pen=ra+rb-Math.abs(dx*ax+dy*ay);
-    if(pen<=0)return null;                    /* 有分离轴：压根没碰上，权重不参与 */
+    if(pen<=-SKIN)return null;                /* 有分离轴且已离开皮肤：压根没碰上 */
     const eff=pen*(1+5*Math.abs(ax));
     const cand={pen,eff,nx:ax,ny:ay,sgn:(dx*ax+dy*ay)>=0?1:-1};
+    cands.push(cand);
+    maxPen=Math.max(maxPen,pen);
     if(i===1){latPen=pen;latSgn=cand.sgn}     /* 横向脱困路线，顶死时备用 */
     if(!best||eff<best.eff)best=cand;
+  }
+  if(maxPen<=0&&cands.length){
+    /* 只差一层皮肤：取"最接近"的那根轴当接触法线，pen 保持负值（只做摩擦不顶开） */
+    best=cands.reduce((a,b)=>b.pen>a.pen?b:a);
   }
   if(best){best.latPen=latPen;best.latSgn=latSgn;}
   return best;
@@ -693,8 +711,9 @@ function resolveContact(hit,dt){
     nx=0;nl=hit.latSgn;pen=hit.latPen;
   }
   /* 分离量跟着本帧真实重叠走：固定 2.7 cm 在高速横移时挡不住车，
-     一帧就能穿过整根护栏（隧道效应），持续贴墙也留不住接触。 */
-  const push=Math.min(pen,0.30)+0.004;
+     一帧就能穿过整根护栏（隧道效应），持续贴墙也留不住接触。
+     皮肤接触（pen≤0）只留 2 mm 的贴近量，不把车弹开。 */
+  const push=Math.max(0,Math.min(pen,0.30))+0.002;
   S.dist+=nx*push;S.lateral+=nl*push;
   const bite=Math.min(1,Math.max(0,pen/0.16));   /* 咬合深度按重叠量，不受分离量吃掉 */
 
@@ -746,8 +765,20 @@ function resolveContact(hit,dt){
   /* 切向：首次按动能损失与摩擦削一次，之后每帧按咬合深度连续磨 */
   const fricK=fresh?Math.max(0.42,1-mu*0.28-kinLoss*0.25)
                    :Math.max(0,1-(0.9+3.6*bite)*mu*dt);
-  const outVs=bvs+tanS*fricK+nx*(vn+dVn);
-  const outVl=bvl+tanL*fricK+nl*(vn+dVn);
+  let outVs=bvs+tanS*fricK+nx*(vn+dVn);
+  let outVl=bvl+tanL*fricK+nl*(vn+dVn);
+  /* 持续接触的法向分离速度上限：首帧允许按恢复系数得到一点回弹；
+     之后的接触帧只留极小分离速度。否则"压进去→整段弹开→再压进去"
+     会变成抽搐/弹飞，也会把一次持续贴墙误判成多次新碰撞。 */
+  let vnOut=outVs*nx+outVl*nl;
+  if(vnOut>0){
+    const vnCap=fresh?Math.max(0.18,Math.min(2.2,closing*rest*0.75)):0.10;
+    if(vnOut>vnCap){
+      const cut=vnOut-vnCap;
+      outVs-=cut*nx;outVl-=cut*nl;
+      vnOut=vnCap;
+    }
+  }
 
   /* 把结果投回车头方向：纵向给 speed，负向部分变成短促反冲，横向进 slipV */
   const fS=Math.cos(S.psi),fL=Math.sin(S.psi);
@@ -788,7 +819,14 @@ function resolveContact(hit,dt){
     S.rollImpact=nl*Math.min(0.085,0.008+J*0.011);
     S.headShakeT=Math.max(S.headShakeT,Math.min(0.5,0.06+sev*0.03));
   }
-  const canHurt=fresh&&S.contactCooldown<=0;
+  let canHurt=fresh&&S.contactCooldown<=0&&S.graceT<=0;  /* 醒后 1.5 秒保护：物理照算，不扣伤害/不弹提示 */
+  /* 持续贴墙去重：同类障碍接触期间把间隔计时归零，只有真正分开 ≥2.2 秒后
+     才允许重新结算；期间若发生明显更强的冲击（法向闭合 >28 km/h）仍会结算。
+     物理分离与摩擦照常每帧做，伤害/金属声/提示不刷新。 */
+  const sameTagHurt=S.lastHurtTag===b.tag;
+  const strongRehit=closing*3.6>28;
+  if(sameTagHurt&&S.hurtGapT<2.2&&!strongRehit)canHurt=false;
+  if(sameTagHurt)S.hurtGapT=0;
   /* 持续贴护栏摩擦时按限流喷零星碎屑，不重复闪红、不叠提示 */
   const sparkOK=fresh||(tanV*bite>1.4&&S.sparkT<=0);
   if(sparkOK&&sev>0.12){
@@ -796,6 +834,7 @@ function resolveContact(hit,dt){
     S.sparkT=0.16;
   }
   if(!canHurt)return;                         /* 物理已结算完毕，下面只是"记账" */
+  S.hurtGapT=0;S.lastHurtTag=b.tag;
   S.contactCooldown=0.42+Math.min(0.95,closing*0.030);
   S.contactCd=S.contactCooldown;S.scrapeN++;
   S.bobV-=Math.min(0.9,sev*0.24+bite*0.28);
@@ -808,8 +847,8 @@ function resolveContact(hit,dt){
   if(level>=2){
     S.dmgN++;S.dmgSide=nl>0?'L':'R';S.dmgTag=b.tag;S.dmgT=1.2;
     S.drowsy=Math.min(100,S.drowsy+2+level*1.6);
-    /* 明显撞击才弹一次短提示；持续贴墙摩擦不会反复闪红或刷文字 */
-    toast(level>=3?'撞了 · 别停':'擦了 · 别停');
+    /* 明显撞击才弹一次短提示（≤1.5 秒）；持续贴墙摩擦不会反复闪红或刷文字 */
+    toast(level>=3?'撞了 · 别停':'擦了 · 别停',1.45);
   }else if(level===1&&S.scrapeN%4===1){
     metalScrape(1,0.35);
   }
@@ -4480,7 +4519,7 @@ const S={
   wobT:0,brk:0,noAccelT:0,severe:0,graceT:0,autoT:0,
   openZ:0,openV:0,openBt:0,openPhase:0,openDone:false,openBrakeAt:-1,
   _workPass:false,_camRes:false,_brokenPass:false,
-  dozing:false,dozeT:0,wakeCount:0,
+  dozing:false,dozeT:0,dozeStart:0,dozeProtectT:0,dozeWoke:0,wakeCount:0,
   chaserOn:false,chaserGap:120,chaserLowT:0,chaserHitT:0,chaserEye:0,
   chaserStage:0,   /* 追逐升级阶段 0未出现 1镜中异样 2跟车灯 3逼近 */
   pan:0,panT:0,panCd:0,  /* 第三人称"回头"镜头：追逐者必须真的在主画面里 */
@@ -4507,6 +4546,7 @@ const S={
   vLong:0,vLat:0,yawRateNow:0,recoilV:0,slipV:0,
   contactNormalS:0,contactNormalLat:0,contactPart:'',contactId:'',
   contactActive:false,contactTime:0,contactGapT:9,contactCooldown:0,
+  hurtGapT:9,lastHurtTag:'',   /* 同类障碍持续接触去重窗口：首次 / 真正分开>2.2s 才再结算 */
   impactLevel:0,impactSev:0,pendingImpulse:0,sparkT:0,slipT:0,ctrlLagT:0,
   wheelKick:0,rollImpact:0,headShakeT:0,hudJitterT:0,
   /* ---- 车辆事件调度（全路线只有这些车） ---- */
@@ -4534,6 +4574,8 @@ addEventListener('keydown',e=>{
   keys[e.key.toLowerCase()]=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
   if(!S.started||S.ended)return;
+  /* 困倦黑屏：Space / 回车 / 任意键唤醒。黑屏期间屏蔽其它操作，避免误触。 */
+  if(S.dozing){if(S.dozeT<=0&&!e.repeat)wakeFromDoze();e.preventDefault();return;}
   /* 开场序列：任意键推进/拉门/跳过，屏蔽换台等其它操作 */
   if(S.intro.active){introInteract();return;}
   if(e.key==='1'||e.key==='2'||e.key==='3'||e.key==='4')setStation(+e.key-1);
@@ -4555,6 +4597,14 @@ addEventListener('keydown',e=>{
   }
 });
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+/* 困倦黑屏也支持点击/触摸唤醒（手机端没有键盘） */
+{
+  const dozeEl=document.getElementById('doze');
+  if(dozeEl)dozeEl.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    if(S.dozing&&S.dozeT<=0)wakeFromDoze();
+  });
+}
 
 /* ---------- 触屏：左下油门/刹车，右下左右，停/咖啡按需出现 ---------- */
 const isTouch=('ontouchstart' in window)||navigator.maxTouchPoints>0||q.has('touch');
@@ -4903,7 +4953,7 @@ function updateRallyHud(dt){
   rWarnEl.classList.toggle('on',danger);
   if(danger&&!dangerWarned){
     dangerWarned=true;
-    toast('别停！它追上来了');
+    toast('别停！它追上来了',1.6);
     radioSay('速度掉下来了——后面那东西在靠近。走！');
     if(actx){const n=actx.currentTime;
       if(engLp)engLp.frequency.setValueAtTime(90,n);}
@@ -4912,8 +4962,9 @@ function updateRallyHud(dt){
 }
 function flash(sec,red){flashT=Math.max(flashT,sec);flashTint=red?1:0;
   if(red)S.glitchT=Math.max(S.glitchT||0,sec*1.6);}  /* 撞击 → 磁带式画面撕裂 */
-/* 拉力赛只留短句：旧版那串任务/电台/人物台词全部收成 4~6 字提示 */
-function toast(msg){
+/* 拉力赛只留短句：旧版那串任务/电台/人物台词全部收成 4~6 字提示。
+   第二个参数是最长停留时间：碰撞类只给 1.2~1.8 秒，不长期霸屏、冷却期不重复。 */
+function toast(msg,dur){
   let t=msg;
   if(msg.length>9){
     if(/撞|蹭|剐|刮|压到|雪糕筒|护栏|后备厢|刹|稳住/.test(msg))t='碰撞 · 别停';
@@ -4922,7 +4973,8 @@ function toast(msg){
     else if(/加油|咖啡|烤串|停车|到家|靠边|减速/.test(msg))t='别停';
     else t='继续';
   }
-  toastEl.textContent=t;toastEl.classList.add('on');toastT=2.4;
+  toastEl.textContent=t;toastEl.classList.add('on');
+  toastT=dur==null?2.0:dur;
 }
 function drawRearCamHud(dt){
   const show=S.chaserOn&&S.camMode==='chase'&&!S.ended&&sunSpriteOK;
@@ -5027,19 +5079,39 @@ function arriveCinematic(){
   look.ty=-0.42;look.tp=-0.10;
   setTimeout(()=>{finish('到家');},2400);
 }
-/* 第一次困到 100%：强制靠边停 + 黑屏 3 秒，然后还能继续开 */
+/* 第一次困到 100%：刻意设计的困倦事件——黑屏、模拟暂停，等玩家按键醒来。
+   醒来后车辆已在可行驶位置（右车道靠边），并给短保护期，不会立刻重复触发。 */
 function dozeOff(){
   S.wakeCount++;
   if(S.wakeCount>1&&DIFF!=='easy'){finish('睡着了');return;}
-  S.dozing=true;S.dozeT=3.0;S.brk=0;
-  /* 打盹靠边是剧情事件，不是碰撞：按连续减速量给一脚，后续由 dozing 逐帧收 */
-  S.speed=Math.max(0,S.speed-8.0);
+  /* 黑屏期间 update() 直接返回：物理、计时、里程全停，只等唤醒输入 */
+  S.dozing=true;S.dozeT=0.55;S.dozeStart=performance.now();S.dozeWoke=0;
+  /* 车滑到路肩：直接摆到右车道外侧、顺路、静止。黑屏遮住这一下"靠边" */
+  S.speed=0;S.recoilV=0;S.slipV=0;S.pendingImpulse=0;S.brk=0;
+  S.psi=0;S.lateral=0.55;
+  S.contactActive=false;S.contactCooldown=0;S.contactGapT=9;S.contactId='';
+  lowSpeedT=0;dangerWarned=false;
   const el=document.getElementById('doze');
   if(el){el.style.display='flex';requestAnimationFrame(()=>el.classList.add('on'));}
-  toast('车停在路肩了。按 W 继续。');
   radioSay('喂？刚才是不是压到路肩了？');
-  setTimeout(()=>{if(el)el.classList.remove('on');},3000);
-  setTimeout(()=>{if(el)el.style.display='none';},3450);
+}
+/* 唤醒：Space / 回车 / 任意键或点击黑屏。醒来位置已在可行驶范围，
+   计时扣掉黑屏时长（等效暂停），并给 1.5 秒碰撞保护 + 8 秒不再睡着。 */
+function wakeFromDoze(){
+  if(!S.dozing||S.dozeT>0)return;
+  const slept=Math.max(0,performance.now()-S.dozeStart);
+  S.dozing=false;S.dozeWoke=1;
+  if(S.startTime)S.startTime+=slept;      /* 计时把黑屏这段扣掉 */
+  S.dozeProtectT=8;S.graceT=1.5;          /* 不再立刻睡着 / 1.5 秒碰撞保护 */
+  S.drowsy=DIFF==='easy'?36:46;
+  S.speed=0;S.brk=0;S.noAccelT=0.35;
+  S.lateral=Math.max(-0.2,Math.min(0.9,S.lateral));
+  S.psi=0;
+  lowSpeedT=0;dangerWarned=false;
+  for(const k in keys)keys[k]=false;      /* 清掉唤醒键的按住状态，避免醒来立刻误开窗/给油 */
+  const el=document.getElementById('doze');
+  if(el){el.classList.remove('on');setTimeout(()=>{if(!S.dozing)el.style.display='none';},420);}
+  toast('惊醒 · 靠边了',1.8);
 }
 
 /* ---------- 循环 ---------- */
@@ -5164,6 +5236,9 @@ function syncDynamicColliders(dt){
 
 function update(dt){
   if(S.glitchT>0)S.glitchT=Math.max(0,S.glitchT-dt);
+  /* 困倦黑屏事件：物理、计时、里程全部暂停，只等玩家按 Space / 任意键醒来。
+     场景保持在最后一帧（黑屏盖住，看不到跳变），醒来由 wakeFromDoze() 恢复。 */
+  if(S.dozing){S.dozeT=Math.max(0,S.dozeT-dt);return;}
   /* 接触残留量逐帧衰减：反冲/侧滑/方向盘顶/侧倾/车灯抖/HUD 不稳。
      物理分离与摩擦在碰撞求解里每帧照常做，这些只是表现层的余韵。 */
   S.recoilV*=Math.exp(-dt*7.5);
@@ -5184,6 +5259,7 @@ function update(dt){
   if(S.gearDip>0)S.gearDip-=dt;
   if(S.noAccelT>0)S.noAccelT-=dt;
   if(S.graceT>0)S.graceT-=dt;   /* 撞后免撞窗口：防止停死时被人一辆接一辆顶，永远起不来 */
+  if(S.dozeProtectT>0)S.dozeProtectT-=dt;  /* 醒后保护期：不会立刻再次睡着 */
   if(S.recover>0)S.recover-=dt; /* 提神恢复反馈（2 秒），收一点晃动/暗角 */
   /* 情绪阶段：电台台词和提示口径跟着走，纯状态不花渲染 */
   S.phase=S.dist<150?0:S.dist<880?1:S.dist<1300?2:S.dist<1560?3:4;
@@ -5300,6 +5376,7 @@ function update(dt){
     else{
       S.contactActive=false;
       S.contactGapT=Math.min(9,S.contactGapT+dt);
+      S.hurtGapT=Math.min(9,S.hurtGapT+dt);      /* 真正分开的时间：>2.2s 才允许同类障碍重新结算 */
       if(S.contactGapT>0.28){S.contactId='';S.contactTime=0;}
       S.impactLevel=0;S.impactSev=0;
     }
@@ -5448,8 +5525,9 @@ function update(dt){
     for(const g of carTail.sprites)g.material.opacity=lit;
   }
   /* 视野收窄：参考片那种"贴脸窄视野"，不是把整条路收进来的超广角。
-     66→75 会把障碍推远、把车缩小，正是"不惨"的根源；这里压到 57–63。 */
-  const fovWant=(S.camMode==='chase'?59:60)+Math.min(6,S.speed*0.22);
+     66→75 会把障碍推远、把车缩小，正是"不惨"的根源；这里压到 58–64，
+     高速最多 +4°（驾驶舱）/ +4°（追车），不会越过验收上限。 */
+  const fovWant=(S.camMode==='chase'?59:59)+Math.min(S.camMode==='chase'?4:5,S.speed*(S.camMode==='chase'?0.14:0.18));
   if(Math.abs(camera.fov-fovWant)>0.06){camera.fov=fovWant;camera.updateProjectionMatrix();}
   /* 车灯打进弯里：人开车过弯，灯是提前照着路的 */
   const hereTh=roadAt(S.dist).th;
@@ -5989,13 +6067,7 @@ function update(dt){
   const dcap=(DIFF==='easy'&&S.wakeCount>0)?99:104;
   S.drowsy=Math.max(0,Math.min(dcap,S.drowsy));
   S.peakDrowsy=Math.max(S.peakDrowsy,S.drowsy);
-  /* 打盹：黑屏 3 秒，车自己靠到路肩，醒后 62% */
-  if(S.dozing){
-    S.dozeT-=dt;
-    S.speed=Math.max(0,S.speed-16*dt);
-    S.lateral+=(2.8-S.lateral)*Math.min(1,dt*1.4);
-    if(S.dozeT<=0){S.dozing=false;S.drowsy=62;S.brk=0;S.noAccelT=0.5;}
-  }
+  /* 打盹的物理在 update() 开头就整体暂停了（黑屏事件），这里不再逐帧滑车 */
   /* 车头灯随速度微仰 */
   spots.forEach(s=>{s.target.position.z=-24-S.speed*0.6;});
   /* 里程事件 */
@@ -6023,8 +6095,8 @@ function update(dt){
       radioLineEl.textContent=rainLine&&lineIdx%2?rainLine:st.lines[lineIdx%st.lines.length];
     }
   }
-  /* 困到睡着：第一次强制靠边醒来，normal 第二次才结束 */
-  if(!S.dozing&&S.drowsy>=100&&!S.ended){dozeOff();}
+  /* 困到睡着：第一次按键唤醒（黑屏暂停），normal 第二次才结束；醒后 8 秒内不重复 */
+  if(!S.dozing&&S.dozeProtectT<=0&&S.drowsy>=100&&!S.ended){dozeOff();}
   /* 终点：小区门口的路边车位 */
   placeRoad(park,1583,0,0);
   park.visible=S.dist>1380&&S.dist<1620;
@@ -6585,7 +6657,10 @@ window.__game={
     psi:+S.psi.toFixed(3),gear:S.gear,rpm:+S.rpm.toFixed(2),
     severe:S.severe,noAccelT:+S.noAccelT.toFixed(2),graceT:+S.graceT.toFixed(2),openPhase:S.openPhase,
     elapsed:+(S.startTime?(performance.now()-S.startTime)/1000:0).toFixed(1),
-    dozing:!!S.dozing,wakeCount:S.wakeCount,diff:DIFF,
+    dozing:!!S.dozing,dozeT:+S.dozeT.toFixed(2),dozeProtectT:+S.dozeProtectT.toFixed(2),
+    dozeWoke:S.dozeWoke,wakeCount:S.wakeCount,diff:DIFF,
+    toastT:+toastT.toFixed(2),toastOn:toastEl.classList.contains('on'),
+    toastText:toastEl.textContent,
     chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
     chaserVisual:chaserVisualReady(),chaserGlbOK,sunSpriteOK,
     chaserLowT:+S.chaserLowT.toFixed(2),chaserStage:S.chaserStage,
@@ -6614,6 +6689,7 @@ window.__game={
       normalS:+S.contactNormalS.toFixed(2),normalLat:+S.contactNormalLat.toFixed(2),
       active:S.contactActive,id:S.contactId,
       cooldown:+S.contactCooldown.toFixed(2),
+      hurtGapT:+S.hurtGapT.toFixed(2),lastHurtTag:S.lastHurtTag,
       recoilV:+S.recoilV.toFixed(2),slipV:+S.slipV.toFixed(2),
       yawRate:+S.yawRateNow.toFixed(2),vLong:+S.vLong.toFixed(2),
       vLat:+S.vLat.toFixed(2),dynBoxes:DYN_COLLIDERS.length,
@@ -6634,6 +6710,10 @@ window.__game={
       psi:+S.psi.toFixed(3),part:S.contactPart,level:S.impactLevel};
   },
   start:(skip)=>startGame(skip===true),
+  /* 困倦黑屏验收：直接触发/唤醒，走真实事件流程 */
+  doze(){S.dozeProtectT=0;S.drowsy=100;dozeOff();},
+  wake(){wakeFromDoze();},
+  toastInfo(){return{on:toastEl.classList.contains('on'),text:toastEl.textContent,t:+toastT.toFixed(2)};},
   introInteract,introSkip:()=>{let g=0;while(S.intro.active&&g++<12){introInteract();}},
   finish(kind){finish(kind||'到家');},
   park:tryPark,
