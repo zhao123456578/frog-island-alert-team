@@ -25,7 +25,11 @@ python -m http.server 8899
 | `assets/paperbot/` | 纸片人角色：序列帧脚本与贴图 |
 | `assets/milkfrog_halfbody.*` | 奶蛙半身模型（blend / glb）与骨架脚本 |
 | `assets/audio/` | 音效库，含 `memes/` 梗音效与夜曲 piano |
-| `output/playwright/` | 场景复查截图（工厂/厂区/夜驾坐标修订） |
+| `assets/rat_models/` | 鼠类角色模型 |
+| `assets/hiding_locker.js` / `assets/shift_population.js` | 躲藏柜与班次人群逻辑 |
+| `试玩demo/` | 可玩 Demo 自包含发布包（纯前端，另见 li-code 第八章） |
+| `RAdemo.zip` | Demo 打包归档 |
+| `output/playwright/` | 场景复查截图（工厂/厂区/夜驾/剧情镜头） |
 | `cabinet_lab.html` | 躲藏柜单件测试场 |
 | `paperbot_test.html` | 纸片人行为测试场 |
 | `milkfrog_model.html` | 奶蛙 NO.13 角色建模检视 |
@@ -37,11 +41,12 @@ python -m http.server 8899
 | `gifcut/` | 人物抠图 GIF 管线：`key.py` 绿幕抠像 + `build_gif.py` 合成，成品见 `out_transparent.gif` / `out_white.gif` |
 | `人物抠图GIF/` | 抠图成品：透明背景版、白底版 |
 | `.build_*.py` / `.render_*.py` / `.probe_*.py` | 模型与音效的构建、渲染、量测脚本 |
-| `_backup/` | 本地备份：旧版 index、serve 脚本、奶蛙精致版解压副本 |
-| `frog-island-alert-team/` | 上游团队仓库的本地副本（含其交付 zip） |
+| `_backup/` | 本地备份：旧版 index、serve 脚本、奶蛙精致版解压副本、场景/镜头修订 |
 
 ## 说明
 
-- `_backup/` 与 `frog-island-alert-team/` 是开发过程留存，不是运行必需。
+- `_backup/` 是开发过程留存，不是运行必需。
 - `gifcut/full`、`gifcut/rgba`（约 46MB 抽帧与中间图）未入库，可用 `key.py` + `build_gif.py` 从源视频重建。
+- `assets/ps1_vehicles/`（51MB PS1 车辆素材）已在仓库根目录以 `ps1-vehicles/` 专属文件夹入库，此处不重复。
+- `frog-island-alert-team/`（上游仓库本地副本）与 `_backup/_cdp_profile/`（浏览器缓存）未入库，云端原仓库已有相应内容。
 - 上游仓库 `frog-island-alert-team` 根目录的「团队包」「场景源码包」已标注展示勿用，本目录不受影响。

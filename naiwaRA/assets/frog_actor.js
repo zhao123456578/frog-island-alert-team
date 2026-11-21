@@ -108,6 +108,11 @@
       r.bone.quaternion.multiply(q.setFromAxisAngle(r.y, y || 0));
       r.bone.quaternion.multiply(q.setFromAxisAngle(r.z, z || 0));
     }
+    function lookHead(yaw, pitch) {
+      yaw = Number.isFinite(yaw) ? Math.max(-1.4, Math.min(1.4, yaw)) : 0;
+      pitch = Number.isFinite(pitch) ? Math.max(-0.65, Math.min(0.65, pitch)) : 0;
+      pose("Head", pitch, yaw, 0);
+    }
     function smooth(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }
     function update(dt, mode, amount) {
       dt = Number.isFinite(dt) ? Math.max(0, Math.min(dt, 1)) : 0;
@@ -150,6 +155,18 @@
         pose("ShinR", -Math.max(0, swing) * 0.65, 0, 0);
         pose("UpperArmL", -0.38 * swing, 0, -0.08); pose("UpperArmR", 0.38 * swing, 0, 0.08);
         pose("LowerArmL", 0.12, 0, 0); pose("LowerArmR", 0.12, 0, 0);
+      } else if (mode === "prone") {
+        var struggle = Math.sin(time * 7 + phase) * amount;
+        pose("Chest", 0.06 + breath * 0.01, 0, 0);
+        pose("Head", 1.0 + struggle * 0.025, 0, 0);
+        pose("UpperArmL", 3.25 + 0.15 * amount + 0.025 * struggle, 0, -0.12);
+        pose("UpperArmR", 3.25 + 0.15 * amount - 0.025 * struggle, 0, 0.12);
+        pose("LowerArmL", 0.25 - 0.10 * amount, 0, 0);
+        pose("LowerArmR", 0.25 - 0.10 * amount, 0, 0);
+        pose("ThighL", -0.06 + 0.10 * struggle, 0, -0.03);
+        pose("ThighR", -0.06 - 0.10 * struggle, 0, 0.03);
+        pose("ShinL", -0.10 - 0.16 * Math.max(0, struggle), 0, 0);
+        pose("ShinR", -0.10 - 0.16 * Math.max(0, -struggle), 0, 0);
       } else if (mode === "play") {
         var wave = Math.sin(time * 5 + phase) * amount;
         pose("UpperArmL", 0.55 * amount, 0, -0.18 * amount);
@@ -161,7 +178,7 @@
       }
     }
     update(0, "idle");
-    return { root: root, update: update, bones: bones };
+    return { root: root, update: update, lookHead: lookHead, bones: bones };
   }
   global.FrogActor = { ready: ready, create: create };
 })(window);
