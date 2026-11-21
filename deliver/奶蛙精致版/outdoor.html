@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="data:,">
-<title>奶蛙 · 夜班回家路</title>
+<title>不要停 · 午夜荒野拉力赛</title>
 <style>
   :root{--milk:#e6e2cf;--warm:#ffc27a;--dim:#8b929c;}
   *{box-sizing:border-box;}
@@ -95,12 +95,14 @@
   #doze.on span{opacity:.9;}
   #touch{position:fixed;inset:0;z-index:4;pointer-events:none;display:none;}
   #touch.on{display:block;}
-  .tbtn{position:fixed;width:74px;height:74px;border-radius:50%;
-    background:rgba(10,14,18,.5);border:1px solid rgba(230,226,207,.32);
-    color:var(--milk);font:600 14px/74px "Courier New",monospace;text-align:center;
+  /* 触控键：半透明、低分辨率像素块，和橙色拉力 HUD 同一套颜色 */
+  .tbtn{position:fixed;width:74px;height:74px;border-radius:2px;
+    background:rgba(20,8,6,.46);border:2px solid rgba(255,150,60,.34);
+    color:#ffb020;font:700 14px/70px "Courier New",monospace;text-align:center;
+    image-rendering:pixelated;box-shadow:2px 2px 0 rgba(0,0,0,.65);
     user-select:none;-webkit-user-select:none;touch-action:none;pointer-events:auto;
     transition:background .12s;}
-  .tbtn.act{background:rgba(255,194,122,.9);color:#12140f;}
+  .tbtn.act{background:rgba(255,156,20,.78);color:#180a04;}
   #tGas{left:20px;bottom:100px;}
   #tBrake{left:20px;bottom:18px;}
   #tLeft{right:102px;bottom:18px;}
@@ -148,7 +150,39 @@
     button{font-size:13px;padding:10px 18px;letter-spacing:.1em;}
     #introHint{font-size:12px;bottom:24%;padding:8px 14px;}
     #rearCamHud{width:150px;height:52px;top:70px;right:10px;}
+    #rArrow{font-size:52px!important;top:10px!important;right:12px!important;}
+    #rTime,#rDist{right:14px!important;}
+    #rSpeed{font-size:30px!important;right:14px!important;}
   }
+  /* ================= 不要停 · 极简拉力赛 HUD ================= */
+  #hud .pill,#hKeys,#hDist,#hSpeed,#hRadio,#hDrow,#hGuide{display:none!important;}
+  #rHud{position:fixed;inset:0;pointer-events:none;z-index:3;
+    font-family:"Courier New",monospace;font-weight:700;letter-spacing:.12em;
+    color:#ffb020;text-shadow:2px 2px 0 rgba(0,0,0,.92);}
+  #rArrow{position:fixed;top:14px;right:20px;font-size:78px;line-height:.9;
+    color:#ff9c14;text-shadow:3px 3px 0 rgba(0,0,0,.9);}
+  #rTime{position:fixed;top:100px;right:24px;font-size:22px;color:#ffcf6a;}
+  #rDist{position:fixed;top:126px;right:24px;font-size:13px;color:#d8a860;letter-spacing:.18em;}
+  #rSpeed{position:fixed;right:24px;bottom:18px;font-size:42px;color:#ffd070;letter-spacing:.06em;}
+  #rSpeed small{font-size:15px;color:#ffae3c;letter-spacing:.1em;}
+  #rGear{position:fixed;left:20px;bottom:22px;font-size:22px;color:#e8a83c;letter-spacing:.2em;}
+  #rDanger{position:fixed;inset:0;opacity:0;pointer-events:none;z-index:2;
+    background:radial-gradient(ellipse at center,transparent 62%,rgba(158,16,8,.62) 100%);
+    transition:opacity .18s;}
+  #rDanger.on{opacity:1;}
+  #rWarn{position:fixed;left:50%;top:24%;transform:translateX(-50%);z-index:4;
+    font-size:28px;font-weight:700;letter-spacing:.3em;color:#ff3c20;
+    text-shadow:2px 2px 0 #000;opacity:0;transition:opacity .18s;}
+  #rWarn.on{opacity:1;animation:rblink .42s steps(2,end) infinite;}
+  @keyframes rblink{0%{opacity:1}50%{opacity:.22}}
+  #title{background:rgba(6,4,3,.74);}
+  #title .shotline{color:#ff9c14;letter-spacing:.28em;}
+  #title h1{color:#ff5a2a;letter-spacing:.22em;text-shadow:3px 3px 0 #000;}
+  button{background:#d8641a;color:#0d0705;font-weight:700;}
+  button:hover{background:#ff9c14;}
+  .tbtn{background:rgba(24,8,5,.42);border-color:rgba(255,156,20,.34);color:#ffb84a;
+    font-family:"Courier New",monospace;font-weight:700;}
+  .tbtn.act{background:rgba(255,156,20,.86);color:#160805;}
 </style>
 </head>
 <body>
@@ -170,18 +204,27 @@
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
   <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · 滚轮 / [ ] 调镜头高度 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · C 切换镜头 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
   <div id="hGuide"></div>
+  <div id="rHud" aria-hidden="true">
+    <div id="rArrow">↑</div>
+    <div id="rTime">00:00.0</div>
+    <div id="rDist">0.00 KM</div>
+    <div id="rSpeed">000 <small>KM/H</small></div>
+    <div id="rGear">N</div>
+  </div>
+  <div id="rDanger"></div>
+  <div id="rWarn">不要停</div>
 </div>
 <div id="rearCamHud" aria-hidden="true"><canvas id="rearCamCanvas" width="472" height="164"></canvas></div>
 <div id="toast"></div>
 <div id="introHint"><span class="k" id="introKey">E</span><span id="introHintText">拉开车门</span></div>
 <div id="introSkip">点击 / 任意键 跳过</div>
 <div id="title">
-  <div class="shotline">奶厂停车场 · 车灯亮起</div>
-  <h1>夜班 · 回家路</h1>
-  <div class="sub">一个普通的周三 02:47</div>
-  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 变道 · E 停车 · 拖动环视(±180°) · 滚轮/[ ] 升降镜头 · - = 调距离<br>C 切换驾驶舱 · SPACE 开窗 · R 雨刷 · F 咖啡<br><span style="opacity:.72">松手后镜头保留 1.4s（停车 2.4s）再平滑回正；看不到前车就往上滚滚轮抬高</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视<br><span style="opacity:.72">停车时停在车位白线内，点「停」</span></span></div>
-  <div id="diffPick">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
-  <button id="btnStart">打卡下班 →</button>
+  <div class="shotline">NIGHT RALLY · 不要停</div>
+  <h1>不要停</h1>
+  <div class="sub">奶蛙 · 午夜荒野拉力赛</div>
+  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 转向 · C 切换驾驶舱/追车<br>低于 30 KM/H 持续数秒 · 它会追上来<br><span style="opacity:.72">跟着橙色箭头走，别停。</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 转向<br>跟着橙色箭头走，别停。</span></div>
+  <div id="diffPick" style="display:none">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
+  <button id="btnStart">发动引擎 →</button>
 </div>
 <div id="end">
   <h2>到家了</h2>
@@ -230,14 +273,16 @@ const HANDOFF=(()=>{if(!FROM_FACTORY)return null;
 const canvas=document.getElementById('view');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:false});
 renderer.setPixelRatio(1);
-renderer.setSize(1280,720,false);
+/* PS1 内部渲染：640×360 硬像素，CSS 用 nearest 放大到窗口，绝不提分辨率/开 MSAA */
+renderer.setSize(640,360,false);
 /* 线性曝光只乘一个系数，不压高光、不改色相，像素硬边不受影响 */
 renderer.toneMapping=THREE.LinearToneMapping;
 renderer.toneMappingExposure=1.2;
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x05080d);
-scene.fog=new THREE.FogExp2(0x0c1219,0.0150);
+/* 荒野夜色：黑 / 暗灰 / 脏黄，不再均匀发蓝 */
+scene.background=new THREE.Color(0x060605);
+scene.fog=new THREE.FogExp2(0x141410,0.0135);
 
 const camera=new THREE.PerspectiveCamera(62,16/9,0.1,600);
 camera.rotation.order='YXZ';
@@ -251,13 +296,12 @@ function mkTex(w,h,draw){
   draw(c.getContext('2d'),w,h);
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  /* PSX：全部 NearestFilter、关 mipmap、关各向异性——保留像素硬边与颗粒抖动，
+     远处纹理会跳，但那正是老主机的味道，不要现代平滑。 */
   t.magFilter=THREE.NearestFilter;
-  /* 开 mipmap：不然远处的路面/草地纹理一步一抖，整条路像在“爬”。
-     近处 Nearest 出像素硬边，远处 mipmap 防抖——PS1 的抖动是顶点级的，不是纹理糊 */
-  const pot=(n)=>n>0&&(n&(n-1))===0;
-  if(pot(w)&&pot(h)){t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;}
-  else{t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;}
-  t.anisotropy=8;
+  t.minFilter=THREE.NearestFilter;
+  t.generateMipmaps=false;
+  t.anisotropy=1;
   return t;
 }
 const roadTex=mkTex(512,2048,(x,w,h)=>{
@@ -319,9 +363,9 @@ const roadTex=mkTex(512,2048,(x,w,h)=>{
     g.addColorStop(1,'rgba(8,9,11,0)');
     x.fillStyle=g;x.fillRect(px-wd/2,0,wd,h);
   });
-  /* 边线 + 中央虚线：0.72 灰白，别在车灯下变成荧光条 */
-  x.fillStyle='#837f68';x.fillRect(18,0,13,h);x.fillRect(w-31,0,13,h);
-  x.fillStyle='#9a957a';x.fillRect(w/2-7,0,14,h*0.45);
+  /* 荒野两车道：白色边线 + 黄色中心虚线 */
+  x.fillStyle='#a8a493';x.fillRect(18,0,13,h);x.fillRect(w-31,0,13,h);
+  x.fillStyle='#b99328';x.fillRect(w/2-7,0,14,h*0.45);
   /* 漆面被轮子磨掉的小缺口，线条别干净得像刚刷的 */
   x.fillStyle='rgba(26,28,32,.55)';
   for(let i=0;i<170;i++){
@@ -439,13 +483,11 @@ const reflTex=mkTex(64,512,(x,w,h)=>{
 reflTex.wrapS=reflTex.wrapT=THREE.ClampToEdgeWrapping;
 reflTex.flipY=false;
 
-/* ---------- 灯光 ---------- */
-const hemi=new THREE.HemisphereLight(0x2a3a4e,0x101208,0.42);scene.add(hemi);
-/* 一层很弱的冷底光：只把"死黑"抬成能看出轮廓的深蓝黑，车灯照到的地方仍然占主导 */
-const amb=new THREE.AmbientLight(0x1c2637,0.16);scene.add(amb);
-/* 压低仰角、往左偏：路面法线有起伏时才拉得出方向性明暗，而不是被 hemi 照平。
-   仰角低了同样的冷光摊在路面上少了，强度补到 0.45，整体亮度不变 */
-const moonLight=new THREE.DirectionalLight(0x8fa3c4,0.22);
+/* ---------- 灯光：压暗全局，让两道车灯成为主光源 ---------- */
+const hemi=new THREE.HemisphereLight(0x24241d,0x0a0a07,0.20);scene.add(hemi);
+/* 极弱脏黄底光：只把死黑抬到能辨轮廓，灯外接近黑 */
+const amb=new THREE.AmbientLight(0x1a1912,0.10);scene.add(amb);
+const moonLight=new THREE.DirectionalLight(0x7d7a63,0.13);
 moonLight.position.set(-85,70,-45);scene.add(moonLight);
 
 /* ---------- 地面 ---------- */
@@ -468,8 +510,9 @@ const roadTh=new Float32Array(ROAD_N),roadX=new Float32Array(ROAD_N),
        碰撞盒就会错开几十厘米——正是要修掉的"看不见却撞上了"；
        ② 停车场的柱网只有在不弯的路上才成正交网格，转头看左右不歪。 */
     const t=Math.max(0,Math.min(1,(s-100)/50)),ramp=t*t*(3-2*t);
-    const k=(0.0024*Math.sin(s/118+0.4)+0.0014*Math.sin(s/47+2.1)
-           +0.0008*Math.sin(s/23+4.2))*ramp;
+    /* 荒野拉力：缓弯 + 急弯叠在一起，不再是一条笔直的城市高架 */
+    const k=(0.0046*Math.sin(s/96+0.4)+0.0029*Math.sin(s/38+2.1)
+           +0.0017*Math.sin(s/17+4.2))*ramp;
     roadK[i]=k;roadTh[i]=a;roadX[i]=x;roadZ[i]=z;
     x+=Math.sin(a);z-=Math.cos(a);a+=k;
   }
@@ -713,14 +756,16 @@ function updateRibbon(rb){
 /* A/B 段地坪以外不该露出高速路面：96 m 之前整条沥青路沉到地坪以下，
    围墙和封肩外面是野地，不是"窄门旁边还有一条八车道"。 */
 const roadSink=s=>-0.85*(1-sm01(96,130,s));
-const roadRib=makeRibbon(-4.5,4.5,roadSink,roadSink,
+/* 荒野两车道：沥青只有 6.7 m 宽，外面直接接碎石肩和野地，
+   不再是 9 m 三车道高速；白边线/黄中线都在 roadTex 里。 */
+const roadRib=makeRibbon(-3.35,3.35,roadSink,roadSink,
   new THREE.MeshLambertMaterial({map:roadTex,color:0xa8aaad,emissive:0x0b0d11,vertexColors:true}),false,true);
-makeRibbon(-5.7,-4.5,roadSink,roadSink,new THREE.MeshLambertMaterial({color:0x1a1d1f}));
-makeRibbon(4.5,5.7,roadSink,roadSink,new THREE.MeshLambertMaterial({color:0x1a1d1f}));
+makeRibbon(-4.45,-3.35,roadSink,roadSink,new THREE.MeshLambertMaterial({color:0x211d17}));
+makeRibbon(3.35,4.45,roadSink,roadSink,new THREE.MeshLambertMaterial({color:0x211d17}));
 /* 路两侧的野地跟着路基一起起伏，坡顶坡底才不会穿帮 */
-const vergeMat=new THREE.MeshLambertMaterial({color:0x141719});
-makeRibbon(-160,-5.7,-0.05,-0.05,vergeMat);
-makeRibbon(5.7,160,-0.05,-0.05,vergeMat);
+const vergeMat=new THREE.MeshLambertMaterial({color:0x11130e});
+makeRibbon(-160,-4.45,-0.05,-0.05,vergeMat);
+makeRibbon(4.45,160,-0.05,-0.05,vergeMat);
 
 /* ---------- 四段空间序列的地坪 ----------
    A 厂区停车场（s<56）：一整块被围墙合围的水泥地坪，左右 9 m，没有车道线；
@@ -730,9 +775,9 @@ makeRibbon(5.7,160,-0.05,-0.05,vergeMat);
 const sm01=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 const YARD_L=-1.30,YARD_R=7.70,CORR_L=0.95,CORR_R=4.65;
 const apronA=s=>{const t1=sm01(50,60,s),t2=sm01(98,132,s);
-  return YARD_L+(CORR_L-YARD_L)*t1+(-4.50-CORR_L)*t2;};
+  return YARD_L+(CORR_L-YARD_L)*t1+(-3.35-CORR_L)*t2;};
 const apronB=s=>{const t1=sm01(50,60,s),t2=sm01(98,132,s);
-  return YARD_R+(CORR_R-YARD_R)*t1+(4.50-CORR_R)*t2;};
+  return YARD_R+(CORR_R-YARD_R)*t1+(3.35-CORR_R)*t2;};
 const apronY=s=>0.012-0.80*sm01(140,148,s);
 const yardTex=mkTex(512,2048,(x,w,h)=>{
   /* 夜雨水泥地：板缝、油污、轮胎印、排水沟盖板、车位划线，全画进一张贴图 */
@@ -866,7 +911,7 @@ const sheenRib=makeRibbon(s=>Math.max(-4.4,apronA(s)+0.05),s=>Math.min(4.4,apron
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.BufferAttribute(pos,3));
   scene.add(new THREE.Points(g,new THREE.PointsMaterial({
-    color:0x8fa0b4,size:1.3,sizeAttenuation:false,fog:false,transparent:true,opacity:0.32})));
+    color:0xb8ae98,size:1.3,sizeAttenuation:false,fog:false,transparent:true,opacity:0.30})));
 })();
 /* 月被云压着：参考片里天空几乎是纯黑_void_，只留一点被遮住的月晕，
    不让月亮变成第二盏照亮全场景的灯 */
@@ -877,9 +922,9 @@ const moonHalo=glowSprite(0x9aa4b4,22,0.06);moonHalo.position.copy(moon.position
 /* 天际线渐变：远处城市的光污染，让地平线不是一条硬边 */
 const skyTex=mkTex(16,256,(x,w,h)=>{
   const g=x.createLinearGradient(0,0,0,h);
-  g.addColorStop(0,'#04070c');g.addColorStop(0.55,'#070d14');
-  g.addColorStop(0.8,'#0d141d');g.addColorStop(0.93,'#191b1d');
-  g.addColorStop(1,'#232019');
+  g.addColorStop(0,'#030302');g.addColorStop(0.55,'#060604');
+  g.addColorStop(0.8,'#0a0906');g.addColorStop(0.93,'#141008');
+  g.addColorStop(1,'#1c150b');
   x.fillStyle=g;x.fillRect(0,0,w,h);
 });
 const sky=new THREE.Mesh(new THREE.PlaneGeometry(1600,400),
@@ -923,6 +968,15 @@ for(let i=0;i<lampSlots.length;i++){
   g.position.set(side*5.6,0,-ds);
   scene.add(g);lamps.push({grp:g,light:null,base:type==='dead'?0:1,type,side:side,z:-ds,head,pool,streak,halo});
 }
+/* 荒野夜路：只留三根半死不活的灯杆，其余整组撤掉。
+   灯外区域交给车头灯，不再靠一排钠灯把全局抬亮。 */
+lamps.forEach((L,i)=>{
+  const keep=(i===0||i===3||i===9);
+  if(!keep){L.grp.visible=false;L.base=0;return;}
+  L.base=0.20;
+  L.head.material.color.setHex(0x6b4a22);
+  if(L.halo){L.halo.material.opacity=0.14;L.halo.scale.set(2.0,2.0,1);}
+});
 /* 十盏路灯共用四盏点光源：每帧挑最近的四根灯杆挪过去。
    远处的灯靠灯头高光、地面光斑和湿路倒影撑场面，座舱里看不出少了几盏 */
 const lampLights=[];
@@ -935,11 +989,14 @@ let lampOrder=lamps;
 const reflMat=new THREE.MeshBasicMaterial({color:0xffd9a0});
 const reflGeo=new THREE.BoxGeometry(0.09,0.5,0.09);
 const refls=[];
-for(let i=0;i<56;i++){
+/* 破旧反光柱：稀稀拉拉，左右不等距，不再是一排整齐的高速道钉 */
+for(let i=0;i<18;i++){
   const side=i%2?1:-1;
   const m=new THREE.Mesh(reflGeo,reflMat);
-  m.position.set(side*4.85,0.26,-i*7.5);
-  m.userData.z=-i*7.5;m.userData.lat=side*4.85;m.userData.side=side;m.userData.yb=0.26;
+  const zz=-i*21-(i%3)*4;
+  m.position.set(side*3.72,0.26,zz);
+  m.userData.z=zz;m.userData.lat=side*3.72;m.userData.side=side;m.userData.yb=0.26;
+  m.scale.y=0.7+(i%4)*0.12;
   scene.add(m);refls.push(m);
 }
 /* 护栏：沿弯道铺的连续横梁 + 会往后退的立柱 */
@@ -949,20 +1006,24 @@ const railTopMat=new THREE.MeshBasicMaterial({color:0x6c7176});
    否则那条 ±5.55 的连续横梁会直接从厂区停车场中间穿过去。 */
 const railK=s=>sm01(100,112,s);
 const railSink=s=>-0.62+1.02*railK(s);
-[-5.55,5.55].forEach(x=>{
-  makeRibbon(x,x,railSink,s=>railSink(s)+0.32,railMat,true);
-  makeRibbon(x-0.075,x+0.075,s=>railSink(s)+0.316,s=>railSink(s)+0.316,railTopMat);
-  /* 看得见这道梁，就撞得着它：内缘 lat=±5.475，取代原来那两条不显示的 lateral 硬夹。
-     碰撞体从 110 m 起，和沉到地下的那段视觉对齐——看不见就不该撞。 */
+/* 城市高速那种连续金属护栏整段撤掉：荒野路段只留 rallyProps 里的
+   歪木桩 / 断护栏 / 路锥，护栏不再是左右对称的两条亮线。 */
+const rallyGuardRibs=[];
+[-4.35,4.35].forEach(x=>{
+  rallyGuardRibs.push(makeRibbon(x,x,railSink,s=>railSink(s)+0.32,railMat,true));
+  rallyGuardRibs.push(makeRibbon(x-0.075,x+0.075,s=>railSink(s)+0.316,s=>railSink(s)+0.316,railTopMat));
   addBox(935,x,1650,0.15,'护栏');
 });
+rallyGuardRibs.forEach(r=>{r.mesh.visible=false;});
 const gposts=[];
 const gpostGeo=new THREE.BoxGeometry(0.07,0.56,0.09);
-for(let i=0;i<70;i++){
+for(let i=0;i<22;i++){
   const side=i%2?1:-1;
   const p=new THREE.Mesh(gpostGeo,railMat);
-  p.position.set(side*5.62,0.28,-i*6);
-  p.userData.z=-i*6;p.userData.lat=side*5.62;p.userData.yb=0.28;
+  const pz=-i*18-(i%3)*3;
+  p.position.set(side*4.30,0.28,pz);
+  p.userData.z=pz;p.userData.lat=side*4.30;p.userData.yb=0.28;
+  p.rotation.z=(i%5-2)*0.035;
   scene.add(p);gposts.push(p);
 }
 /* 路旁的行道树，纯剪影，只负责给速度感 */
@@ -1261,11 +1322,12 @@ grille.position.set(0,0.72,-2.515);car.add(grille);
   f.position.set(x,0.67,-1.83);car.add(f);
 });
 /* 仪表台 + A 柱 + 地台：把座舱围成一体，方块不再浮在路上 */
+/* 暗红 / 酒红 / 黑红内饰：80 年代破旧拉力赛座舱 */
 const dash=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.26,0.38),
-  new THREE.MeshLambertMaterial({color:0x1b1c1e}));
+  new THREE.MeshLambertMaterial({color:0x3a1512,emissive:0x1a0806}));
 dash.position.set(0,0.79,-0.97);car.add(dash);
 const dashPad=new THREE.Mesh(new THREE.BoxGeometry(2.06,0.03,0.34),
-  new THREE.MeshLambertMaterial({color:0x24252a}));
+  new THREE.MeshLambertMaterial({color:0x511e19,emissive:0x26100a}));
 dashPad.position.set(0,0.935,-0.97);car.add(dashPad);
 [-0.78,0.78].forEach(x=>{
   const vent=new THREE.Mesh(new THREE.PlaneGeometry(0.10,0.05),
@@ -1273,31 +1335,32 @@ dashPad.position.set(0,0.935,-0.97);car.add(dashPad);
   vent.position.set(x,0.85,-0.779);car.add(vent);
 });
 const floorPan=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.05,1.7),
-  new THREE.MeshLambertMaterial({color:0x10110e}));
+  new THREE.MeshLambertMaterial({color:0x1c0d0c}));
 floorPan.position.set(0,0.35,-0.55);car.add(floorPan);
 [-1.06,1.06].forEach((x,i)=>{
+  /* A 柱：黑红 */
   const ap=new THREE.Mesh(new THREE.BoxGeometry(0.085,0.85,0.085),
-    new THREE.MeshLambertMaterial({color:0x141518}));
+    new THREE.MeshLambertMaterial({color:0x2a1110}));
   ap.position.set(x,1.27,-1.04);ap.rotation.z=(i?1:-1)*0.10;car.add(ap);
 });
 const centerStack=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.18,0.06),
-  new THREE.MeshLambertMaterial({color:0x1c1d19}));
+  new THREE.MeshLambertMaterial({color:0x2a1512}));
 centerStack.position.set(0.30,0.79,-0.75);car.add(centerStack);
 const wheelG=new THREE.Group();
 const rim=new THREE.Mesh(new THREE.TorusGeometry(0.2,0.034,6,20),
-  new THREE.MeshLambertMaterial({color:0x141518}));
+  new THREE.MeshLambertMaterial({color:0x241011}));
 wheelG.add(rim);
 for(let i=0;i<3;i++){
   const sp=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.026,0.022),
-    new THREE.MeshLambertMaterial({color:0x1d1f23}));
+    new THREE.MeshLambertMaterial({color:0x3a1915}));
   sp.rotation.z=i*Math.PI/3;wheelG.add(sp);
 }
 const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,0.03,10),
-  new THREE.MeshLambertMaterial({color:0x33353a}));
+  new THREE.MeshLambertMaterial({color:0x5a2b20}));
 hub.rotation.x=Math.PI/2;wheelG.add(hub);
 /* 转向柱：从盘子中心斜插进仪表台，避免方向盘看起来悬空 */
 const column=new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.032,0.36,8),
-  new THREE.MeshLambertMaterial({color:0x232427}));
+  new THREE.MeshLambertMaterial({color:0x2c1512}));
 column.rotation.x=Math.PI/2;column.position.set(0,0,-0.18);wheelG.add(column);
 wheelG.position.set(-0.40,0.86,-0.62);wheelG.rotation.x=-0.75;wheelG.scale.setScalar(0.7);car.add(wheelG);
 /* 仪表台收音机小屏：跟着电台换台 */
@@ -1312,7 +1375,7 @@ function drawRadio(freq){
   x.font='700 22px "Courier New",monospace';x.fillText(freq,64,25);
   radioTex.needsUpdate=true;
 }
-drawRadio('FM 98.7');
+drawRadio('---');   /* 拉力赛不需要电台频率：只留一块暗着的 80 年代小屏 */
 const radioDisp=new THREE.Mesh(new THREE.PlaneGeometry(0.2,0.075),
   new THREE.MeshBasicMaterial({map:radioTex}));
 radioDisp.position.set(0.30,0.795,-0.719);car.add(radioDisp);
@@ -1402,8 +1465,8 @@ if(q.has('signz'))signs.forEach(g=>{g.position.z=+q.get('signz');});
 /* ---------- 仪表盘挂件：一只跟着困意点头的奶蛙 ---------- */
 const doll=new THREE.Group();
 {
-  const green=new THREE.MeshLambertMaterial({color:0x8fbf6b});
-  const pale=new THREE.MeshLambertMaterial({color:0xd8e6b8});
+  const green=new THREE.MeshLambertMaterial({color:0x3c4a2c});
+  const pale=new THREE.MeshLambertMaterial({color:0x5e6349});
   const base=new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.028,0.012,8),
     new THREE.MeshLambertMaterial({color:0x1a1c1e}));
   base.position.y=0.006;doll.add(base);
@@ -1427,16 +1490,17 @@ const doll=new THREE.Group();
     arm.position.set(x,0.040,0.004);arm.rotation.z=(x<0?1:-1)*0.5;doll.add(arm);
   });
 }
-doll.position.set(0.10,0.951,-0.90);
+doll.position.set(0.68,0.947,-0.96); /* 挪到副驾一侧、缩小，低调不抢镜 */
+doll.scale.setScalar(0.36);
 car.add(doll);
 
 /* ---------- 座舱内衬：车顶、门窗、座椅、后视镜 ---------- */
 /* 一点自发光，避免夜里内饰塌成纯黑一坨 */
-const cabinMat=new THREE.MeshLambertMaterial({color:0x272a30,emissive:0x0a0c0f});
-const cabinDark=new THREE.MeshLambertMaterial({color:0x1a1c21,emissive:0x070809});
-/* 车顶 + 前风挡上沿，把“坐在车里”框出来（夜里顶棚要吃光，颜色压深） */
+const cabinMat=new THREE.MeshLambertMaterial({color:0x3d1714,emissive:0x140504});
+const cabinDark=new THREE.MeshLambertMaterial({color:0x26100e,emissive:0x0d0303});
+/* 车顶 + 前风挡上沿，把“坐在车里”框出来（暗红酒红顶棚） */
 const roof=new THREE.Mesh(new THREE.BoxGeometry(2.24,0.05,2.35),
-  new THREE.MeshLambertMaterial({color:0x22252a,emissive:0x08090b}));
+  new THREE.MeshLambertMaterial({color:0x331513,emissive:0x100404}));
 roof.position.set(0,1.725,0.10);car.add(roof);
 const header=new THREE.Mesh(new THREE.BoxGeometry(2.24,0.06,0.10),cabinDark);
 header.position.set(0,1.685,-1.045);car.add(header);
@@ -1452,7 +1516,7 @@ rearHeader.position.set(0,1.685,1.25);car.add(rearHeader);
   const door=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.44,1.78),cabinMat);
   door.position.set(x,0.79,-0.10);car.add(door);
   const sill=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.03,1.78),
-    new THREE.MeshLambertMaterial({color:0x2b2d31}));
+    new THREE.MeshLambertMaterial({color:0x4a1f18}));
   sill.position.set(x,1.018,-0.10);car.add(sill);
   const glass=new THREE.Mesh(new THREE.PlaneGeometry(1.62,0.50),
     new THREE.MeshBasicMaterial({color:0x0a0f16,transparent:true,opacity:0.30,
@@ -1492,7 +1556,7 @@ const rearGlass=new THREE.Mesh(new THREE.PlaneGeometry(1.92,0.34),
   new THREE.MeshBasicMaterial({color:0x0a0f16,transparent:true,opacity:0.26,
     side:THREE.DoubleSide,depthWrite:false}));
 rearGlass.position.set(0,1.48,1.245);car.add(rearGlass);
-const seatMat=new THREE.MeshLambertMaterial({color:0x24262b,emissive:0x090a0c});
+const seatMat=new THREE.MeshLambertMaterial({color:0x3a1613,emissive:0x0d0403});
 {
   const cush=new THREE.Mesh(new THREE.BoxGeometry(1.85,0.16,0.54),seatMat);
   cush.position.set(0,0.60,0.92);car.add(cush);
@@ -1522,12 +1586,12 @@ const seatMat=new THREE.MeshLambertMaterial({color:0x24262b,emissive:0x090a0c});
 const dome=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.02,0.10),
   new THREE.MeshBasicMaterial({color:0x3a2c1c}));
 dome.position.set(0,1.698,0.30);car.add(dome);
-const domeGlow=glowSprite(0xffb070,0.55,0.25);domeGlow.position.set(0,1.69,0.30);car.add(domeGlow);
+const domeGlow=glowSprite(0xff5a30,0.38,0.16);domeGlow.position.set(0,1.69,0.30);car.add(domeGlow);
 /* 座舱里的一点暖光：只照仪表台和顶棚，别把门板泡成米色 */
-const cabinLight=new THREE.PointLight(0xffdcbc,0.45,1.5,2);
+const cabinLight=new THREE.PointLight(0xff5a34,0.58,1.8,2);
 cabinLight.position.set(0,1.50,-0.55);car.add(cabinLight);
-/* 仪表那点冷光，让中控不至于全黑 */
-const gaugeLight=new THREE.PointLight(0x9fc2d2,0.18,0.55,2);
+/* 仪表灯：暖红/橙，照出方向盘边缘和门板 */
+const gaugeLight=new THREE.PointLight(0xff7a2a,0.42,0.9,2);
 gaugeLight.position.set(-0.40,0.99,-0.80);car.add(gaugeLight);
 /* 路灯从头顶扫过时，座舱里跟着亮一下：只往下打，别把顶棚刷成棕色 */
 const spillLight=new THREE.SpotLight(0xfff0dd,0,3.6,1.05,0.65,1.4);
@@ -2007,10 +2071,11 @@ const mirrorCam=new THREE.PerspectiveCamera(20,4,0.05,600);
 /* 后视相机放到车尾外侧，避免救护车自己的厢体把整块镜面挡黑。
    物理镜面仍在车内，看到的是车后道路；第三人称后视屏使用同一张画面。 */
 mirrorCam.position.set(0.02,2.18,3.08);mirrorCam.rotation.set(-0.07,Math.PI,0);car.add(mirrorCam);
-const mirrorFrame=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.15,0.035),
-  new THREE.MeshLambertMaterial({color:0x121417}));
+/* 后视镜放大一档：荒野夜路里必须看得清后面那团黑影和两点车灯 */
+const mirrorFrame=new THREE.Mesh(new THREE.BoxGeometry(0.64,0.195,0.035),
+  new THREE.MeshLambertMaterial({color:0x1a0d0a}));
 mirrorFrame.position.set(0.02,1.55,-0.888);car.add(mirrorFrame);
-const mirrorMesh=new THREE.Mesh(new THREE.PlaneGeometry(0.46,0.115),
+const mirrorMesh=new THREE.Mesh(new THREE.PlaneGeometry(0.64,0.16),
   new THREE.MeshBasicMaterial({map:mirrorRT.texture,color:0xffffff}));
 mirrorMesh.position.set(0.02,1.55,-0.869);car.add(mirrorMesh);
 const mirrorStem=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.10,0.09),cabinDark);
@@ -2050,28 +2115,28 @@ const gaugeTex=new THREE.CanvasTexture(gaugeCanvas);
   x.clearRect(0,0,220,150);
   const cx=110,cy=92,R=60;
   const bg=x.createRadialGradient(cx-20,cy-26,6,cx,cy,R+10);
-  bg.addColorStop(0,'rgba(34,38,36,0.97)');
-  bg.addColorStop(1,'rgba(6,8,8,0.94)');
+  bg.addColorStop(0,'rgba(48,20,16,0.97)');
+  bg.addColorStop(1,'rgba(10,4,4,0.95)');
   x.fillStyle=bg;x.beginPath();x.arc(cx,cy,R+10,0,Math.PI*2);x.fill();
-  x.strokeStyle='#45484a';x.lineWidth=2;
+  x.strokeStyle='#6a3324';x.lineWidth=2;
   x.beginPath();x.arc(cx,cy,R+10,0,Math.PI*2);x.stroke();
   const a0=Math.PI*210/180,a1=Math.PI*-30/180;
   for(let i=0;i<=8;i++){
     const a=a0+(a1-a0)*i/8;
     const c=Math.cos(a),s=Math.sin(a);
-    x.strokeStyle=i>=6?'#a34a3c':'#cfc9b2';
+    x.strokeStyle=i>=6?'#e0522a':'#e8a860';
     x.lineWidth=i%2?2:3;
     x.beginPath();x.moveTo(cx+c*R,cy-s*R);
     x.lineTo(cx+c*(R-9),cy-s*(R-9));x.stroke();
     if(i%2===0){
-      x.fillStyle='#b9b3a0';x.font='700 13px "Courier New",monospace';
+      x.fillStyle='#e8b072';x.font='700 13px "Courier New",monospace';
       x.textAlign='center';x.textBaseline='middle';
       x.fillText(String(i*20),cx+c*(R-21),cy-s*(R-21));
     }
   }
-  x.fillStyle='#8b8776';x.font='10px "Courier New",monospace';
+  x.fillStyle='#c07a48';x.font='10px "Courier New",monospace';
   x.fillText('km/h',cx,cy+30);
-  x.fillStyle='#d8a05a';x.font='700 11px "Courier New",monospace';
+  x.fillStyle='#ff7a2a';x.font='700 11px "Courier New",monospace';
   x.fillText('13',cx,cy+46);
   gaugeTex.needsUpdate=true;
 })();
@@ -2091,8 +2156,41 @@ gauge.add(gaugeNeedle);
 gauge.position.set(-0.42,1.0,-0.855);
 gauge.rotation.x=-0.95;
 car.add(gauge);
+/* 三圆机械仪表组：主速度表 + 转速表 + 油压表。
+   128px 手绘表盘、暖红橙刻度，不用任何现代贴图。 */
+function rallyDialTex(label,redline){
+  return mkTex(128,128,(x,w,h)=>{
+    const cx=64,cy=64,R=50;
+    x.fillStyle='#0a0504';x.fillRect(0,0,w,h);
+    const g=x.createRadialGradient(cx-14,cy-16,4,cx,cy,R+10);
+    g.addColorStop(0,'#3a1710');g.addColorStop(1,'#080302');
+    x.fillStyle=g;x.beginPath();x.arc(cx,cy,R+10,0,6.283);x.fill();
+    x.strokeStyle='#7a3a22';x.lineWidth=3;
+    x.beginPath();x.arc(cx,cy,R+10,0,6.283);x.stroke();
+    const a0=Math.PI*1.17,a1=Math.PI*-0.17;
+    for(let i=0;i<=10;i++){
+      const a=a0+(a1-a0)*i/10,c=Math.cos(a),s=Math.sin(a);
+      x.strokeStyle=(redline&&i>=8)?'#e0401e':'#e09a50';
+      x.lineWidth=i%2?2:3;
+      x.beginPath();x.moveTo(cx+c*R,cy-s*R);
+      x.lineTo(cx+c*(R-10),cy-s*(R-10));x.stroke();
+    }
+    x.fillStyle='#c88a4e';x.font='700 12px "Courier New",monospace';
+    x.textAlign='center';x.fillText(label,cx,cy+30);
+    x.strokeStyle='#ff7a28';x.lineWidth=3;
+    x.beginPath();x.moveTo(cx,cy);
+    x.lineTo(cx+Math.cos(2.45)*R*0.78,cy-Math.sin(2.45)*R*0.78);x.stroke();
+    x.fillStyle='#2a1b12';x.beginPath();x.arc(cx,cy,6,0,6.283);x.fill();
+  });
+}
+[-0.16,0.07].forEach((px,i)=>{
+  const d=new THREE.Mesh(new THREE.PlaneGeometry(0.155,0.155),
+    new THREE.MeshBasicMaterial({map:rallyDialTex(i?'OIL':'RPM',i===0),transparent:true}));
+  d.position.set(px,0.997,-0.858);d.rotation.x=-0.95;car.add(d);
+});
 /* 握着方向盘的两只蛙爪：顺着轮圈竖着包住，别像两颗球 */
-const pawMat=new THREE.MeshLambertMaterial({color:0x6f9c55});
+/* 蛙爪压成暗橄榄：保留奶蛙世界观，但别在暗红座舱里当两团荧光绿 */
+const pawMat=new THREE.MeshLambertMaterial({color:0x2a1a14});
 [[-0.19,0.06],[0.19,0.06]].forEach(([px,py])=>{
   const paw=new THREE.Mesh(new THREE.SphereGeometry(0.048,10,8),pawMat);
   paw.scale.set(0.78,1.45,0.72);
@@ -2383,7 +2481,7 @@ function initSunSprite(){
   const h=2.34,w=h*SUN_ATLAS.fw/SUN_ATLAS.fh;
   const mat=new THREE.MeshBasicMaterial({
     map:sunTextures[0],transparent:true,alphaTest:0.36,
-    side:THREE.DoubleSide,depthWrite:true,color:0xf1f4eb
+    side:THREE.DoubleSide,depthWrite:true,color:0x3a302a
   });
   sunBillboard=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
   sunBillboard.position.y=h/2;
@@ -2393,7 +2491,7 @@ function initSunSprite(){
   /* 背后偏移 1.5 cm 的暗色轮廓，侧看时保留纸片厚度。 */
   const outMat=new THREE.MeshBasicMaterial({
     map:sunTextures[0],transparent:true,alphaTest:0.36,
-    side:THREE.DoubleSide,depthWrite:false,color:0x11d044
+    side:THREE.DoubleSide,depthWrite:false,color:0x4a120c
   });
   sunOutline=new THREE.Mesh(new THREE.PlaneGeometry(w*1.018,h*1.014),outMat);
   sunOutline.position.set(0,h/2,-0.015);
@@ -4071,6 +4169,119 @@ const oddZone=new THREE.Group();
 }
 scene.add(oddZone);oddZone.visible=false;
 
+/* ============================================================
+   荒野拉力赛段：把宽阔三车道城市高架替换成狭窄弯曲的乡间夜路。
+   城市楼群 / 远处天际线 / 高速指示牌整组隐藏，改用森林剪影、山体、
+   电线杆、木桩、破护栏、路锥、废弃车、橙色转向箭头牌交替布置。
+   所有道具和路灯/树一样按桩号 roll，跟着 placeRoad 走。
+   ============================================================ */
+const RALLY_N=9, RALLY_SPAN=210;           /* 每 210 m 一份，9 份循环 */
+const rallyProps=[];
+const rallyForestMat=new THREE.MeshBasicMaterial({color:0x0a0d0a});
+const rallyTreeMat=new THREE.MeshLambertMaterial({color:0x151c12,emissive:0x040703});
+const rallyWoodMat=new THREE.MeshLambertMaterial({color:0x2b2015});
+const rallyRustMat=new THREE.MeshLambertMaterial({color:0x3a2620});
+const rallyArrowL=artSignTex({w:128,h:128,bg:'#140e05',border:'#ff8a1a',
+  title:'<',sub:'LEFT',size:104,subSize:18,fg:'#ff9c14',subC:'#ffcf7a'});
+const rallyArrowR=artSignTex({w:128,h:128,bg:'#140e05',border:'#ff8a1a',
+  title:'>',sub:'RIGHT',size:104,subSize:18,fg:'#ff9c14',subC:'#ffcf7a'});
+const rallyDeadTex=artSignTex({w:128,h:96,bg:'#1a120c',border:'#7a4a20',
+  title:'NO STOP',sub:'不要停',size:26,subSize:20,fg:'#e0a050',subC:'#b07030'});
+for(let i=0;i<RALLY_N;i++){
+  const g=new THREE.Group();
+  const side=i%2?1:-1;                    /* 左右交替，不对称 */
+  const z0=-i*(RALLY_SPAN/RALLY_N);
+  /* 歪斜电线杆 */
+  const pole=new THREE.Group();
+  cy(pole,0.07,0.11,7.2,artSteel,0,3.6,0,6);
+  bx(pole,1.5,0.08,0.08,artSteel,0,6.7,0);
+  [-0.55,0.55].forEach(x=>cy(pole,0.03,0.03,0.25,artMilk,x,6.75,0,5));
+  pole.position.set(side*7.8,0,-8);
+  pole.rotation.z=side*0.06;
+  g.add(pole);
+  /* 森林剪影：路两侧高低不一的低模松树，密集但只吃很少三角面 */
+  for(let t=0;t<7;t++){
+    const tz=6-t*22-(t%3)*5, sideT=(t%2?1:-1);
+    const tx=sideT*(10+Math.random()*7);
+    const th=5+Math.random()*7;
+    const trunk=cy(g,0.12,0.18,th*0.4,rallyWoodMat,tx,th*0.2,tz,5);
+    const crown=new THREE.Mesh(new THREE.ConeGeometry(1.5+Math.random(),th,5),rallyTreeMat);
+    crown.position.set(tx,th*0.62,tz);g.add(crown);
+  }
+  /* 破护栏 / 木桩：隔一份放一段，留断口 */
+  if(i%2===0){
+    for(let k=0;k<5;k++){
+      const px=side*5.6;
+      cy(g,0.07,0.09,1.0,rallyWoodMat,px,0.5,-4-k*3,5);
+      if(k<4){const rail=bx(g,0.06,0.12,3.0,rallyRustMat,px,0.78,-5.5-k*3);
+        rail.rotation.x=(Math.random()-0.5)*0.12;}
+    }
+  }
+  /* 废弃小屋 / 谷仓：远处一个，暗色剪影 + 少量脏黄窗 */
+  if(i%3===1){
+    const shed=new THREE.Group();
+    bx(shed,5,3.2,4,rallyWoodMat,0,1.6,0);
+    const roofR=new THREE.Mesh(new THREE.ConeGeometry(3.6,1.6,4),rallyRustMat);
+    roofR.position.y=4;roofR.rotation.y=Math.PI/4;shed.add(roofR);
+    bx(shed,0.9,0.7,0.05,artAmber,-1.2,1.9,2.03);
+    shed.position.set(-side*13,0,-18);g.add(shed);
+  }
+  /* 路锥 */
+  if(i%2===1){
+    for(let k=0;k<3;k++){
+      const cone=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.62,6),
+        new THREE.MeshLambertMaterial({color:0xa8451c}));
+      cone.position.set(side*3.9,0.31,-6-k*2.5);g.add(cone);
+    }
+  }
+  /* 死车 / 翻车：第三份放一辆，歪在路肩 */
+  if(i===2||i===6){
+    const dead=new THREE.Group();
+    bx(dead,1.9,0.7,4.2,rallyRustMat,0,0.45,0);
+    bx(dead,1.7,0.6,2.0,artDark,0,1.05,-0.3);
+    dead.position.set(side*6.2,0,-14);
+    dead.rotation.y=(Math.random()-0.5)*0.8;g.add(dead);
+  }
+  /* 橙色拉力转向箭头牌：每份一个，左右由桩号决定，作为路线提示 */
+  const arrowTex=(i%3===0)?rallyArrowR:rallyArrowL;
+  artSign(g,arrowTex,1.3,1.3,side*5.9,2.05,-11,side*0.15);
+  cy(g,0.05,0.07,2.1,artSteel,side*5.9,1.05,-11,5);
+  /* 路牌背面的 "NO STOP" 提示，偶尔出现 */
+  if(i%3===2)artSign(g,rallyDeadTex,1.6,1.2,-side*5.9,1.9,-24,-side*0.2);
+  g.userData.z=z0;g.userData.i=i;
+  scene.add(g);rallyProps.push(g);
+}
+/* 远山剪影 + 森林天际线：固定在很远处，随桩号缓慢循环，替代城市天际线 */
+const ridgeTex=mkTex(256,64,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  x.fillStyle='#0a0c09';x.beginPath();x.moveTo(0,h);
+  for(let px=0;px<=w;px+=8){const yy=h*0.55-18*Math.sin(px*0.03)-10*Math.sin(px*0.11+1);x.lineTo(px,yy);}
+  x.lineTo(w,h);x.closePath();x.fill();
+});
+const ridges=[];
+for(let i=0;i<4;i++){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(420,46),
+    new THREE.MeshBasicMaterial({map:ridgeTex,transparent:true,depthWrite:false,fog:false}));
+  m.position.set(0,16,-150-i*95);scene.add(m);ridges.push(m);
+}
+/* ============================================================
+   城市 / 厂区元素整体下线。注意：update() 里有一大段按桩号显隐的
+   里程碑逻辑（LM / 厂区 / 收费站 / 加油站 / 施工区…），只在构建时
+   隐藏会被下一帧重新打开，所以必须每帧在 render 之前压一次。
+   ============================================================ */
+const RALLY_HIDE=[
+  ...blds,...farBlds,...signs,...LM.map(L=>L.g),
+  works,limitSign,speedCam,gasStation,broken,bbqStall,
+  dairyGate,yardProps,yardLot,gateNarrow,toll,park,overpass,oddZone
+];
+rallyGuardRibs.forEach(r=>{r.mesh.visible=false;});
+function hideCity(){
+  for(let i=0;i<RALLY_HIDE.length;i++){
+    const o=RALLY_HIDE[i];if(o&&o.visible)o.visible=false;
+  }
+}
+hideCity();
+
 /* ---------- 状态 ---------- */
 const S={
   started:false,speed:0,dist:0,lateral:0,steer:0,
@@ -4082,6 +4293,8 @@ const S={
   parked:false,parkTries:0,parkTold:false,overTold:false,reverse:false,
   distPrev:0,fines:0,gasStop:false,bbq:false,catOn:false,catT:0,catDone:false,catHit:false,
   brokenHit:false,
+  glitchT:0,             /* 撞击后的画面故障剩余时间 */
+  chaserPin:false,       /* 截图取证：锁定追逐距离 */
   radioSayT:0,radioSayText:'',
   /* 本轮玩法状态：困意漂移 / 刹车踏板迟滞 / 碰撞惩罚 / 开局前车 */
   wobT:0,brk:0,noAccelT:0,severe:0,graceT:0,autoT:0,
@@ -4104,9 +4317,9 @@ const S={
   /* 场外开场序列：门口低机位→走到驾驶侧车门→拉门→入座→开放驾驶。
      active 期间锁住驾驶输入，由 introUpdate 独占相机；结束交还 update。 */
   intro:{active:false,phase:0,t:0,full:false,door:0,skipped:false,flashed:false,ign:0},
-  /* 镜头模式：'chase' 低机位第三人称追车（默认，看得见整车/车轮/侧倾），
-     'cockpit' 驾驶舱第一人称（参考视频的那种贴脸窄视野），C 键切换 */
-  camMode:'chase',
+  /* 镜头模式：默认必须是驾驶舱第一人称（贴脸窄视野，一进来就在破车里）。
+     C 键切到 'chase' 车外追车。 */
+  camMode:'cockpit',
   scrapeT:0,          /* 擦碰反馈计时：短促抖动+金属声，不闪红 */
   scrapeN:0,          /* 本段擦碰次数（验收：连续三次仍可行驶） */
   contactCd:0,        /* 同一次接触的结算窗口：窗口内再挤只补分离，不重复扣困意 */
@@ -4138,9 +4351,9 @@ addEventListener('keydown',e=>{
     toast(S.wiperOn?'雨刷 开。':'雨刷 关。');}
   if(e.key.toLowerCase()==='f')drinkCoffee();
   if(e.key.toLowerCase()==='e')tryPark();
-  /* C：低机位追车 ↔ 驾驶舱第一人称 */
-  if(e.key.toLowerCase()==='c'){S.camMode=S.camMode==='chase'?'cockpit':'chase';
-    toast(S.camMode==='chase'?'车外镜头。':'驾驶舱。');}
+  /* C：驾驶舱第一人称 ↔ 低机位追车（默认驾驶舱） */
+  if(e.key.toLowerCase()==='c'){S.camMode=S.camMode==='cockpit'?'chase':'cockpit';
+    toast(S.camMode==='cockpit'?'驾驶舱。':'车外镜头。');}
   /* 追车镜头现场微调：不把可读道路锁死在一个固定构图里 */
   if(e.key===']'||e.key==='['){
     camRig.lift=Math.max(LIFT_MIN,Math.min(LIFT_MAX,camRig.lift+(e.key===']'?0.25:-0.25)));
@@ -4292,7 +4505,7 @@ function setStation(i){
   S.station=i;S.switchCount++;lineIdx=0;lineTimer=0;
   const st=STATIONS[i];
   radioEl.innerHTML='电台 <b>'+st.name+'</b><br><span id="hRadioLine"></span>';
-  drawRadio(st.freq);
+  drawRadio('---');
   staticBurst(0.32);
   if(!q.has('shot'))toast('调到 · '+st.name+' '+st.freq);
 }
@@ -4432,8 +4645,66 @@ const rearCamCanvas=document.getElementById('rearCamCanvas');
 const rearCamCtx=rearCamCanvas.getContext('2d');
 let toastT=0,flashT=0,flashTint=0;
 let rearCamAcc=0;
-function flash(sec,red){flashT=Math.max(flashT,sec);flashTint=red?1:0;}
-function toast(msg){toastEl.textContent=msg;toastEl.classList.add('on');toastT=3.2;}
+
+/* ---- 不要停：极简拉力赛 HUD + 低速危险警告 ---- */
+const rArrowEl=document.getElementById('rArrow');
+const rTimeEl=document.getElementById('rTime');
+const rDistEl=document.getElementById('rDist');
+const rSpeedEl=document.getElementById('rSpeed');
+const rGearEl=document.getElementById('rGear');
+const rDangerEl=document.getElementById('rDanger');
+const rWarnEl=document.getElementById('rWarn');
+let lowSpeedT=0, dangerWarned=false;
+function updateRallyHud(dt){
+  /* 计时：从发车开始 mm:ss.d */
+  const t=S.started?(performance.now()-S.startTime)/1000:0;
+  const mm=String(Math.floor(t/60)).padStart(2,'0');
+  const ss=String(Math.floor(t%60)).padStart(2,'0');
+  const dc=Math.floor((t%1)*10);
+  rTimeEl.textContent=mm+':'+ss+'.'+dc;
+  /* 赛道距离 */
+  rDistEl.textContent=(S.dist/1000).toFixed(2)+' KM / 1.59 KM';
+  /* 像素速度：三位数补零 */
+  const kmh=Math.max(0,Math.round(S.speed*3.6));
+  rSpeedEl.innerHTML=String(kmh).padStart(3,'0')+' <small>KM/H</small>';
+  rGearEl.textContent=S.reverse?'R':(kmh<1?'N':String(Math.max(1,Math.min(5,Math.ceil(kmh/34)))));
+  /* 路线箭头：看前方曲率，提前切换左/右；直道用向上箭头 */
+  const th0=roadAt(S.dist+18).th, th1=roadAt(S.dist+58).th;
+  const k=(th1-th0);
+  rArrowEl.textContent=k>0.004?'↱':(k<-0.004?'↰':'↑');
+  /* 不要停：低速持续数秒 → 红边 + 警示 + 引擎异响 + 追逐压力 */
+  /* 发车后 6 秒宽限：静止开场第一帧不该一上来就红屏报警 */
+  const runT=S.started?(performance.now()-S.startTime)/1000:0;
+  const graceOK=runT>6||q.has('danger');
+  if(S.started&&!S.ended&&!S.intro.active&&graceOK){
+    if(S.speed*3.6<30)lowSpeedT+=dt;else lowSpeedT=Math.max(0,lowSpeedT-dt*1.8);
+  }else lowSpeedT=0;
+  const danger=lowSpeedT>2.0;
+  rDangerEl.classList.toggle('on',danger);
+  rWarnEl.classList.toggle('on',danger);
+  if(danger&&!dangerWarned){
+    dangerWarned=true;
+    toast('别停！它追上来了');
+    radioSay('速度掉下来了——后面那东西在靠近。走！');
+    if(actx){const n=actx.currentTime;
+      if(engLp)engLp.frequency.setValueAtTime(90,n);}
+  }
+  if(!danger&&lowSpeedT<0.4)dangerWarned=false;
+}
+function flash(sec,red){flashT=Math.max(flashT,sec);flashTint=red?1:0;
+  if(red)S.glitchT=Math.max(S.glitchT||0,sec*1.6);}  /* 撞击 → 磁带式画面撕裂 */
+/* 拉力赛只留短句：旧版那串任务/电台/人物台词全部收成 4~6 字提示 */
+function toast(msg){
+  let t=msg;
+  if(msg.length>9){
+    if(/撞|蹭|剐|刮|压到|雪糕筒|护栏|后备厢|刹|稳住/.test(msg))t='碰撞 · 别停';
+    else if(/追|后面|上来|别停|靠近/.test(msg))t='别停';
+    else if(/雨|湿|滑|路面/.test(msg))t='路面湿';
+    else if(/加油|咖啡|烤串|停车|到家|靠边|减速/.test(msg))t='别停';
+    else t='继续';
+  }
+  toastEl.textContent=t;toastEl.classList.add('on');toastT=2.4;
+}
 function drawRearCamHud(dt){
   const show=S.chaserOn&&S.camMode==='chase'&&!S.ended&&sunSpriteOK;
   rearCamHud.classList.toggle('on',show);
@@ -4444,7 +4715,7 @@ function drawRearCamHud(dt){
   const ctx=rearCamCtx,w=rearCamCanvas.width,h=rearCamCanvas.height;
   ctx.clearRect(0,0,w,h);
   const bg=ctx.createLinearGradient(0,0,0,h);
-  bg.addColorStop(0,'#071018');bg.addColorStop(0.58,'#10191c');bg.addColorStop(1,'#050708');
+  bg.addColorStop(0,'#080604');bg.addColorStop(0.58,'#14100a');bg.addColorStop(1,'#050403');
   ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
   /* 透视车道：让人一眼知道这是后视摄像头，而不是普通头像框。 */
   ctx.fillStyle='#151b1d';ctx.beginPath();
@@ -4454,9 +4725,9 @@ function drawRearCamHud(dt){
   [.38,.62].forEach(u=>{
     ctx.beginPath();ctx.moveTo(w*u,h);ctx.lineTo(w*(.47+u*.06),h*.48);ctx.stroke();
   });
-  ctx.strokeStyle='rgba(126,213,154,.34)';ctx.lineWidth=2;
+  ctx.strokeStyle='rgba(255,120,50,.26)';ctx.lineWidth=2;
   ctx.strokeRect(5,5,w-10,h-10);
-  /* 只取角色上半身，远处也能读出白衬衫和脸。 */
+  /* 只取上半身：压成低清晰度黑影，别把完整人物正面展示出来。 */
   const frame=((Math.floor(sunAnimT)%SUN_ATLAS.count)+SUN_ATLAS.count)%SUN_ATLAS.count;
   const per=SUN_ATLAS.cols*SUN_ATLAS.rows;
   const tex=sunTextures[Math.floor(frame/per)];
@@ -4468,17 +4739,18 @@ function drawRearCamHud(dt){
     const ch=86+gapK*54,cw=ch*(SUN_ATLAS.fw/278);
     const cx=w*.54,cBottom=h-10;
     ctx.save();
-    ctx.shadowColor='rgba(106,255,151,.62)';ctx.shadowBlur=16+gapK*12;
+    ctx.shadowColor='rgba(255,74,30,.55)';ctx.shadowBlur=16+gapK*12;
     ctx.imageSmoothingEnabled=false;
+    ctx.filter='brightness(0.42) contrast(1.25)';
     ctx.drawImage(tex.image,sx,sy,SUN_ATLAS.fw,278,cx-cw/2,cBottom-ch,cw,ch);
     ctx.restore();
     const scan=ctx.createLinearGradient(0,0,0,h);
     scan.addColorStop(0,'rgba(0,0,0,0)');
-    scan.addColorStop(.5,'rgba(126,213,154,.045)');
+    scan.addColorStop(.5,'rgba(255,120,60,.045)');
     scan.addColorStop(1,'rgba(0,0,0,.28)');
     ctx.fillStyle=scan;ctx.fillRect(0,0,w,h);
-    ctx.fillStyle='rgba(186,236,198,.88)';ctx.font='700 16px "Courier New",monospace';
-    ctx.fillText('REAR  孙笑川',14,27);
+    ctx.fillStyle='rgba(255,170,90,.85)';ctx.font='700 16px "Courier New",monospace';
+    ctx.fillText('REAR',14,27);
     ctx.fillStyle='rgba(255,197,125,.92)';ctx.font='700 17px "Courier New",monospace';
     ctx.textAlign='right';ctx.fillText(Math.max(0,Math.round(S.chaserGap))+' m',w-14,27);
     ctx.textAlign='left';
@@ -4567,9 +4839,11 @@ function loop(now){
   if(chaserMixer)chaserMixer.update(dt);   /* 追逐者 GLB 动画驱动 */
   updateSunChaser(dt,now*0.001);
   updateCarDamage(dt);
+  hideCity();           /* 压掉按里程复活的楼群/厂区/收费站，荒野路段才算真的换了 */
   render(dt);
 }
 function update(dt){
+  if(S.glitchT>0)S.glitchT=Math.max(0,S.glitchT-dt);
   const asleep=!!S.dozing;
   const up=!asleep&&(keys['w']||keys['arrowup']),down=!asleep&&(keys['s']||keys['arrowdown']);
   const left=!asleep&&(keys['a']||keys['arrowleft']),right=!asleep&&(keys['d']||keys['arrowright']);
@@ -4794,7 +5068,8 @@ function update(dt){
        不随环视平移，因此不会穿入仪表台/门板/座椅（头部净空见座舱几何）。 */
     camera.position.set(DRIVER_X+shakeX,1.26+S.bob+shakeY,0.22);
     camera.rotation.y=look.yaw+S.camLagYaw;
-    camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85;
+    /* 视线略低、略向下：仪表台和方向盘稳稳占住画面下方约 1/3 */
+    camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85-0.035;
     camera.rotation.z=S.rollVis*0.0095+sway+Math.sin(tnow*39)*buzz*0.25;
     camRInit=false;
   }
@@ -4883,6 +5158,11 @@ function update(dt){
     placeRoad(p,ps,p.userData.lat,0);});
   trees.forEach(t=>{t.userData.z+=scroll;if(t.userData.z>18)t.userData.z-=408;
     placeRoad(t,S.dist-t.userData.z,t.userData.lat,t.userData.baseYaw);});
+  /* 荒野拉力道具：森林 / 电线杆 / 谷仓 / 路锥 / 死车 / 橙色箭头，随桩号滚动 */
+  rallyProps.forEach(g=>{g.userData.z+=scroll;if(g.userData.z>12)g.userData.z-=RALLY_N*(RALLY_SPAN/RALLY_N);
+    placeRoad(g,S.dist-g.userData.z,0,0);});
+  /* 远山剪影缓慢跟随，永远落在雾里 */
+  ridges.forEach((m,i)=>{m.position.z=-150-i*95+(S.dist%95)*0.35-16;});
   blds.forEach(b=>{b.userData.z+=scroll;if(b.userData.z>14)b.userData.z-=BLD_SPAN;
     placeRoad(b,S.dist-b.userData.z,b.userData.lat,0);});
   farBlds.forEach(b=>{b.userData.z+=scroll;if(b.userData.z>30)b.userData.z-=FAR_SPAN;
@@ -4972,7 +5252,9 @@ function update(dt){
       S.panT=1.7;S.panCd=18;
     }
     if(S.chaserOn){
+      /* 不要停：低速警告触发后，追逐压力明显加大 */
       if(S.speed<40/3.6)S.chaserLowT+=dt;else S.chaserLowT=0;
+      if(lowSpeedT>2.0)S.chaserGap=Math.max(7,S.chaserGap-9*dt);
       /* 只有停车或明显低于40km/h才会被追上；正常速度可以逐渐拉开。
          不再为了“演一下追逐”强制把距离从44m瞬间压到14m。 */
       if(S.chaserLowT>=2.2)S.chaserGap-=5.2*dt;
@@ -5006,7 +5288,9 @@ function update(dt){
         S.chaserHitT-=dt;
         if(S.chaserHitT<=0&&S.chaserStage===4){S.chaserStage=2;playChaser('run');}
       }
-      /* 孙笑川从右侧路肩追赶，侧后方镜头里能同时看见己方车尾和追兵。 */
+      /* 验收/截图用：把追逐者钉在后视镜能看清的距离，不让它被"抓碰"逻辑弹回 58 m */
+      if(S.chaserPin){S.chaserGap=13;S.chaserEye=1;}
+      /* 从右侧路肩追赶，侧后方镜头里能同时看见己方车尾和追兵。 */
       const chaseLat=3.18-Math.min(0.55,Math.max(0,S.chaserStage-1)*0.18);
       placeRoad(chaser,S.dist-S.chaserGap,chaseLat+Math.sin(tnow*0.37)*0.05,0);
       chaserRoot.position.copy(chaser.position);
@@ -5458,7 +5742,8 @@ function update(dt){
       if(!S.overTold){S.overTold=true;
         toast('开过了。按住 S 倒车回来，看到车位再按 E。');
         radioSay('倒一点，车位在后头。');}}}
-  /* HUD */
+  /* HUD — 极简拉力赛：右上箭头/计时，右下像素速度 */
+  updateRallyHud(dt);
   elDist.textContent='距小区 '+(Math.max(0,(1590-S.dist))/1000).toFixed(2)+' km / 1.59 km';
   if(elGuide){
     let gMode=0;
@@ -5520,10 +5805,15 @@ function update(dt){
      全部频率写点前过 safeF：NaN/负值/超低频一律钉在下限，
      不给 Biquad 任何逐帧警告和爆音的机会。 */
   const safeF=(v,lo)=>{v=+v;return (isFinite(v)&&v>lo)?v:lo;};
-  if(actx&&engGain)engGain.gain.value=Math.max(0,(0.009+Math.min(0.041,S.speed*0.0021))*(S.gearDip>0?0.5:1));
-  if(actx&&engOsc)engOsc.frequency.value=safeF(38+S.rpm*58,24);
-  if(actx&&engOsc2)engOsc2.frequency.value=safeF((38+S.rpm*58)*0.5,12);
-  if(actx&&engLp)engLp.frequency.value=safeF(170+S.rpm*260,60);
+  /* 粗糙压缩的引擎：方波基频 + 不规则怠速抖动（老游戏那种"突突"声） */
+  const idleJitter=Math.sin(tnow*13.7)*1.8+Math.sin(tnow*27.3)*0.9+(Math.random()-0.5)*1.2;
+  const rough=0.009+Math.min(0.041,S.speed*0.0021);
+  if(actx&&engGain)engGain.gain.value=Math.max(0,(rough*(0.92+0.16*Math.sin(tnow*31)))*(S.gearDip>0?0.5:1));
+  if(actx&&engOsc)engOsc.frequency.value=safeF(38+S.rpm*58+idleJitter*(S.speed<3?1.4:0.4),24);
+  if(actx&&engOsc2)engOsc2.frequency.value=safeF((38+S.rpm*58)*0.5+idleJitter*0.6,12);
+  /* 不要停危险时把低通压窄，引擎听起来发闷发抖 */
+  const dangerLp=lowSpeedT>2.0?90:(170+S.rpm*260);
+  if(actx&&engLp)engLp.frequency.value=safeF(dangerLp,60);
   if(rainGain)rainGain.gain.value+=((S.rain?0.055:0)-rainGain.gain.value)*Math.min(1,dt*1.6);
   if(tireGain)tireGain.gain.value+=(((S.speed/27)*0.030+(S.rain?0.006:0))-tireGain.gain.value)*Math.min(1,dt*2.2);
   /* 风声包络：开窗时随车速抬起来，关窗归零；五种速度感里的“耳边的风” */
@@ -5541,7 +5831,8 @@ function renderMirror(){
      现在主画面也一起渲染：正常跟车时它在车后视野外，一回头就真的能看见。 */
   const chOn=(S.chaserOn&&!S.ended)||chaserDebugOn;
   const chReady=chaserVisualReady();
-  chaser.visible=chOn&&!chReady;
+  /* 荒野版：黑影本体始终在场，雾里先看到两点车灯，再看到巨大轮廓 */
+  chaser.visible=chOn;
   chaserRoot.visible=chOn&&chReady;
   sunChaser.visible=chOn&&sunSpriteOK&&!chaserGlbOK;
   const rearWasVisible=chaseRearFrame.visible;
@@ -5550,18 +5841,19 @@ function renderMirror(){
   renderer.render(scene,mirrorCam);
   renderer.setRenderTarget(null);
   chaseRearFrame.visible=rearWasVisible;
-  chaser.visible=chOn&&!chReady;
+  chaser.visible=chOn;
   chaserRoot.visible=chOn&&chReady;
+  sunChaser.visible=chOn&&sunSpriteOK&&!chaserGlbOK;
   mirrorMesh.visible=true;
 }
 /* 廉价辉光：主画面进 RT → 半分辨率亮度提取 → 横竖两遍小核模糊 → 加色叠回屏幕。
    走的是自己的小 quad 管线，不引 EffectComposer，也不动后视镜那遍 */
-const rtScene=new THREE.WebGLRenderTarget(1280,720,
-  {minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-const rtBloomA=new THREE.WebGLRenderTarget(640,360,
-  {minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
-const rtBloomB=new THREE.WebGLRenderTarget(640,360,
-  {minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
+const rtScene=new THREE.WebGLRenderTarget(640,360,
+  {minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
+const rtBloomA=new THREE.WebGLRenderTarget(320,180,
+  {minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:false});
+const rtBloomB=new THREE.WebGLRenderTarget(320,180,
+  {minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:false});
 const postCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 const postScene=new THREE.Scene();
 const postMesh=new THREE.Mesh(new THREE.PlaneGeometry(2,2));
@@ -5586,7 +5878,7 @@ const blurMat=new THREE.ShaderMaterial({
   fragmentShader:[
     'uniform sampler2D tDiffuse;uniform vec2 uDir;varying vec2 vUv;',
     'void main(){',
-    '  vec2 o=uDir/vec2(640.0,360.0)*1.35;',
+    '  vec2 o=uDir/vec2(320.0,180.0)*1.05;',
     '  vec3 c=texture2D(tDiffuse,vUv).rgb*0.2274;',
     '  c+=texture2D(tDiffuse,vUv+o*1.3846).rgb*0.3162;',
     '  c+=texture2D(tDiffuse,vUv-o*1.3846).rgb*0.3162;',
@@ -5597,37 +5889,51 @@ const blurMat=new THREE.ShaderMaterial({
   depthTest:false,depthWrite:false
 });
 const compMat=new THREE.ShaderMaterial({
-  uniforms:{tScene:{value:null},tBloom:{value:null},uMix:{value:0.60},uTime:{value:0},
-    uLevels:{value:24},uResolution:{value:new THREE.Vector2(1280,720)}},
+  uniforms:{tScene:{value:null},tBloom:{value:null},uMix:{value:0.14},uTime:{value:0},
+    uLevels:{value:31},uGlitch:{value:0},uResolution:{value:new THREE.Vector2(640,360)}},
   vertexShader:VS_QUAD,
   fragmentShader:[
     'uniform sampler2D tScene;uniform sampler2D tBloom;',
-    'uniform float uMix,uTime,uLevels;uniform vec2 uResolution;varying vec2 vUv;',
+    'uniform float uMix,uTime,uLevels,uGlitch;uniform vec2 uResolution;varying vec2 vUv;',
     'float b2(vec2 a){a=floor(a);return fract(a.x*0.5+a.y*a.y*0.75);}',
     'float b4(vec2 a){return b2(0.5*a)*0.25+b2(a);}',
     'void main(){',
-    '  vec3 c=texture2D(tScene,vUv).rgb;',
+    /* 撞击故障：按扫描线分带的横向撕裂 + 轻微 RGB 错位，只持续不到一秒 */
+    '  vec2 uv=vUv;float g=uGlitch;',
+    '  if(g>0.001){',
+    '    float band=step(0.68,fract(gl_FragCoord.y*0.055+uTime*13.0));',
+    '    uv.x+=band*g*0.055*sin(uTime*71.0+gl_FragCoord.y*0.27);',
+    '    uv.y+=g*0.007*sin(uTime*37.0);',
+    '  }',
+    '  vec3 c=texture2D(tScene,uv).rgb;',
+    '  if(g>0.001){',
+    '    float sh=g*0.013;',
+    '    c.r=texture2D(tScene,uv+vec2(sh,0.0)).r;',
+    '    c.b=texture2D(tScene,uv-vec2(sh,0.0)).b;',
+    '  }',
     '  vec3 b=texture2D(tBloom,vUv).rgb;',
     '  c+=b*uMix;',
+    /* 15-bit 量化：每通道 5 bit = 32 阶（uLevels=31 为最大索引），4×4 Bayer 抖动打散色阶。
+       脏黄偏色：暗部不发蓝，高光偏橙，整体落到黑/暗灰/脏黄的调子。 */
+    '  vec2 bp=floor(gl_FragCoord.xy);',
+    '  float d0=(b4(bp)-0.5);',
+    '  float d1=(b4(bp+vec2(19.0,7.0))-0.5);',
+    '  float d2=(b4(bp+vec2(5.0,23.0))-0.5);',
+    '  vec3 dither=vec3(d0,d1,d2)/uLevels;',
+    '  c=clamp(floor((c+dither)*uLevels+0.5)/uLevels,0.0,1.0);',
     '  float lum=dot(c,vec3(0.299,0.587,0.114));',
-    /* 4×4 Bayer 抖动 + 24 级亮度量化：和工厂/停车场同一套低色阶，
-       远处的渐变天和雾会转成 PSX 的色带，而不是糊成一片。 */
-    '  float dn=(b4(gl_FragCoord.xy)-0.5)/uLevels;',
-    '  float lq=clamp(floor(lum*uLevels+dn+0.5)/uLevels,0.0,1.0);',
-    '  c=c*(lq/max(lum,0.0001));c=clamp(c,0.0,1.0);',
-    '  float lo=smoothstep(0.05,0.40,lum);',
-    '  vec3 sick=vec3(0.80,1.00,0.90);',
-    '  vec3 warm=vec3(1.10,0.94,0.74);',
-    '  c*=mix(sick,warm,lo);',
-    '  c=mix(vec3(lum),c,1.08);',
+    '  c*=mix(vec3(0.92,0.86,0.70),vec3(1.10,0.96,0.74),smoothstep(0.04,0.42,lum));',
     '  vec2 q=vUv-0.5;',
-    '  float vig=1.0-0.80*dot(q,q);',
+    '  float vig=1.0-0.72*dot(q,q);',
     '  c*=vig;',
-    /* 黑位压缩：暗部往冷绿里沉一点，画面才有"磁带夜景"的底，不是灰蒙蒙 */
-    '  c=max(c-vec3(0.010,0.012,0.014),vec3(0.0));',
+    '  c=max(c-vec3(0.008,0.008,0.006),vec3(0.0));',
+    /* 低质量录像噪点 + 扫描线，压得很轻，不能盖住路面 */
     '  float grain=fract(sin(dot(gl_FragCoord.xy+uTime*vec2(17.1,31.7),vec2(12.9898,78.233)))*43758.5453)-0.5;',
-    '  c+=grain*0.020;',
-    '  c*=0.994+0.006*sin(gl_FragCoord.y*3.14159);',
+    '  c+=grain*0.026;',
+    '  c*=0.985+0.015*step(1.0,mod(gl_FragCoord.y,2.0));',
+    '  c=clamp(c,0.0,1.0);',
+    /* 二次量化，保证最终输出严格落在 15-bit 色阶上（抖动之后的偏色也要回到格点） */
+    '  c=floor(c*uLevels+0.5)/uLevels;',
     '  gl_FragColor=vec4(max(c,vec3(0.0)),1.0);',
     '}'].join('\n'),
   depthTest:false,depthWrite:false
@@ -5639,6 +5945,8 @@ function postPass(mat,target){
 }
 function render(dt){
   const now=performance.now();
+  hideCity();           /* 任何入口（主循环 / 截图预热 / 调试 shot）都在这里兜底 */
+  compMat.uniforms.uGlitch.value=Math.min(1,(S.glitchT||0)*2.4);
   if(now-mirrorT>=33){mirrorT=now;renderMirror();}
   renderer.setRenderTarget(rtScene);
   renderer.render(scene,camera);
@@ -5865,16 +6173,34 @@ function applyIntroCam(dt){
 
 function startGame(skipIntro){
   if(S.started)return;
-  if(skipIntro===true||q.has('shot')){
+  /* 默认直接坐进驾驶舱：第一帧就是暗红座舱 + 荒野夜路。
+     只有显式 ?intro=1 才播放老的走动/拉门过场。 */
+  if(skipIntro===true||skipIntro==='brief'||q.has('shot')||(!FROM_FACTORY&&!q.has('intro'))){
     S.started=true;S.startTime=performance.now();
-    titleEl.style.opacity='0';setTimeout(()=>titleEl.style.display='none',500);
+    /* 起点直接落在荒野路段：第一帧就不是厂区门架/城市高架 */
+    if(!FROM_FACTORY&&S.dist<200)S.dist=260;
+    if(skipIntro==='brief'){
+      /* 极简 3 秒提示：半透明压在座舱上，第一帧仍看得见红色内饰和夜路 */
+      titleEl.style.background='rgba(4,4,3,.42)';
+      const tk=titleEl.querySelector('.keys');if(tk)tk.style.display='none';
+      const tb=titleEl.querySelector('button');if(tb)tb.style.display='none';
+      setTimeout(()=>{titleEl.style.opacity='0';
+        setTimeout(()=>{titleEl.style.display='none';},600);},3000);
+    }else{
+      titleEl.style.opacity='0';setTimeout(()=>titleEl.style.display='none',500);
+    }
     initAudio();hud.classList.add('on');
+    camera.position.set(DRIVER_X,1.26,0.22);
+    camera.rotation.set(0,0,0);
+    look.yaw=look.ty=look.pitch=look.tp=0;
+    applyCarAppearance();
+    spots.forEach(s=>{s.intensity=1.45;});
     setupHudFade();
+    setTimeout(()=>{if(S.started&&!S.ended)toast('跟着橙色箭头。别停。');},700);
   }else if(FROM_FACTORY){
     /* 停车场已经上车：直接入座接棒，不重播车门过场 */
     startHandoff();
   }else{
-    /* 直接体验：完整车门开场只播这一次 */
     startIntro(false);
   }
 }
@@ -5920,6 +6246,10 @@ function finish(kind){
   rearCamHud.classList.remove('on');
 }
 document.getElementById('btnStart').onclick=()=>startGame(false);
+/* 默认打开即坐进驾驶舱：不再需要点按钮才看到第一帧。
+   只留 3 秒极简提示，之后完全交给画面。 */
+if(!FROM_FACTORY&&!q.has('intro')&&!q.has('shot'))
+  setTimeout(()=>{if(!S.started)startGame('brief');},260);
 document.getElementById('btnAgain').onclick=()=>{
   const u=new URL(location.href);u.searchParams.set('diff',DIFF);location.href=u.toString();
 };
@@ -5949,6 +6279,7 @@ window.__game={
     chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
     chaserLowT:+S.chaserLowT.toFixed(2),chaserStage:S.chaserStage,
     catOn:S.catOn,catDone:S.catDone,catReact:S.catReact,catSeen:S.catSeen,
+    camMode:S.camMode,lowSpeedT:+lowSpeedT.toFixed(2),glitchT:+S.glitchT.toFixed(2),
     phase:S.phase,brakeSlam:+S.brakeSlam.toFixed(2),recover:+S.recover.toFixed(2),
     rollVis:+S.rollVis.toFixed(3),camLagYaw:+S.camLagYaw.toFixed(3),windRush:+S.windRush.toFixed(3),
     lookYaw:+look.yaw.toFixed(2),lookPitch:+look.pitch.toFixed(2),
@@ -6022,10 +6353,13 @@ if(q.has('shot')){
     S.dmgSide=q.get('dmgside')==='R'?'R':'L';
     S.dmgTag='diag';
   }
+  /* 验收用：把撞击故障定格住，方便截图取证（真实撞击由 flash(...,true) 触发） */
+  if(q.has('glitch'))S.glitchT=Math.max(1,+q.get('glitch')||1)*40;
+  if(q.has('pinchaser'))S.chaserPin=true;
 }
 const btnBackEl=document.getElementById('btnBack');
 btnBackEl.onclick=()=>{location.href='index.html';};
-document.querySelector('#title .sub').textContent='一个普通的周三 '+SHIFT.end;
+document.querySelector('#title .sub').textContent='奶蛙 · 午夜荒野拉力赛';
 
 /* ---------- 工厂 → 回家路：坐进驾驶位接棒（只认 ?from=factory） ----------
    yard.html 里玩家已按 E 上车并黑场，这里从黑场直接淡入驾驶位，
@@ -6050,6 +6384,37 @@ if(q.has('shot')){
     fetch('/_save?name='+q.get('shot')+'.png',{method:'POST',
       body:renderer.domElement.toDataURL('image/png')}).catch(()=>{});},1800);
 }
+
+/* ============================================================
+   PSX 顶点吸附：把投影后的顶点钉到一张粗网格上，制造老主机特有的
+   "模型边缘逐像素跳动"。只作用于内建 Lambert/Basic 材质，且按材质
+   实例只装一次；GLB 的 MeshStandard 材质也一并处理（同样的 project_vertex）。
+   网格 1/110 NDC ≈ 每帧 3 像素（640×360 内部），轻微但可辨。
+   ============================================================ */
+(function installVertexSnap(){
+  if(q.has('nosnap'))return;                       /* 调试：?nosnap 关闭 */
+  const seen=new Set();
+  const SNAP='160.0';                              /* NDC 网格密度，越大吸附越细 */
+  function snap(mat){
+    if(!mat||seen.has(mat))return;seen.add(mat);
+    if(!mat.isMeshLambertMaterial&&!mat.isMeshBasicMaterial&&
+       !mat.isMeshPhongMaterial&&!mat.isMeshStandardMaterial)return;
+    mat.onBeforeCompile=(sh)=>{
+      sh.vertexShader=sh.vertexShader.replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\n'+
+        'gl_Position.xy = floor(gl_Position.xy/gl_Position.w*'+SNAP+'+0.5)/'+SNAP+'*gl_Position.w;'
+      );
+    };
+    mat.needsUpdate=true;
+  }
+  scene.traverse(o=>{if(o.material){Array.isArray(o.material)?o.material.forEach(snap):snap(o.material);}});
+  /* GLB 异步加载完成后新材质再装一遍 */
+  const retry=setInterval(()=>{scene.traverse(o=>{if(o.material){
+    Array.isArray(o.material)?o.material.forEach(snap):snap(o.material);}});},1200);
+  setTimeout(()=>clearInterval(retry),15000);
+})();
+
 requestAnimationFrame(loop);
 </script>
 </body>
