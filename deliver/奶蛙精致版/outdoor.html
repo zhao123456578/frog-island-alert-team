@@ -565,6 +565,31 @@ function placeRoad(obj,s,lat,yawOff){
    障碍物是同一坐标系里的轴对齐盒子。两者求交拿最小平移量（MTV）顶回去，
    于是"直冲窄门"不再是一句 if(|偏移|>余量) 的提示，而是真的被门柱拦住。
    弯道不影响判定：路面坐标本身就是沿弧长展开的直道。 */
+/* ============================================================
+   车辆密度总控：夜间荒郊拉力赛是"孤独 + 偶发危险"，不是热闹车流。
+   这四个常量是全文件唯一的车辆数量来源，车流系统不得再自建循环池。
+   ============================================================ */
+const MAX_MOVING_TRAFFIC=1;      /* 玩家前方最多 1 辆动态车 */
+const MAX_ONCOMING_EVENT=1;      /* 对向车只作为一次性事件 */
+const STATIC_WRECKS_TOTAL=5;     /* 全路线静止废车总数 */
+const MAX_CHASERS=1;             /* 后方黑影或追击车，二选一 */
+const CAR_MASS=1250;
+
+/* 动态碰撞盒：车辆/废车/路锥每帧重建，静态护栏仍在 COLLIDERS。
+   每个盒自带质量、速度、恢复系数与摩擦，接触求解按物体属性结算，
+   不再有"所有东西共用一套固定掉速"的回调。 */
+const DYN_COLLIDERS=[];
+function dynBox(sC,latC,lenS,lenLat,o){
+  o=o||{};
+  DYN_COLLIDERS.push({
+    s0:sC-lenS/2,s1:sC+lenS/2,lat0:latC-lenLat/2,lat1:latC+lenLat/2,
+    tag:o.tag||'',mass:o.mass==null?1400:o.mass,
+    vs:o.vs||0,vlat:o.vlat||0,
+    rest:o.rest==null?0.18:o.rest,fric:o.fric==null?0.45:o.fric,
+    kind:o.kind||'car',obj:o.obj||null,light:!!o.light
+  });
+}
+
 const COLLIDERS=[];
 function addBox(sC,latC,lenS,lenLat,tag){
   COLLIDERS.push({s0:sC-lenS/2,s1:sC+lenS/2,lat0:latC-lenLat/2,lat1:latC+lenLat/2,tag:tag||''});
@@ -574,6 +599,53 @@ function addBox(sC,latC,lenS,lenLat,tag){
 function addGateBox(xLocal,zLocal,wLocal,dLocal,tag){
   addBox(GATE_S-zLocal,xLocal,dLocal,wLocal,tag);
 }
+
+/* ---------- 火花 / 碎屑：短命粒子池 ----------
+   接触时按法线与接触部位喷一小把，只活 0.3~0.7 s；轻擦只有两三颗，
+   强冲击才成片。粒子挂在车周围（车恒在原点），不参与路面重铺。 */
+const SPARK_N=96;
+const sparkPos=new Float32Array(SPARK_N*3);
+const sparkVel=new Float32Array(SPARK_N*3);
+const sparkLife=new Float32Array(SPARK_N);
+const sparkGeo=new THREE.BufferGeometry();
+sparkGeo.setAttribute('position',new THREE.BufferAttribute(sparkPos,3));
+for(let i=0;i<SPARK_N;i++){sparkLife[i]=0;sparkPos[i*3+1]=-999;}
+let sparkHead=0;
+function emitSparks(nx,nl,intensity,part){
+  const n=Math.max(1,Math.min(22,3+Math.round(intensity*0.9)));
+  const front=/front/.test(part),rear=/rear/.test(part);
+  const side=nl>0?-1:1;                 /* 障碍在左，碎屑往左飞 */
+  for(let k=0;k<n;k++){
+    const i=(sparkHead++)%SPARK_N;
+    /* 抬到风挡视野里、推到车头灯照得到的地方，别被仪表台挡住 */
+    sparkPos[i*3]=side*(0.70+Math.random()*0.75);
+    sparkPos[i*3+1]=0.85+Math.random()*0.65;
+    sparkPos[i*3+2]=front?-2.6-Math.random()*1.2:(rear?1.8:-1.6-Math.random()*1.7);
+    sparkVel[i*3]=side*(0.8+Math.random()*2.2)+nx*0.4;
+    sparkVel[i*3+1]=1.4+Math.random()*2.8;
+    sparkVel[i*3+2]=1.5+Math.random()*3.5;
+    sparkLife[i]=0.45+Math.random()*0.45;
+  }
+  sparkGeo.attributes.position.needsUpdate=true;
+}
+function updateSparks(dt){
+  let any=false;
+  for(let i=0;i<SPARK_N;i++){
+    if(sparkLife[i]<=0)continue;
+    any=true;sparkLife[i]-=dt;
+    if(sparkLife[i]<=0){sparkPos[i*3+1]=-999;continue;}
+    sparkVel[i*3+1]-=11*dt;
+    sparkPos[i*3]+=sparkVel[i*3]*dt;
+    sparkPos[i*3+1]+=sparkVel[i*3+1]*dt;
+    sparkPos[i*3+2]+=sparkVel[i*3+2]*dt;
+  }
+  if(any)sparkGeo.attributes.position.needsUpdate=true;
+}
+const sparkPts=new THREE.Points(sparkGeo,new THREE.PointsMaterial({
+  color:0xffb452,size:0.17,transparent:true,opacity:0.98,
+  blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+sparkPts.frustumCulled=false;scene.add(sparkPts);
+
 /* OBB(中心 hs/hlat、半长 hl、半宽 hw、航向 psi) 对 AABB 的分离轴检测。
    重叠则返回最小平移量，法向指向"把车推出盒子"的那一侧。
    选轴时刻意给"沿行进方向"的分离加权重（pen×(1+5|轴·s|)）：
@@ -607,68 +679,140 @@ function obbVsBox(hs,hlat,hl,hw,psi,b){
   if(best){best.latPen=latPen;best.latSgn=latSgn;}
   return best;
 }
-/* ---- 接触求解：先分离，再改动量，最后给一拍"重"的反馈 ----
-   顺序很重要：先把车推出接触面才谈动量，否则车会陷在墙里被反复弹飞。
-   分离是**分帧**的（一帧最多挪 2.5 cm）：窄门的重叠有 30 cm，一次挪完就是瞬移，
-   玩家会看见车自己跳到右边去。剩下的重叠不浪费，转成"咬合深度"当阻力来源——
-   墙吃得越深、车磨得越慢，这是"重"和"惨"的真正出处，而不是凭空掉速。
-   撞击只会把车头推**离**障碍，永远不会自动把方向拉向墙。 */
+/* ---- 连续接触求解 ----
+   物理接触每帧都算：分离、法向闭合速度、切向摩擦、接触点力矩、侧滑。
+   伤害 / 音效 / 火花 / 提示只在"首次接触"或"冲击越过阈值"时结算，
+   contactCooldown 只挡住重复扣伤害，绝不冻结物理。
+   结果全部来自当前速度向量、法线、接触位置与障碍质量，没有任何固定档位。 */
+let contactSerial=0;
 function resolveContact(hit,dt){
-  let nx=hit.nx*hit.sgn,nl=hit.ny*hit.sgn,pen=hit.pen;    /* 推出方向（路面坐标 s/lat） */
-  /* 顶死脱困：推出方向朝后（鼻尖正顶在障碍物端面上）而车已经几乎停住，
-     继续按最小重叠沿 -s 顶回去就是死锁——前进 12 cm、被顶回 2.5 cm，无限循环。
-     这时改成从横向最近的那一面侧滑出来：真人碰到这一步是打方向救车，
-     系统只负责"把你从端面边上推开"，方向盘仍然在玩家手里，不碰你的行进方向。 */
+  let nx=hit.nx*hit.sgn,nl=hit.ny*hit.sgn,pen=hit.pen;
+  const b=hit.box||{mass:4200,vs:0,vlat:0,rest:0.16,fric:0.55,kind:'wall',tag:hit.tag};
+  /* 顶死脱困：鼻尖正顶在端面且几乎停住时改从横向脱出，避免前进/被顶回的死锁 */
   if(nx<-0.35&&S.speed<1.4&&pen>0&&hit.latPen>0){
     nx=0;nl=hit.latSgn;pen=hit.latPen;
   }
-  const push=Math.min(pen,0.025)+0.002;
+  /* 分离量跟着本帧真实重叠走：固定 2.7 cm 在高速横移时挡不住车，
+     一帧就能穿过整根护栏（隧道效应），持续贴墙也留不住接触。 */
+  const push=Math.min(pen,0.30)+0.004;
   S.dist+=nx*push;S.lateral+=nl*push;
-  const bite=Math.min(1,(pen-push)/0.16);    /* 0=皮儿擦着，1=咬死了 */
-  const vs=S.speed*Math.cos(S.psi),vl=S.speed*Math.sin(S.psi);
-  const vn=vs*nx+vl*nl;
-  const fresh=S.contactCd<=0;
-  const impact=vn<0?-vn:0;
-  /* 严重程度：法向撞击 + 沿墙速度×咬合深度。侧着挤进护栏时法向撞击接近 0，
-     但 30 cm 的咬合一样能把车啃掉半条命——代价来自几何，不是凭空扣的。 */
-  const sev=Math.max(impact,S.speed*bite*0.72);
-  /* 切向：接触起算那一帧按严重程度一次性扣掉（轻擦 10%，咬死 52%），
-     之后每帧按咬合深度给 0.35~2.0 /s 的连续阻力，越陷越深就越磨越慢 */
-  const fr=fresh?Math.max(0,1-0.10-0.42*bite):Math.max(0,1-(0.35+1.65*bite)*dt);
-  /* 法向：正在离开的分量原样保留；贴着墙磨时不再来回弹（会抖成缝纫机） */
-  const out=(fresh?impact*0.22:0)+Math.max(vn,0);
-  const tsm=(vs-vn*nx)*fr,tlm=(vl-vn*nl)*fr;      /* 顺墙还剩多少 */
-  const ts=tsm+nx*out,tl=tlm+nl*out;
-  const sp=Math.hypot(ts,tl);
-  /* 只有"擦着墙滑开"才按新速度改航向，并且每帧限幅。
-     正面顶停时顺墙分量比法向反冲还小，这时若照抄 atan2，车会被拧成横着走，
-     下一帧又倒弹回来——表现就是车在墙根左右乱蹦。 */
-  if(sp>0.12&&Math.hypot(tsm,tlm)>out){
-    let d=Math.atan2(tl,ts)-S.psi;
-    while(d>Math.PI)d-=Math.PI*2;
-    while(d<-Math.PI)d+=Math.PI*2;
-    const maxD=(1.6+2.2*bite)*dt;
-    S.psi+=Math.max(-maxD,Math.min(maxD,d));
+  const bite=Math.min(1,Math.max(0,pen/0.16));   /* 咬合深度按重叠量，不受分离量吃掉 */
+
+  /* 接触部位：由推出法线判断障碍在车头/车尾/左/右，角部单独记 */
+  const ax=Math.abs(nx),ay=Math.abs(nl);
+  let part;
+  if(ax>0.42&&ay>0.42)part=(nx<0?'front_':'rear_')+(nl>0?'left':'right');
+  else if(ax>=ay)part=nx<0?'front':'rear';
+  else part=nl>0?'left':'right';
+
+  /* 持续接触标识：同一个物体 + 同一部位 + 分离不超过 0.28 s 算一次接触 */
+  const cid=b.obj?(b.obj._cid||(b.obj._cid=++contactSerial)):('static:'+b.tag);
+  const id=cid+'|'+part;
+  const fresh=S.contactId!==id||S.contactGapT>0.28;
+  S.contactActive=true;S.contactTime+=dt;S.contactGapT=0;S.contactId=id;
+  S.contactPart=part;S.contactNormalS=nx;S.contactNormalLat=nl;
+
+  /* 速度分解：车在路面坐标里的速度向量（含上一帧残留的反冲） */
+  const vv=S.speed+S.recoilV;
+  const vs=vv*Math.cos(S.psi),vl=vv*Math.sin(S.psi);
+  const bvs=b.vs||0,bvl=b.vlat||0;
+  const rvs=vs-bvs,rvl=vl-bvl;                 /* 相对速度 */
+  const vn=rvs*nx+rvl*nl;                      /* 法向分量，负=正在闭合 */
+  const closing=Math.max(0,-vn);
+  const tanS=rvs-vn*nx,tanL=rvl-vn*nl;
+  const tanV=Math.hypot(tanS,tanL);            /* 切向：擦墙/滑移/火花强度来源 */
+  const mass=Math.max(1,b.mass||1400);
+  const mEff=Math.max(0.02,Math.min(1,mass/(mass+CAR_MASS)));
+  const kmhN=closing*3.6;                    /* 法向闭合速度：只用来算动能损失 */
+  /* 冲击烈度 = 法向闭合 + 切向咬合摩擦。侧面撞车/高速贴墙的法向分量近乎 0，
+     只看 closing 会把 60 km/h 的侧撞误判成"没碰上"；能量仍然只按 kmhN 扣。 */
+  const kmh=kmhN+tanV*bite*3.6;
+  const level=kmh<9?0:(kmh<35?1:(kmh<70?2:3));
+  /* 动能损失按法向闭合速度连续增长：8 km/h 几乎不掉，35 km/h 约 15%，
+     70 km/h 以上逼近 60% 上限；再乘质量比——撞路锥和撞废车不是一个量级。 */
+  const kinLoss=Math.min(0.62,0.015+0.0055*Math.max(0,kmhN-8)
+    +0.00035*Math.pow(Math.max(0,kmhN-35),1.5));
+  const rest=(b.rest==null?0.18:b.rest)*(0.6+0.5*mEff);
+  const mu=(b.fric==null?0.45:b.fric)*(0.55+0.9*bite);
+  /* 法向冲量按"车头溃缩"在若干帧里连续释放，而不是一帧把 80 km/h 打到 0。
+     首帧只释放 42%，余量存 pendingImpulse，后续接触帧按 dt 继续放；
+     释放量全部来自闭合速度与恢复系数，没有任何固定掉速档位。 */
+  if(fresh)S.pendingImpulse=closing*(1+rest);
+  const pend=S.pendingImpulse||0;
+  const release=Math.min(pend,fresh?pend*0.42:pend*Math.min(1,dt*10));
+  S.pendingImpulse=pend-release;
+  const vnAfter=vn+release;               /* 仍可能为负 = 还在挤压，车继续向前 */
+  const dVn=vnAfter-vn;
+  /* 切向：首次按动能损失与摩擦削一次，之后每帧按咬合深度连续磨 */
+  const fricK=fresh?Math.max(0.42,1-mu*0.28-kinLoss*0.25)
+                   :Math.max(0,1-(0.9+3.6*bite)*mu*dt);
+  const outVs=bvs+tanS*fricK+nx*(vn+dVn);
+  const outVl=bvl+tanL*fricK+nl*(vn+dVn);
+
+  /* 把结果投回车头方向：纵向给 speed，负向部分变成短促反冲，横向进 slipV */
+  const fS=Math.cos(S.psi),fL=Math.sin(S.psi);
+  const vFwd=outVs*fS+outVl*fL;
+  const vSide=-outVs*fL+outVl*fS;
+  S.speed=Math.max(0,Math.min(27,vFwd));       /* 27 只是顶速上限保护 */
+  S.recoilV=Math.max(-4.2,Math.min(S.recoilV,
+    vFwd<0?vFwd*0.55:-(fresh?closing*rest*0.06:0)));
+  S.slipV+=vSide*0.55+nl*closing*mEff*0.12;
+  S.vLong=vFwd;S.vLat=vSide;
+
+  /* 接触点力矩 → 偏航：左前角把车头推向右，右前角推向左；
+     侧面中部主要侧滑；尾部被撞向前推并轻微失控。 */
+  const J=closing*mEff*2.2+tanV*bite*0.9;
+  let yawKick=0;
+  if(part.indexOf('front')===0)yawKick=nl*J*0.018;
+  else if(part==='left'||part==='right')yawKick=nl*J*0.005;
+  else if(part.indexOf('rear')===0)yawKick=(Math.random()-0.5)*J*0.012;
+  S.yawRateNow=yawKick/Math.max(dt,0.008);
+  S.psi+=yawKick;
+  const psiCap=0.38/(1+Math.max(0,S.speed)*0.05);
+  S.psi=Math.max(-psiCap,Math.min(psiCap,S.psi));
+  if(part.indexOf('rear')===0)S.recoilV+=Math.min(1.6,closing*mEff*0.35);
+
+  /* 轻物被撞飞：把冲量交给物体自己积分，不在这里改玩家速度 */
+  if(b.light&&b.obj&&closing>0.6){
+    const f=b.obj.userData.fly||(b.obj.userData.fly={vs:0,vlat:0,spin:0,t:0});
+    f.vs+=closing*mEff*7+0.8;f.vlat+=nl*closing*3;f.spin+=(Math.random()-0.5)*6;
+    f.t=1.1;
   }
-  S.speed=sp;
-  if(sev<0.15&&bite<0.02)return;               /* 只是挨着：不发声、不扣困意 */
-  /* 0.15–0.35 s 的短抖动，绝不拖成半秒以上的持续晃动 */
-  S.scrapeT=Math.max(S.scrapeT,0.15+Math.min(0.20,sev*0.035+bite*0.06));
-  if(!fresh)return;
-  /* 一次接触只结算一次：contactCd 窗口内再挤上来只补分离与阻力，不叠第二次账 */
-  S.contactCd=0.55;S.scrapeN++;
-  S.bobV-=Math.min(0.9,sev*0.26+bite*0.30);    /* 顿一下：悬挂被顶，重心往下沉 */
-  /* 车头被顶偏：撞左栏右带、撞右栏左带，幅度按撞击严重程度与咬合深度 */
-  S.psi+=nl*Math.min(0.055,0.010+sev*0.008+bite*0.020);
-  const cap=0.38/(1+S.speed*0.05);
-  S.psi=Math.max(-cap,Math.min(cap,S.psi));
-  const hard=sev>2.6;
-  tone(hard?118:164,hard?0.2:0.15,'square',hard?0.055:0.034,hard?52:96);
-  if(hard)thud();
-  S.drowsy=Math.min(100,S.drowsy+(hard?4:1.8));
-  if(S.scrapeN===1)toast(nl>0?'左侧蹭到了——往右带一点方向。':'右侧蹭到了——往左带一点方向。');
-  /* 累计受损状态，供车体受损外观（保险杠/后视镜/刮痕）读取 */
-  S.dmgN++;S.dmgSide=nl>0?'L':'R';S.dmgTag=hit.tag;S.dmgT=1.2;
+
+  const sev=Math.max(closing*mEff,tanV*bite*0.35);
+  S.impactLevel=level;S.impactSev=sev;
+  /* 每次接触都给一点镜头短震与方向盘反向顶，强度连续，不重复叠提示 */
+  S.scrapeT=Math.max(S.scrapeT,Math.min(0.42,0.08+sev*0.035+bite*0.05));
+  if(fresh){
+    S.wheelKick=-nl*Math.min(0.24,0.02+J*0.030);
+    S.rollImpact=nl*Math.min(0.085,0.008+J*0.011);
+    S.headShakeT=Math.max(S.headShakeT,Math.min(0.5,0.06+sev*0.03));
+  }
+  const canHurt=fresh&&S.contactCooldown<=0;
+  /* 持续贴护栏摩擦时按限流喷零星碎屑，不重复闪红、不叠提示 */
+  const sparkOK=fresh||(tanV*bite>1.4&&S.sparkT<=0);
+  if(sparkOK&&sev>0.12){
+    emitSparks(nx,nl,sev*2.2+tanV*bite*0.8,part);
+    S.sparkT=0.16;
+  }
+  if(!canHurt)return;                         /* 物理已结算完毕，下面只是"记账" */
+  S.contactCooldown=0.42+Math.min(0.95,closing*0.030);
+  S.contactCd=S.contactCooldown;S.scrapeN++;
+  S.bobV-=Math.min(0.9,sev*0.24+bite*0.28);
+  if(level>=2){S.slipT=Math.max(S.slipT,0.28+sev*0.05);
+    S.ctrlLagT=Math.max(S.ctrlLagT,0.20+Math.min(0.20,sev*0.02));}
+  if(level>=1){metalScrape(level,Math.min(1,sev/6+tanV*0.02));}
+  if(level>=2){impactThud(level,Math.min(1,sev/9));tireSkid();}
+  if(level>=3){flash(Math.min(0.5,0.20+sev*0.02),true);}
+  S.hudJitterT=Math.max(S.hudJitterT,level>=2?0.7:0.25);
+  if(level>=2){
+    S.dmgN++;S.dmgSide=nl>0?'L':'R';S.dmgTag=b.tag;S.dmgT=1.2;
+    S.drowsy=Math.min(100,S.drowsy+2+level*1.6);
+    /* 明显撞击才弹一次短提示；持续贴墙摩擦不会反复闪红或刷文字 */
+    toast(level>=3?'撞了 · 别停':'擦了 · 别停');
+  }else if(level===1&&S.scrapeN%4===1){
+    metalScrape(1,0.35);
+  }
 }
 
 /* ---------- 路面 / 路肩 / 护栏：逐帧按中心线重铺的条带 ---------- */
@@ -2080,6 +2224,24 @@ const mirrorMesh=new THREE.Mesh(new THREE.PlaneGeometry(0.64,0.16),
 mirrorMesh.position.set(0.02,1.55,-0.869);car.add(mirrorMesh);
 const mirrorStem=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.10,0.09),cabinDark);
 mirrorStem.position.set(0.02,1.65,-0.95);car.add(mirrorStem);
+/* 低速 / 贴近时后视镜里那团黑影必须看得见：mirrorRT 是真实后视渲染，
+   雨夜浓雾里几乎全黑，所以在镜面上再叠一层低清剪影 + 两点车灯。
+   显形程度只由 chaserEye 与距离驱动，不做正面完整怪物展示。 */
+const mirrorGhostGrp=new THREE.Group();
+mirrorGhostGrp.position.set(0.02,1.55,-0.861);
+const mirrorGhostMat=new THREE.MeshBasicMaterial({color:0x060302,transparent:true,
+  opacity:0,depthTest:false,depthWrite:false});
+const mirrorGhostBody=new THREE.Mesh(new THREE.PlaneGeometry(0.23,0.125),mirrorGhostMat);
+mirrorGhostBody.renderOrder=92;mirrorGhostGrp.add(mirrorGhostBody);
+const mirrorGhostLamps=[];
+for(let i=0;i<2;i++){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(0.042,0.026),
+    new THREE.MeshBasicMaterial({color:0xff5a24,transparent:true,opacity:0,
+      depthTest:false,depthWrite:false}));
+  m.position.set((i?1:-1)*0.062,-0.018,0.001);m.renderOrder=93;
+  mirrorGhostGrp.add(m);mirrorGhostLamps.push(m);
+}
+mirrorGhostGrp.visible=false;car.add(mirrorGhostGrp);
 /* 第三人称没有实体车内后视镜，给它一块固定在镜头上的后视屏。
    平时隐藏，孙笑川出现时才亮起；画面来自同一张 mirrorRT，不增加渲染 pass。 */
 const chaseRearFrame=new THREE.Group();
@@ -2311,27 +2473,66 @@ function buildTrafficCar(kind,dir){
   g.userData.tail=tail;
   return g;
 }
+/* ---------- 稀疏车流：事件制，不再有 7 辆循环池 ----------
+   全路线只有 MAX_MOVING_TRAFFIC 辆同向动态车 + 一辆按里程出现的对向事件车，
+   加上 STATIC_WRECKS_TOTAL 辆固定桩号的废车。任何时刻前方动态车 ≤ 1。 */
 const traffic=[];
 function resetTrafficCar(c,first){
-  for(let t=0;t<8;t++){
-    c.z=first?-(60+Math.random()*200):-(240+Math.random()*120);
-    if(!traffic.some(o=>o!==c&&o.dir===c.dir&&Math.abs(o.z-c.z)<38))break;
-  }
-  c.lane=c.dir>0?2.2:-2.2;
-  c.v=c.dir>0?8+Math.random()*6:15+Math.random()*9;
+  c.z=-(110+Math.random()*70);
+  c.lane=2.2;
+  c.v=8+Math.random()*5;
   c.bumped=false;
 }
-for(let i=0;i<7;i++){
-  const dir=i<4?1:-1;
-  const kind=dir>0&&Math.random()<0.35?'truck':'car';
+for(let i=0;i<MAX_MOVING_TRAFFIC;i++){
+  const dir=1;                              /* 对向车不再循环，走独立事件 */
+  const kind=Math.random()<0.35?'truck':'car';
   const grp=buildTrafficCar(kind,dir);
-  scene.add(grp);
-  const c={grp,dir,kind,z:0,lane:0,v:0,bumped:false,ph:Math.random()*6.28,
-    mats:collectFadeMats(grp)};
+  grp.visible=false;scene.add(grp);
+  const c={grp,dir,kind,z:-160,lane:2.2,v:10,bumped:false,
+    ph:Math.random()*6.28,mats:collectFadeMats(grp)};
   resetTrafficCar(c,true);
   traffic.push(c);
 }
-/* 开局前车：开到 56 米时它出现在前方 40 米，亮一脚刹车灯，逼玩家第一次踩 S */
+/* 对向车：全路线唯一一辆，350–500 m 才允许触发一次，驶过即彻底回收 */
+const oncoming=buildTrafficCar('car',-1);
+oncoming.visible=false;scene.add(oncoming);
+const oncomingMats=collectFadeMats(oncoming);
+
+/* 5 辆静止废车：固定桩号、左右交替、歪斜不工整，属于场景叙事，不参与车流。
+   0–300 只有玩家；300–600 第一辆；1200 之后逐步加密。 */
+const wrecks=[];
+const wreckSpec=[
+  {s:380, lat:-4.25,yaw:0.42,kind:'roll'},
+  {s:715, lat: 4.35,yaw:-0.30,kind:'burn'},
+  {s:1035,lat:-4.45,yaw:0.18,kind:'hazard'},
+  {s:1280,lat: 4.15,yaw:-0.55,kind:'ditch'},
+  {s:1475,lat:-4.35,yaw:1.10,kind:'side'}
+];
+const wreckBodyMat=new THREE.MeshLambertMaterial({color:0x241a17});
+const wreckTopMat=new THREE.MeshLambertMaterial({color:0x141110});
+const wreckBurnMat=new THREE.MeshLambertMaterial({color:0x0c0a09});
+for(const sp of wreckSpec){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.62,4.1),
+    sp.kind==='burn'?wreckBurnMat:wreckBodyMat);
+  body.position.y=0.40;g.add(body);
+  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.68,0.56,1.9),wreckTopMat);
+  cabin.position.set(0,0.98,-0.25);g.add(cabin);
+  if(sp.kind==='roll'){g.rotation.z=1.12;g.userData.yb=0.78;}
+  if(sp.kind==='ditch'){g.rotation.z=-0.32;g.userData.yb=-0.30;}
+  if(sp.kind==='side'){g.rotation.x=0.16;}
+  if(sp.kind==='hazard'){
+    const hz=[];
+    [-0.62,0.62].forEach(x=>{
+      const s=glowSprite(0xff7a1e,0.30,1);s.position.set(x,0.62,2.06);g.add(s);hz.push(s);
+    });
+    g.userData.haz=hz;
+  }
+  g.userData.kind=sp.kind;
+  scene.add(g);
+  wrecks.push({grp:g,s:sp.s,lat:sp.lat,yaw:sp.yaw,kind:sp.kind});
+}
+/* 开局前车：一次性剧情事件，驶离后永不重新生成 */
 const openCar=buildTrafficCar('car',1);
 openCar.visible=false;scene.add(openCar);
 function openCarTail(on){
@@ -2341,29 +2542,11 @@ function openCarTail(on){
     else o.material.color.setHex(on?0xff2412:0xff5540);
   });
 }
-/* 后面一直跟着的一辆车：让后视镜里有东西可看 */
+/* 后方只允许一个追逐者（MAX_CHASERS=1）：旧版那辆常驻跟随车彻底下线，
+   后视镜里的压迫感改由唯一的黑影提供，不再"后方一辆 + 前方一串"。 */
 const follower=new THREE.Group();
-{
-  const body=new THREE.Mesh(new THREE.BoxGeometry(1.7,0.5,3.4),
-    new THREE.MeshLambertMaterial({color:0x151a20}));
-  body.position.y=0.45;follower.add(body);
-  const topF=new THREE.Mesh(new THREE.BoxGeometry(1.45,0.38,1.7),
-    new THREE.MeshLambertMaterial({color:0x1a2027}));
-  topF.position.set(0,0.83,0.2);follower.add(topF);
-  [-0.58,0.58].forEach(x=>{
-    const s=glowSprite(0xfff2d6,1.25,0.85);
-    s.position.set(x,0.58,-1.76);follower.add(s);
-    const lamp=new THREE.Mesh(new THREE.PlaneGeometry(0.3,0.16),
-      new THREE.MeshBasicMaterial({color:0xfff8e8}));
-    lamp.position.set(x,0.58,-1.72);lamp.rotation.y=Math.PI;follower.add(lamp);
-  });
-  const fpool=new THREE.Mesh(new THREE.PlaneGeometry(3.4,6.4),
-    new THREE.MeshBasicMaterial({map:glowTex,color:0xffe0a8,transparent:true,
-      opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}));
-  fpool.rotation.x=-Math.PI/2;fpool.position.set(0,0.016,-4.4);follower.add(fpool);
-}
-follower.position.set(-2.2,0,12);scene.add(follower);
-const followerMats=collectFadeMats(follower);
+follower.visible=false;scene.add(follower);
+const followerMats=[];
 
 /* 追逐者：只在后视镜里出现的一辆剪影车。车头朝向玩家（局部 -z），
    驾驶位上只有一个戴棒球帽的偏胖轮廓和一双反光的眼睛，不露脸、不露名字。
@@ -4226,22 +4409,19 @@ for(let i=0;i<RALLY_N;i++){
     bx(shed,0.9,0.7,0.05,artAmber,-1.2,1.9,2.03);
     shed.position.set(-side*13,0,-18);g.add(shed);
   }
-  /* 路锥 */
+  /* 轻障碍：路锥（可被撞飞）。循环池只放锥，不再放车 */
+  g.userData.cones=[];
   if(i%2===1){
     for(let k=0;k<3;k++){
       const cone=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.62,6),
         new THREE.MeshLambertMaterial({color:0xa8451c}));
       cone.position.set(side*3.9,0.31,-6-k*2.5);g.add(cone);
+      g.userData.cones.push({mesh:cone,x:side*3.9,z:-6-k*2.5,
+        homeX:side*3.9,homeZ:-6-k*2.5});
     }
   }
-  /* 死车 / 翻车：第三份放一辆，歪在路肩 */
-  if(i===2||i===6){
-    const dead=new THREE.Group();
-    bx(dead,1.9,0.7,4.2,rallyRustMat,0,0.45,0);
-    bx(dead,1.7,0.6,2.0,artDark,0,1.05,-0.3);
-    dead.position.set(side*6.2,0,-14);
-    dead.rotation.y=(Math.random()-0.5)*0.8;g.add(dead);
-  }
+  /* 静止废车全部由固定桩号的 wrecks 提供（STATIC_WRECKS_TOTAL=5）。
+     旧版每 210 m 循环池里再冒一辆，是"到处都是车"的根源，必须删掉。 */
   /* 橙色拉力转向箭头牌：每份一个，左右由桩号决定，作为路线提示 */
   const arrowTex=(i%3===0)?rallyArrowR:rallyArrowL;
   artSign(g,arrowTex,1.3,1.3,side*5.9,2.05,-11,side*0.15);
@@ -4322,7 +4502,17 @@ const S={
   camMode:'cockpit',
   scrapeT:0,          /* 擦碰反馈计时：短促抖动+金属声，不闪红 */
   scrapeN:0,          /* 本段擦碰次数（验收：连续三次仍可行驶） */
-  contactCd:0,        /* 同一次接触的结算窗口：窗口内再挤只补分离，不重复扣困意 */
+  contactCd:0,        /* 同一次接触的结算窗口（兼容旧字段） */
+  /* ---- 连续接触物理状态 ---- */
+  vLong:0,vLat:0,yawRateNow:0,recoilV:0,slipV:0,
+  contactNormalS:0,contactNormalLat:0,contactPart:'',contactId:'',
+  contactActive:false,contactTime:0,contactGapT:9,contactCooldown:0,
+  impactLevel:0,impactSev:0,pendingImpulse:0,sparkT:0,slipT:0,ctrlLagT:0,
+  wheelKick:0,rollImpact:0,headShakeT:0,hudJitterT:0,
+  /* ---- 车辆事件调度（全路线只有这些车） ---- */
+  trafficActive:false,nextTrafficAt:1250,
+  oncomingActive:false,nextOncomingAt:640,oncomingZ:-220,oncomingV:19,
+  oncomingLane:-1.5,
   dmgN:0,             /* 受损次数与最近一次接触信息：驱动保险杠/后视镜/刮痕外观 */
   dmgSide:'',dmgTag:'',dmgT:0,
   coneSound:0,        /* 压锥回声计时 */
@@ -4612,6 +4802,30 @@ function tone(freq,dur,type,vol,slideTo){
 }
 function meow(){tone(760,0.28,'sawtooth',0.06,420);}
 function thud(){tone(90,0.22,'sine',0.16,45);}
+/* ---- 连续接触的组合音效：金属刮擦 / 低频撞击 / 轮胎短促打滑 ----
+   强度由闭合速度与切向速度连续给，不是"撞了就播固定一声"。 */
+function metalScrape(level,k){
+  if(!actx)return;
+  const kk=Math.max(0,Math.min(1,k)),dur=0.10+0.16*kk;
+  tone(level>=2?150:240,dur,'square',0.016+0.028*kk,level>=2?70:150);
+  if(noiseGain){const n=actx.currentTime;
+    noiseGain.gain.cancelScheduledValues(n);
+    noiseGain.gain.setValueAtTime(0.018+0.042*kk,n);
+    noiseGain.gain.exponentialRampToValueAtTime(0.006,n+dur);}
+}
+function impactThud(level,k){
+  if(!actx)return;
+  const kk=Math.max(0,Math.min(1,k));
+  tone(74-8*level,0.24+0.05*level,'sine',0.09+0.09*kk,34);
+  tone(190+40*level,0.13,'square',0.022+0.020*kk,90);
+}
+function tireSkid(){
+  if(!actx||!noiseGain)return;
+  const n=actx.currentTime;
+  noiseGain.gain.cancelScheduledValues(n);
+  noiseGain.gain.setValueAtTime(0.085,n);
+  noiseGain.gain.exponentialRampToValueAtTime(0.012,n+0.34);
+}
 /* 心跳：55 Hz 正弦 + 短包络；被追到 25 米内才响，0.92 秒一次 */
 let heartT=0;
 function heartbeatTick(dt,on){
@@ -4665,7 +4879,12 @@ function updateRallyHud(dt){
   /* 赛道距离 */
   rDistEl.textContent=(S.dist/1000).toFixed(2)+' KM / 1.59 KM';
   /* 像素速度：三位数补零 */
-  const kmh=Math.max(0,Math.round(S.speed*3.6));
+  /* 撞击反冲时速度读数短暂不稳：数字与亮度各抖一下，很快恢复 */
+  let kmh=Math.max(0,Math.round((S.speed+S.recoilV)*3.6));
+  if(S.hudJitterT>0){
+    kmh=Math.max(0,kmh+Math.round((Math.random()-0.5)*9*S.hudJitterT));
+    rSpeedEl.style.opacity=(0.72+0.28*Math.random()).toFixed(2);
+  }else rSpeedEl.style.opacity='1';
   rSpeedEl.innerHTML=String(kmh).padStart(3,'0')+' <small>KM/H</small>';
   rGearEl.textContent=S.reverse?'R':(kmh<1?'N':String(Math.max(1,Math.min(5,Math.ceil(kmh/34)))));
   /* 路线箭头：看前方曲率，提前切换左/右；直道用向上箭头 */
@@ -4813,7 +5032,8 @@ function dozeOff(){
   S.wakeCount++;
   if(S.wakeCount>1&&DIFF!=='easy'){finish('睡着了');return;}
   S.dozing=true;S.dozeT=3.0;S.brk=0;
-  S.speed=Math.min(S.speed,4);
+  /* 打盹靠边是剧情事件，不是碰撞：按连续减速量给一脚，后续由 dozing 逐帧收 */
+  S.speed=Math.max(0,S.speed-8.0);
   const el=document.getElementById('doze');
   if(el){el.style.display='flex';requestAnimationFrame(()=>el.classList.add('on'));}
   toast('车停在路肩了。按 W 继续。');
@@ -4842,8 +5062,120 @@ function loop(now){
   hideCity();           /* 压掉按里程复活的楼群/厂区/收费站，荒野路段才算真的换了 */
   render(dt);
 }
+/* ============================================================
+   车辆导演：每帧在碰撞检测之前跑一次，按里程调度而不是按秒。
+   0–300 只有玩家；300–600 第一辆废车 + 一次剧情前车；
+   600–900 一次对向危险车；900–1200 黑影首次出现；1200 以后逐步加密。
+   任何时刻前方只放行一辆动态车，事件结束彻底回收。
+   ============================================================ */
+function vehicleBusy(){
+  return S.trafficActive||S.oncomingActive||S.openPhase===1||S.openPhase===2;
+}
+function syncDynamicColliders(dt){
+  DYN_COLLIDERS.length=0;
+  const hs=S.dist;
+  /* 低速 / 停车时不放行任何前方事件：孤独和压迫感来自黑夜与后视镜黑影，
+     不是"停着不动还一辆接一辆刷车"。已在路上的事件照常驶过并彻底回收。 */
+  const roaming=S.speed>=4.5&&lowSpeedT<1.2;
+  if(S.dist>=300&&roaming){
+    /* 开局前车：一次性剧情，驶离后 openPhase=3，永不重新生成 */
+    if(S.openPhase===0&&S.dist>=320&&S.dist<460&&!vehicleBusy()){
+      S.openPhase=1;S.openBt=0;S.openZ=-46;S.openV=15.5;
+      openCar.visible=true;openCarTail(false);
+    }else if(S.openPhase===0&&S.dist>=460)S.openPhase=3;
+    /* 对向危险车：每 350–500 m 最多一次 */
+    if(!S.oncomingActive&&!vehicleBusy()&&S.dist>=S.nextOncomingAt&&S.dist<1540){
+      S.oncomingActive=true;S.oncomingZ=-(190+Math.random()*60);
+      S.oncomingV=17+Math.random()*5;S.oncomingLane=-1.5;
+    }
+    /* 1200 m 以后才偶尔出现一辆同向慢车 */
+    if(!S.trafficActive&&!vehicleBusy()&&S.dist>=S.nextTrafficAt&&S.dist<1540&&traffic.length){
+      S.trafficActive=true;resetTrafficCar(traffic[0],false);
+    }
+  }
+  /* 事件推进：相对偏移 z 增大 = 靠近并驶过玩家 */
+  if(S.openPhase===1||S.openPhase===2){
+    S.openBt+=dt;
+    if(S.openPhase===1){
+      if(S.openBt>0.7&&S.openBt<3.8)S.openV=Math.max(2.5,S.openV-6.5*dt);
+      else if(S.openBt>=3.8)S.openV=Math.min(16,S.openV+5.0*dt);
+    }else S.openV=Math.min(16,S.openV+4*dt);
+    S.openZ+=(S.speed-S.openV)*dt;
+    if(S.openZ>60||S.openBt>20){S.openPhase=3;openCar.visible=false;}
+  }
+  if(S.oncomingActive){
+    S.oncomingZ+=(S.speed+S.oncomingV)*dt;
+    if(S.oncomingZ>34){
+      S.oncomingActive=false;oncoming.visible=false;
+      S.nextOncomingAt=hs+350+Math.random()*150;
+    }
+  }
+  const c=traffic[0];
+  if(S.trafficActive&&c){
+    c.z+=(S.speed-c.v)*dt;
+    if(c.z>30){
+      S.trafficActive=false;c.grp.visible=false;
+      S.nextTrafficAt=hs+420+Math.random()*260;
+    }
+  }
+  /* ---- 动态碰撞盒：每个物体自带质量 / 速度 / 恢复 / 摩擦 ---- */
+  const sOf=z=>hs-z;
+  for(const w of wrecks){
+    if(Math.abs(w.s-hs)>70)continue;
+    dynBox(w.s,w.lat,4.1,1.9,{tag:'废车·'+w.kind,mass:2600,
+      rest:0.10,fric:0.80,kind:'wreck',obj:w.grp});
+  }
+  for(const g of rallyProps){
+    const list=g.userData.cones||[];
+    if(!list.length)continue;
+    const baseS=hs-g.userData.z;
+    for(const cc of list){
+      const s=baseS-cc.z;
+      if(Math.abs(s-hs)>40)continue;
+      dynBox(s,cc.x,0.55,0.5,{tag:'路锥',mass:12,rest:0.30,fric:0.18,
+        kind:'cone',obj:cc.mesh,light:true});
+    }
+    /* 被撞飞的路锥自己积分，飞完隐藏，组回收时复位 */
+    for(const cc of list){
+      const f=cc.mesh.userData.fly;
+      if(!f||f.t<=0)continue;
+      f.t-=dt;
+      cc.mesh.position.x+=f.vlat*dt;
+      cc.mesh.position.z+=f.vs*dt;
+      cc.mesh.position.y=Math.max(0.04,cc.mesh.position.y-2.4*dt);
+      cc.mesh.rotation.z+=f.spin*dt;
+      f.vs*=Math.exp(-dt*2.2);f.vlat*=Math.exp(-dt*2.8);
+      if(f.t<=0)cc.mesh.visible=false;
+    }
+  }
+  if(S.oncomingActive&&Math.abs(S.oncomingZ)<300)
+    dynBox(sOf(S.oncomingZ),S.oncomingLane,3.6,1.8,{tag:'对向车',mass:1400,
+      vs:-S.oncomingV,rest:0.22,fric:0.50,kind:'car',obj:oncoming});
+  if(S.trafficActive&&c&&Math.abs(c.z)<300)
+    dynBox(sOf(c.z),c.lane,3.6,1.8,{tag:'前车',mass:1500,
+      vs:c.v,rest:0.20,fric:0.55,kind:'car',obj:c.grp});
+  if(S.openPhase===1||S.openPhase===2)
+    dynBox(sOf(S.openZ),2.2,3.6,1.8,{tag:'剧情前车',mass:1400,
+      vs:S.openV,rest:0.20,fric:0.55,kind:'car',obj:openCar});
+  if(S.chaserOn&&S.chaserGap<18&&MAX_CHASERS>0)
+    dynBox(sOf(S.chaserGap),3.0,3.7,1.8,{tag:'追逐黑影',mass:1600,
+      vs:S.speed+2,rest:0.25,fric:0.60,kind:'chaser',obj:chaser});
+}
+
 function update(dt){
   if(S.glitchT>0)S.glitchT=Math.max(0,S.glitchT-dt);
+  /* 接触残留量逐帧衰减：反冲/侧滑/方向盘顶/侧倾/车灯抖/HUD 不稳。
+     物理分离与摩擦在碰撞求解里每帧照常做，这些只是表现层的余韵。 */
+  S.recoilV*=Math.exp(-dt*7.5);
+  S.slipV=Math.max(-6,Math.min(6,S.slipV*Math.exp(-dt*4.5)));
+  S.wheelKick*=Math.exp(-dt*9);
+  S.rollImpact*=Math.exp(-dt*6);
+  if(S.headShakeT>0)S.headShakeT=Math.max(0,S.headShakeT-dt);
+  if(S.hudJitterT>0)S.hudJitterT=Math.max(0,S.hudJitterT-dt);
+  if(S.sparkT>0)S.sparkT=Math.max(0,S.sparkT-dt);
+  if(S.slipT>0)S.slipT=Math.max(0,S.slipT-dt);
+  if(S.ctrlLagT>0)S.ctrlLagT=Math.max(0,S.ctrlLagT-dt);
+  updateSparks(dt);
   const asleep=!!S.dozing;
   const up=!asleep&&(keys['w']||keys['arrowup']),down=!asleep&&(keys['s']||keys['arrowdown']);
   const left=!asleep&&(keys['a']||keys['arrowleft']),right=!asleep&&(keys['d']||keys['arrowright']);
@@ -4890,7 +5222,9 @@ function update(dt){
   S.reverse=!!(brake&&nearBay&&S.speed<0.5);
   /* 方向盘给的是偏航率，不是横向位置：车往哪走，是偏航一点点积出来的 */
   const steerDir=(right?1:0)-(left?1:0);
-  S.steer+=(steerDir-S.steer)*Math.min(1,dt*(steerDir?6.0:10.0));
+  /* 强冲击后 0.2–0.4 s 操控迟钝：只让方向盘响应变钝，不锁油门、不禁止倒车 */
+  const lagK=S.ctrlLagT>0?0.38:1;
+  S.steer+=(steerDir-S.steer)*Math.min(1,dt*(steerDir?6.0:10.0)*lagK);
   /* 转向权威：低速时方向盘要给得动，才能在停车窗口里把车挪到路边。
      原来 0.12 的舵角太小，回正和车道保持一压，按住 D 三秒才挪 0.15 米，
      停车却要求靠右 1.5 米——玩家会觉得车被焊在车道中心。 */
@@ -4915,7 +5249,9 @@ function update(dt){
      留着回中就等于系统自动把车往左护栏上送——"看不见的手拉向障碍"正是要禁的东西。 */
   const kf=S.dist<100?0:Math.min(1,(S.dist-100)/40);
   const edgeR=S.lateral-2.6, edgeL=-2.6-S.lateral;
-  if(!steerDir&&kf>0){
+  /* ?rub=1 仅用于"持续贴护栏摩擦"验收：关掉松手回中，
+     否则这条看不见的手半秒就把车拉离护栏，测不到连续接触。正常游戏不受影响。 */
+  if(!steerDir&&kf>0&&!q.has('rub')){
     S.psi-=S.lateral*0.12*kf*(1-0.9*kd)*dt*Math.min(1,S.speed/9);
     if(edgeR>0)S.psi-=edgeR*0.8*kf*(1-0.6*kd)*dt*Math.min(1,S.speed/8);
     if(edgeL>0)S.psi+=edgeL*0.5*kf*(1-0.6*kd)*dt*Math.min(1,S.speed/8);
@@ -4925,31 +5261,48 @@ function update(dt){
   /* 偏航上限随速度收紧：低速能大角度靠边，高速不让你一打方向就飞出路面 */
   const psiCap=0.38/(1+S.speed*0.05);
   S.psi=Math.max(-psiCap,Math.min(psiCap,S.psi));
+  /* 反冲 / 侧滑是上一帧接触留下的真实速度分量，各自按阻尼衰减 */
   if(S.reverse)S.dist=Math.max(1540,S.dist-6.5*dt);
   else{
-    S.dist+=S.speed*Math.cos(S.psi)*dt;
-    S.lateral+=S.speed*Math.sin(S.psi)*dt;
+    const vEff=S.speed+S.recoilV;
+    S.dist+=vEff*Math.cos(S.psi)*dt;
+    S.lateral+=(vEff*Math.sin(S.psi)+S.slipV)*dt;
   }
-  /* ---- 真实几何碰撞：车身 OBB × 已登记的障碍 AABB ----
-     这里删掉了两样东西：一条写在 3.0/-4.0 上、画面上根本看不见的横向硬夹，
-     和一段"偏移超过余量就算蹭"的估算式。现在掉速、擦碰、车头偏转全部来自
-     下面这套 SAT 求交 + 最小平移量，撞的是看得见的那堵水泥。
-     连续三次轻擦碰后车照样能开走：MTV 只补分离、反弹只吃掉法向速度的一小半。 */
+  /* ---- 连续接触碰撞：静态护栏 + 每帧重建的动态盒（车辆/废车/路锥） ----
+     动态盒自带质量、速度、恢复与摩擦系数，接触点决定偏航方向。 */
   if(S.scrapeT>0)S.scrapeT-=dt;
   if(S.contactCd>0)S.contactCd-=dt;
+  if(S.contactCooldown>0)S.contactCooldown-=dt;
   if(S.dmgT>0)S.dmgT-=dt;
+  syncDynamicColliders(dt);
   {
     const hs=S.dist,hlat=S.lateral+LANE_LAT;
     let hit=null;
-    for(let i=0;i<COLLIDERS.length;i++){
-      const b=COLLIDERS[i];
-      if(hs<b.s0-carHalfL-0.6||hs>b.s1+carHalfL+0.6)continue;
-      if(hlat<b.lat0-carHalfW-0.6||hlat>b.lat1+carHalfW+0.6)continue;
+    const consider=(b)=>{
+      /* 静态盒也按材质分质量：木桩/立柱/奶箱是轻障碍，护栏与水泥是重障碍 */
+      if(b.mass==null){
+        const lightBox=/路锥|木桩|立柱|占位奶箱/.test(b.tag);
+        b.mass=lightBox?60:2800;
+        b.rest=lightBox?0.30:0.14;
+        b.fric=lightBox?0.25:0.68;
+        b.vs=0;b.vlat=0;b.kind='static';
+      }
+      if(hs<b.s0-carHalfL-0.6||hs>b.s1+carHalfL+0.6)return;
+      if(hlat<b.lat0-carHalfW-0.6||hlat>b.lat1+carHalfW+0.6)return;
       const r=obbVsBox(hs,hlat,carHalfL,carHalfW,S.psi,b);
       if(r&&(!hit||r.pen>hit.pen))
-        hit={pen:r.pen,nx:r.nx,ny:r.ny,sgn:r.sgn,latPen:r.latPen,latSgn:r.latSgn,tag:b.tag};
-    }
+        hit={pen:r.pen,nx:r.nx,ny:r.ny,sgn:r.sgn,latPen:r.latPen,latSgn:r.latSgn,
+             tag:b.tag,box:b};
+    };
+    for(let i=0;i<COLLIDERS.length;i++)consider(COLLIDERS[i]);
+    for(let i=0;i<DYN_COLLIDERS.length;i++)consider(DYN_COLLIDERS[i]);
     if(hit)resolveContact(hit,dt);
+    else{
+      S.contactActive=false;
+      S.contactGapT=Math.min(9,S.contactGapT+dt);
+      if(S.contactGapT>0.28){S.contactId='';S.contactTime=0;}
+      S.impactLevel=0;S.impactSev=0;
+    }
   }
   poseUpdate();
   const tnow=performance.now()*0.001;
@@ -4989,9 +5342,13 @@ function update(dt){
   const buzz=fastK*0.0045;
   /* 开窗：灌进来的风让镜头轻微扰动（幅度很小，只到“能感到风”的程度） */
   const windJitter=S.windy?Math.min(1,S.speed/16)*0.005:0;
-  const shakeX=Math.sin(tnow*46)*buzz+Math.sin(tnow*7.3)*windJitter;
+  /* 接触短震：幅度来自接触强度计时，连续衰减，轻擦只有一点、强撞才明显 */
+  const hitShake=Math.min(0.5,S.scrapeT);
+  const shakeX=Math.sin(tnow*46)*buzz+Math.sin(tnow*7.3)*windJitter
+    +Math.sin(tnow*71)*hitShake*0.013;
   const shakeY=Math.sin(tnow*9)*0.0028*(0.6+S.speed*0.16)
-    +Math.sin(tnow*63)*buzz*0.7+Math.sin(tnow*11.7)*windJitter*0.6;
+    +Math.sin(tnow*63)*buzz*0.7+Math.sin(tnow*11.7)*windJitter*0.6
+    +Math.cos(tnow*67)*hitShake*0.011;
   /* 环视：拖动时跟手；松手先保留观察时间（行驶 1.4s / 停车 2.4s）再平滑回正。
      分两级：先把"目标角"用指数阻尼慢慢收回 0，实际视角再缓动跟随目标，杜绝瞬间弹回。
      回正只动 look（镜头），绝不改 S.psi / 转向 —— 车辆朝向不受影响。 */
@@ -5070,7 +5427,9 @@ function update(dt){
     camera.rotation.y=look.yaw+S.camLagYaw;
     /* 视线略低、略向下：仪表台和方向盘稳稳占住画面下方约 1/3 */
     camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85-0.035;
-    camera.rotation.z=S.rollVis*0.0095+sway+Math.sin(tnow*39)*buzz*0.25;
+    /* 车身侧倾：接触力矩给一记独立脉冲，和转向侧倾分开衰减 */
+    camera.rotation.z=S.rollVis*0.0095+sway+Math.sin(tnow*39)*buzz*0.25
+      +S.rollImpact*0.55+Math.sin(tnow*53)*hitShake*0.018;
     camRInit=false;
   }
   chaseRearFrame.visible=false;
@@ -5095,7 +5454,9 @@ function update(dt){
   /* 车灯打进弯里：人开车过弯，灯是提前照着路的 */
   const hereTh=roadAt(S.dist).th;
   const ox=Math.max(-7,Math.min(7,34*(roadAt(S.dist+17).th-hereTh)-34*S.psi));
-  spots.forEach(s=>{s.target.position.x=s.position.x+ox;
+  /* 车灯轻微抖动：撞击后 0.3~0.5 s 内光锥会跟着车身晃，之后自然停 */
+  const lampJitter=S.headShakeT>0?Math.sin(tnow*63)*S.headShakeT*0.45:0;
+  spots.forEach(s=>{s.target.position.x=s.position.x+ox+lampJitter;
     s.target.position.y=roadAt(S.dist+34).y-pose.y+0.1;});
   beamPool.rotation.y=-ox/29;
   beamPool.position.x=ox*0.5;
@@ -5107,10 +5468,13 @@ function update(dt){
   });
   /* 方向盘：跟随转向，但回正时带一点惯性过冲（像真方向盘回弹） */
   S.steerLead+=(S.steer-S.steerLead)*Math.min(1,dt*(steerDir?11:5.2));
-  wheelG.rotation.z=-S.steerLead*0.54;
+  /* 方向盘往碰撞相反方向顶一下：一次脉冲，按阻尼衰减，不抢玩家转向 */
+  wheelG.rotation.z=-S.steerLead*0.54+S.wheelKick;
   /* 仪表指针：换挡瞬间因扭矩中断回落一下，再爬上去 */
   const needleBase=2.094-Math.min(1,S.speed/26)*4.188;
-  gaugeNeedle.rotation.z=needleBase+(S.gearDip>0?S.gearDip*0.9:0);
+  /* 明显撞击后仪表指针短暂不稳，和 HUD 速度抖动是两路不同频率的反馈 */
+  gaugeNeedle.rotation.z=needleBase+(S.gearDip>0?S.gearDip*0.9:0)
+    +(S.hudJitterT>0?Math.sin(tnow*57)*0.055*S.hudJitterT:0);
   /* 开窗：夜风掠过，仪表盘反一点光；关窗恢复。只改材质色，零渲染开销 */
   gaugeFace.material.color.setScalar(1+Math.min(0.35,S.windRush*3.2));
   /* 世界：路面按桩号重铺，路灯、反光柱、树都按自己的桩号摆 */
@@ -5159,7 +5523,16 @@ function update(dt){
   trees.forEach(t=>{t.userData.z+=scroll;if(t.userData.z>18)t.userData.z-=408;
     placeRoad(t,S.dist-t.userData.z,t.userData.lat,t.userData.baseYaw);});
   /* 荒野拉力道具：森林 / 电线杆 / 谷仓 / 路锥 / 死车 / 橙色箭头，随桩号滚动 */
-  rallyProps.forEach(g=>{g.userData.z+=scroll;if(g.userData.z>12)g.userData.z-=RALLY_N*(RALLY_SPAN/RALLY_N);
+  rallyProps.forEach(g=>{
+    g.userData.z+=scroll;
+    if(g.userData.z>12){
+      g.userData.z-=RALLY_N*(RALLY_SPAN/RALLY_N);
+      /* 组循环回远处时复位被撞飞的路锥，避免下一圈出现悬空锥子 */
+      (g.userData.cones||[]).forEach(cc=>{
+        cc.mesh.visible=true;cc.mesh.position.set(cc.homeX,0.31,cc.homeZ);
+        cc.mesh.rotation.set(0,0,0);cc.mesh.userData.fly=null;
+      });
+    }
     placeRoad(g,S.dist-g.userData.z,0,0);});
   /* 远山剪影缓慢跟随，永远落在雾里 */
   ridges.forEach((m,i)=>{m.position.z=-150-i*95+(S.dist%95)*0.35-16;});
@@ -5181,70 +5554,46 @@ function update(dt){
     if(blackHold<=0&&blackPick){blackPick.userData.box.material=blackPick.userData.mat;blackPick=null;}}
   signs.forEach(g=>{g.userData.z+=scroll;if(g.userData.z>12)g.userData.z-=SIGN_SPAN;
     placeRoad(g,S.dist-g.userData.z,0,0);});
-  /* 车流：同向的慢慢吞吞，对向的迎面扑来 */
-  const clamp01=v=>v<0?0:v>1?1:v;
-  const workHide=Math.min(clamp01((S.dist-326)/26),clamp01((566-S.dist)/26));
-  const endHide=clamp01((S.dist-1448)/30);
-  const hideK=Math.max(workHide,endHide);
-  /* 车流也只属于 D 段：厂区地坪和窄门通道里不该有社会车辆穿行，
-     112 m 之前整段淡出，出了厂门才汇入城市公路的车流。 */
-  const trafficVis=(1-hideK)*sm01(112,150,S.dist);
-  traffic.forEach(c=>{
-    if(trafficVis<=0.02){c.grp.visible=false;return;}
-    c.grp.visible=true;
-    applyFade(c.mats,trafficVis);
-    const zPrev=c.z;
-    c.z+=(S.speed+(c.dir>0?-c.v:c.v))*dt;
-    let recycled=false;
-    if(c.z>26||c.z<-420){resetTrafficCar(c,false);recycled=true;}
-    placeRoad(c.grp,S.dist-c.z,c.lane+Math.sin(tnow*0.31+c.ph)*0.07,
-      c.dir>0?0:Math.PI);
-    /* 扫掠检测：上一帧到这一帧的 z 区间与 4.8 米碰撞窗求交，低帧率也穿不过去 */
-    const zLo=Math.min(zPrev,c.z),zHi=Math.max(zPrev,c.z);
-    if(!recycled&&trafficVis>0.35&&!c.bumped&&S.graceT<=0&&zHi>=-6.2&&zLo<=-1.4&&
-       Math.abs(S.lateral+LANE_LAT-c.lane)<1.18){
-      const rel=Math.abs(S.speed+(c.dir>0?-c.v:c.v));
-      const severe=rel>15;
-      c.bumped=true;S.bumps++;S.bumpT=c.dir>0?0.32:0.6;flash(0.35,true);
-      S.graceT=1.6;   /* 撞完先给 1.6 秒免撞，别在原地被后车连顶 */
-      if(severe){
-        /* 严重碰撞：大幅减速但不彻底停死，也别把油门锁死两秒。
-           原来 speed=0 + noAccelT=2 会让车赖在左车道被对向车反复顶，
-           每次都重置计时器，玩家就永久卡在"踩油门没反应"。 */
-        S.speed=Math.min(S.speed,3.2);
-        S.noAccelT=0.6;
-        S.severe++;
-        S.drowsy=Math.min(100,S.drowsy+8);
-        /* 撞了对向车说明车已经歪进左车道，帮忙把车头、车身推回右车道，
-           否则停在逆行道上会一直挨撞 */
-        if(c.dir<0){
-          S.lateral=Math.max(S.lateral,0.6);
-          S.psi=Math.max(0,S.psi)*0.3;
-        }
-        toast(c.dir>0?'追尾了——缓一下，还能走。':'撞上对向来车了——方向拉回来，慢慢开。');
-        radioSay('刚才那下不轻，稳住方向盘。');
-      }else{
-        S.speed=Math.max(0,S.speed*0.32);
-        S.drowsy=Math.min(100,S.drowsy+4);
-        toast(c.dir>0?'剐到了前车——保险杠掉了点漆。':'蹭到了对向车——后视镜差点刮掉。');
+  /* ---- 稀疏车流渲染 ----
+     推进、事件调度与碰撞盒注册都在 syncDynamicColliders(dt) 里做完了，
+     这里只负责把车摆到路面上；不再有任何"碰一下固定掉速"的判定。 */
+  const trafficVis=S.dist>=300?1:0;
+  const c0=traffic[0];
+  if(c0){
+    const show=S.trafficActive&&!S.ended;
+    c0.grp.visible=show;
+    if(show){
+      applyFade(c0.mats,1);
+      placeRoad(c0.grp,S.dist-c0.z,c0.lane+Math.sin(tnow*0.31+c0.ph)*0.07,0);
+    }
+  }
+  if(S.oncomingActive&&!S.ended){
+    oncoming.visible=true;applyFade(oncomingMats,1);
+    placeRoad(oncoming,S.dist-S.oncomingZ,S.oncomingLane,Math.PI);
+  }else oncoming.visible=false;
+  /* 5 辆废车钉在绝对桩号上，不随世界滚动循环 */
+  for(const w of wrecks){
+    const near=Math.abs(w.s-S.dist)<95;
+    w.grp.visible=near&&!S.ended;
+    if(near){
+      placeRoad(w.grp,w.s,w.lat,w.yaw);
+      if(w.kind==='hazard'&&w.grp.userData.haz){
+        const hzOn=Math.sin(tnow*7)>0?0.95:0.08;
+        w.grp.userData.haz.forEach(m=>{m.material.opacity=hzOn;});
       }
     }
-  });
+  }
   carLightRefs.forEach(r=>{r.mat.opacity=r.base*(0.55+1.5*S.wet)*trafficVis;});
-  placeRoad(follower,S.dist-12-Math.sin(tnow*0.6)*0.5,
-    2.2+Math.sin(tnow*0.23)*0.12,0);
-  follower.visible=!S.chaserOn&&!S.parked&&!S.ended&&trafficVis>0.02;
-  if(follower.visible)applyFade(followerMats,trafficVis);
-  /* 被追：真正开出厂区（150 m，窄门和厂门都在后面）才让后方出现人影。
-     原来 34 m 就触发，等于车还卡在窄门通道里镜头就开始往后拧——
-     正是要禁掉的"出窄门立刻自动回头、同时还在往前挤"。 */
+  follower.visible=false;        /* MAX_CHASERS=1：常驻跟随车永久下线 */
+  /* 被追：按里程节奏，900–1200 m 后视镜里第一次出现黑影。
+     低速停留过久会把它提前引来——压力来自后方黑影，不是多刷几辆前方车。
+     MAX_CHASERS=1：全场只有这一个追逐者，没有第二辆追击车。 */
   if(!NOCHASER&&!S.ended){
-    if(!S.chaserOn&&S.dist>150){
+    if(!S.chaserOn&&(S.dist>900||lowSpeedT>2.5)){
       S.chaserOn=true;S.chaserGap=34;S.chaserLowT=0;S.chaserHitT=0;S.chaserEye=0;
-      S.chaserStage=1;S.panT=2.0;S.panCd=12;
+      S.chaserStage=1;S.panT=0;S.panCd=12;
       playChaser('run');playSunVoice('start');
-      toast('孙笑川从厂区里追出来了。');
-      radioSay('后车注意，右侧路肩有一名穿西装的行人正在追赶。');
+      toast('别停');
     }
     /* 后续回头：只在它已经贴近时给一眼，不打断正常驾驶 */
     if(S.chaserOn&&S.panCd>0)S.panCd-=dt;
@@ -5263,7 +5612,10 @@ function update(dt){
       S.chaserGap=Math.max(7,Math.min(90,S.chaserGap));
       const close=S.chaserGap<20;
       S.chaserEye=close?Math.min(1,S.chaserEye+dt*2.2):Math.max(0,S.chaserEye-dt*1.6);
-      heartbeatTick(dt,close);
+      /* 低速危险：压力来自后视镜里的黑影变亮、变近，而不是前方多刷几辆车 */
+      const dangerK=lowSpeedT>1.2?Math.min(1,(lowSpeedT-1.2)/1.5):0;
+      S.chaserEye=Math.max(S.chaserEye,dangerK);
+      heartbeatTick(dt,close||dangerK>0.4);
       /* 四阶段：远处露出 → 侧后肩视角辨认 → 贴车施压 → 抓碰 */
       if(S.chaserStage===1&&(S.chaserGap<29||S.dist>420)){
         S.chaserStage=2;S.panT=1.25;S.panCd=10;
@@ -5276,13 +5628,11 @@ function update(dt){
         tone(140,0.4,'sine',0.07);
       }
       if(S.chaserGap<10&&S.chaserHitT<=0&&S.chaserStage<4){
-        S.chaserStage=4;S.chaserHitT=3.2;S.chaserGap=58;
-        S.speed=Math.min(S.speed,3.2);S.noAccelT=0.6;S.graceT=1.6;
-        S.drowsy=Math.min(100,S.drowsy+15);
-        flash(0.65,true);
+        /* 贴上时不再写死掉速、也不弹回 58 m。真正的顶撞由动态盒按
+           相对速度做双向冲量（尾部接触给向前推力 + 轻微方向失控）。 */
+        S.chaserStage=4;S.chaserHitT=3.2;
         playChaser('stumble');playSunVoice('hit');
-        toast('孙笑川拍上后备厢了——稳住，还能走。');
-        radioSay('刚才那下不轻。人没事吧？继续开。');
+        toast('别停');
       }
       if(S.chaserHitT>0){
         S.chaserHitT-=dt;
@@ -5295,8 +5645,8 @@ function update(dt){
       placeRoad(chaser,S.dist-S.chaserGap,chaseLat+Math.sin(tnow*0.37)*0.05,0);
       chaserRoot.position.copy(chaser.position);
       chaserRoot.quaternion.copy(chaser.quaternion);
-      /* 距离越近，镜里车灯越大越亮、眼睛越清楚——距离变化本身就在讲危险 */
-      const nearK=Math.max(0,Math.min(1,(90-S.chaserGap)/80));
+      /* 距离越近，镜里车灯越大越亮、眼睛越清楚；低速危险再顶一档 */
+      const nearK=Math.max(Math.min(1,(90-S.chaserGap)/80),dangerK*0.85);
       chaser.userData.eyes.forEach(e=>{
         e.material.opacity=0.03+0.97*S.chaserEye;
         const k=0.7+0.9*nearK+0.5*S.chaserEye;e.scale.set(k,k,1);
@@ -5325,37 +5675,16 @@ function update(dt){
   if(!S.chaserOn)chaserRefl.visible=false;
   if(S.bumpT>0){S.bumpT-=dt*1.6;
     camera.position.x+=Math.sin(performance.now()*0.06)*0.06*Math.max(0,S.bumpT);}
-  /* 开局前车：正常跑着，0.7 秒后一脚刹车亮灯；不踩 S 就会追尾 */
-  if(S.openPhase===0){
-    if(S.dist>=150&&S.dist<230){
-      S.openPhase=1;S.openBt=0;S.openZ=-40;S.openV=15.5;
-      openCar.visible=true;openCarTail(false);
-    }else if(S.dist>=230)S.openPhase=3;
-  }
-  if(S.openPhase===1){
-    S.openBt+=dt;
-    if(S.openBt>0.7&&S.openBt<3.8){S.openV=Math.max(2.5,S.openV-6.5*dt);openCarTail(true);}
-    else if(S.openBt>=3.8){S.openV=Math.min(16,S.openV+5.0*dt);openCarTail(false);}
-    S.openZ+=(S.speed-S.openV)*dt;
+  /* 开局前车：一次性剧情。调度/推进/回收在 syncDynamicColliders 里，
+     这里只摆放与亮刹车灯；真追尾由动态盒做连续接触，不再固定掉 25%。 */
+  if(S.openPhase===1||S.openPhase===2){
+    openCar.visible=true;
     placeRoad(openCar,S.dist-S.openZ,2.2,0);
+    openCarTail(S.openPhase===1&&S.openBt>0.7&&S.openBt<3.8);
     if(S.openBrakeAt<0&&S.speed<12&&S.openZ<-3)S.openBrakeAt=S.openBt;
     if(S.openBt>=3.8&&!S.openDone&&S.openBrakeAt>=0&&S.openZ<-8){
-      S.openDone=true;toast('跟住了。这脚刹车踩得刚好。');}
-    if(S.openZ>-1.6&&S.openBt<3.8&&Math.abs(S.lateral)<1.18){
-      S.openPhase=2;S.bumps++;S.bumpT=0.32;flash(0.45,true);
-      S.speed=Math.max(0,S.speed*0.25);S.drowsy=Math.min(100,S.drowsy+3);
-      S.openV=2;openCarTail(true);
-      toast('追尾了——前车刹车灯亮了一路，你没跟上。');
-    }else if(S.openZ>25||S.openBt>18){
-      S.openPhase=3;openCar.visible=false;
-    }
-  }
-  if(S.openPhase===2){
-    S.openV=Math.min(16,S.openV+4*dt);
-    S.openZ+=(S.speed-S.openV)*dt;
-    placeRoad(openCar,S.dist-S.openZ,2.2,0);
-    if(S.openZ>150){S.openPhase=3;openCar.visible=false;}
-  }
+      S.openDone=true;toast('跟住了');}
+  }else openCar.visible=false;
   /* 奶厂外围（C 出口连接段）：过了窄门才看见真正的厂门，知道自己刚从什么怪地方出来 */
   placeRoad(dairyGate,140,0,0);
   dairyGate.visible=S.dist>0&&S.dist<380;
@@ -5412,16 +5741,8 @@ function update(dt){
   works.visible=S.dist>330&&S.dist<530;
   if(works.visible){
     works.userData.lamp.material.opacity=Math.sin(performance.now()*0.006)>0?0.85:0.2;
-    cones.forEach(c=>{
-      if(c.userData.hit)return;
-      const z=c.position.z+works.position.z;
-      if(z>-2.4&&z<-0.8&&Math.abs(S.lateral+LANE_LAT-c.position.x)<0.62){
-        c.userData.hit=true;S.cones++;S.speed*=0.55;
-        S.drowsy=Math.min(100,S.drowsy+3);
-        c.rotation.z=1.25;c.position.y=-0.02;
-        thud();toast('压到雪糕筒了——右侧封着呢。');
-      }
-    });
+    /* 旧施工区路锥判定整体下线：那段锥子根本不显示，却会偷偷 speed*=0.55。
+       现在所有可见轻障碍走 rallyProps 路锥的动态盒：轻质量、可撞飞、连续结算。 */
   }
   if(!S._workTold&&S.dist>360){S._workTold=true;
     toast('前方施工，右侧车道封了。');
@@ -5496,9 +5817,10 @@ function update(dt){
       }
       if(cz>-4.6&&cz<-1.2&&Math.abs(S.lateral+LANE_LAT-cl)<0.9){
         S.catDone=true;S.catHit=true;S.catReact='hit';cat.visible=false;
-        S.bumpT=1;thud();meow();S.speed*=0.7;S.drowsy=Math.min(100,S.drowsy+3);
-        toast('喵！——蹭到保险杠，它窜进路边草丛了。');
-        radioSay('刚才那下是撞着什么了？');
+        /* 猫是极轻物体：只给一点横向推挤和短震，不再固定打七折掉速 */
+        S.bumpT=0.35;meow();metalScrape(0,0.18);
+        S.slipV+=(S.lateral+LANE_LAT>cl?1:-1)*0.45;
+        toast('蹭到了');
       }else if(ct>2.7){
         S.catDone=true;cat.visible=false;
         if(S.catReact==='avoid'){
@@ -5510,15 +5832,8 @@ function update(dt){
       }
     }
   }else cat.visible=false;
-  /* 双闪的故障车：得借对向车道绕过去 */
-  if(broken.visible&&!S.brokenHit){
-    if(bz>-6.2&&bz<-1.2&&Math.abs(S.lateral)<1.2){
-      S.brokenHit=true;S.bumpT=0.6;S.bumps++;flash(0.35,true);
-      S.speed=Math.max(0,S.speed*0.25);
-      S.drowsy=Math.min(100,S.drowsy+4);
-      toast('撞上那辆双闪的车了——司机就站在旁边。');
-    }
-  }
+  /* 旧的双闪故障车已下线（荒野路线里它并不显示），静止废车统一由 wrecks
+     提供并登记动态盒；这里不再有隐藏的 speed*0.25 结算。 */
   if(!S._brokenTold&&S.dist>1338){S._brokenTold=true;
     toast('前面有辆打双闪的车停在咱们道上，往左让。');
     radioSay('右道有故障车，提前变道。');}
@@ -5622,24 +5937,10 @@ function update(dt){
   /* 车灯在湿路上会散一点，光晕更软 */
   beamPool.material.opacity=0.42+0.16*wetK;
   headRefl.forEach(m=>{m.visible=wetK>0.02;m.material.opacity=0.30*wetK;});
-  /* 收费站：杆抬不抬，看你速度 */
+  /* 收费站在荒野拉力路线里已被隐藏。旧版那段"撞杆 speed=0 / 钳到 1291"
+     是纯开关结算，会让玩家在看不见的杆前直接钉死，整个删除。 */
   placeRoad(toll,1300,0,0);
-  toll.visible=S.dist>1140&&S.dist<1360;
-  if(!S.tollPassed){
-    if(S.gateWait>0){
-      S.gateWait-=dt;
-      S.dist=Math.min(S.dist,1293);
-      S.speed=Math.min(S.speed,4);
-      if(S.gateWait<=0){S.tollPassed=true;tone(620,0.16,'sine',0.07);
-        toast('杆抬起来了。慢点过去。');
-        radioSay('过了杆，还有三百米到家。');}
-    }else if(S.dist>=1293&&S.dist<1306){
-      if(S.speed*3.6<=31){S.tollPassed=true;tone(720,0.18,'sine',0.08,960);
-        toast('收费站通过。');}
-      else{S.gateWait=1.8;S.speed=0;S.dist=1291;S.drowsy=Math.min(100,S.drowsy+5);
-        thud();toast('杆没抬起来——你急刹在杆前。');}
-    }
-  }
+  S.tollPassed=true;
   const armTarget=S.tollPassed?-1.15:0;
   toll.userData.pivot.rotation.z+=(armTarget-toll.userData.pivot.rotation.z)*Math.min(1,dt*4);
   toll.userData.lampMat.color.setHex(S.tollPassed?0x4fd07a:0xb83a2c);
@@ -5826,6 +6127,12 @@ function update(dt){
 let mirrorT=-1e9;
 function renderMirror(){
   mirrorMesh.visible=false;
+  /* 座舱视角里，低速危险或追得很近时黑影才在镜中显形；正常行驶只有雾和路 */
+  const gk=(S.chaserOn&&!S.ended&&S.camMode==='cockpit')
+    ?Math.max(S.chaserEye,Math.max(0,Math.min(1,(34-S.chaserGap)/24))*0.85):0;
+  mirrorGhostMat.opacity=gk*0.94;
+  mirrorGhostLamps.forEach(m=>{m.material.opacity=gk*0.9;});
+  mirrorGhostGrp.visible=gk>0.02;
   /* 追逐者以前只活在后视镜那一遍里：主渲染和辉光永远看不到它。
      但第三人称默认镜头根本看不到后视镜——玩家会被"后面有人"的台词搞得莫名其妙。
      现在主画面也一起渲染：正常跟车时它在车后视野外，一回头就真的能看见。 */
@@ -5836,11 +6143,14 @@ function renderMirror(){
   chaserRoot.visible=chOn&&chReady;
   sunChaser.visible=chOn&&sunSpriteOK&&!chaserGlbOK;
   const rearWasVisible=chaseRearFrame.visible;
+  const ghostWasVisible=mirrorGhostGrp.visible;
   chaseRearFrame.visible=false;
+  mirrorGhostGrp.visible=false;      /* 别让镜面剪影自己跑进后视 RT 里 */
   renderer.setRenderTarget(mirrorRT);
   renderer.render(scene,mirrorCam);
   renderer.setRenderTarget(null);
   chaseRearFrame.visible=rearWasVisible;
+  mirrorGhostGrp.visible=ghostWasVisible;
   chaser.visible=chOn;
   chaserRoot.visible=chOn&&chReady;
   sunChaser.visible=chOn&&sunSpriteOK&&!chaserGlbOK;
@@ -6277,6 +6587,7 @@ window.__game={
     elapsed:+(S.startTime?(performance.now()-S.startTime)/1000:0).toFixed(1),
     dozing:!!S.dozing,wakeCount:S.wakeCount,diff:DIFF,
     chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
+    chaserVisual:chaserVisualReady(),chaserGlbOK,sunSpriteOK,
     chaserLowT:+S.chaserLowT.toFixed(2),chaserStage:S.chaserStage,
     catOn:S.catOn,catDone:S.catDone,catReact:S.catReact,catSeen:S.catSeen,
     camMode:S.camMode,lowSpeedT:+lowSpeedT.toFixed(2),glitchT:+S.glitchT.toFixed(2),
@@ -6290,7 +6601,38 @@ window.__game={
     /* 碰撞验收用：接触计时/单次结算窗口/受损计数 + 当前登记了多少个碰撞盒 */
     scrapeT:+S.scrapeT.toFixed(2),contactCd:+S.contactCd.toFixed(2),
     dmgN:S.dmgN,dmgSide:S.dmgSide,dmgTag:S.dmgTag,colliders:COLLIDERS.length,
+    /* 车辆密度验收：前方动态车必须 ≤ 1，废车固定 5，追逐者 ≤ 1 */
+    veh:{moving:S.trafficActive?1:0,oncoming:S.oncomingActive?1:0,
+      open:(S.openPhase===1||S.openPhase===2)?1:0,
+      frontDyn:(S.trafficActive?1:0)+(S.oncomingActive?1:0)
+        +((S.openPhase===1||S.openPhase===2)?1:0),
+      wrecks:wrecks.length,chasers:S.chaserOn?1:0,
+      nextOncomingAt:Math.round(S.nextOncomingAt),
+      nextTrafficAt:Math.round(S.nextTrafficAt)},
+    /* 连续接触物理验收 */
+    phys:{level:S.impactLevel,sev:+S.impactSev.toFixed(2),part:S.contactPart,
+      normalS:+S.contactNormalS.toFixed(2),normalLat:+S.contactNormalLat.toFixed(2),
+      active:S.contactActive,id:S.contactId,
+      cooldown:+S.contactCooldown.toFixed(2),
+      recoilV:+S.recoilV.toFixed(2),slipV:+S.slipV.toFixed(2),
+      yawRate:+S.yawRateNow.toFixed(2),vLong:+S.vLong.toFixed(2),
+      vLat:+S.vLat.toFixed(2),dynBoxes:DYN_COLLIDERS.length,
+      sparks:sparkLife.reduce((n,v)=>n+(v>0?1:0),0),
+      glitchT:+S.glitchT.toFixed(2),scrapeT:+S.scrapeT.toFixed(2)},
     latAbs:+(S.lateral+LANE_LAT).toFixed(3)};},
+  /* 验收用：合成一次接触（真实驾驶仍走同一套 resolveContact） */
+  contact(o){
+    o=o||{};
+    const nx=o.nx==null?-0.90:o.nx,nl=o.nl==null?0.44:o.nl;
+    const b={s0:S.dist-2.2,s1:S.dist+2.2,
+      lat0:S.lateral+LANE_LAT-1.2,lat1:S.lateral+LANE_LAT+1.2,
+      tag:o.tag||'验收接触',mass:o.mass==null?2600:o.mass,
+      vs:o.vs||0,vlat:0,rest:0.18,fric:0.60,kind:o.kind||'wreck'};
+    resolveContact({pen:o.pen||0.14,nx:nx,ny:nl,sgn:1,
+      latPen:0.10,latSgn:1,tag:b.tag,box:b},1/60);
+    return {speed:+S.speed.toFixed(2),recoilV:+S.recoilV.toFixed(2),
+      psi:+S.psi.toFixed(3),part:S.contactPart,level:S.impactLevel};
+  },
   start:(skip)=>startGame(skip===true),
   introInteract,introSkip:()=>{let g=0;while(S.intro.active&&g++<12){introInteract();}},
   finish(kind){finish(kind||'到家');},
@@ -6356,6 +6698,19 @@ if(q.has('shot')){
   /* 验收用：把撞击故障定格住，方便截图取证（真实撞击由 flash(...,true) 触发） */
   if(q.has('glitch'))S.glitchT=Math.max(1,+q.get('glitch')||1)*40;
   if(q.has('pinchaser'))S.chaserPin=true;
+  /* 验收定点：把车摆到指定废车 / 护栏前，便于复现斜擦与侧撞 */
+  if(q.has('align')){
+    const a=q.get('align');
+    if(a.indexOf('wreck')===0){
+      const idx=Math.max(0,Math.min(wrecks.length-1,+(a.split(':')[1]||0)));
+      S.dist=Math.max(1,wrecks[idx].s-30);
+      S.lateral=wrecks[idx].lat-LANE_LAT;S.psi=0;
+    }else if(a==='guard'){
+      S.lateral=4.55-LANE_LAT;S.psi=0.06;
+    }else if(a==='guardL'){
+      S.lateral=-4.55-LANE_LAT;S.psi=-0.06;
+    }
+  }
 }
 const btnBackEl=document.getElementById('btnBack');
 btnBackEl.onclick=()=>{location.href='index.html';};
@@ -6380,6 +6735,16 @@ if(q.has('shot')){
     /* 后台标签页里 rAF 不跑，世界还没随 dist 铺开；按 60 Hz 补跑约 1.8 s 再截 */
     const warm=Math.max(0,110-loopFrames);
     for(let i=0;i<warm;i++)if(S.started&&!S.ended)update(1/60);
+    /* 验收用：预热结束后再合成一次指定部位/相对速度的接触，
+       保证截图能抓到火花、震动与故障（真实驾驶走的是同一个求解器） */
+    if(q.has('contact')){
+      const parts={front:[-0.95,0.10],front_left:[-0.78,0.62],
+        front_right:[-0.78,-0.62],side_left:[-0.10,0.98],
+        side_right:[-0.10,-0.98],rear:[0.92,0.10]};
+      const p=parts[q.get('contact')]||parts.front;
+      window.__game.contact({nx:p[0],nl:p[1],vs:+(q.get('relv')||0),
+        mass:+(q.get('mass')||2600),tag:'验收·'+q.get('contact')});
+    }
     render(0);
     fetch('/_save?name='+q.get('shot')+'.png',{method:'POST',
       body:renderer.domElement.toDataURL('image/png')}).catch(()=>{});},1800);
