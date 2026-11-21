@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>骷髅怪物 · 模型检视</title>
+<style>
+:root{
+  --bg:#0b0f14; --panel:#121820; --line:#25303c; --txt:#c8d4de;
+  --dim:#7d8b98; --accent:#7fb0d0; --accent2:#b8a06a; --bone:#c9b892; --blood:#a83a30;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+#cv{display:block;width:100vw;height:100vh;cursor:grab}
+#cv:active{cursor:grabbing}
+#title{position:fixed;top:20px;left:26px;pointer-events:none}
+#title h1{font-size:19px;font-weight:600;letter-spacing:.5px;color:#e6eef4}
+#title .sub{font-size:11px;color:var(--dim);margin-top:5px;letter-spacing:1.5px;font-family:monospace}
+#title .tag{display:inline-block;margin-top:9px;padding:3px 9px;border:1px solid var(--line);
+  border-radius:3px;font-size:10px;color:var(--accent2);letter-spacing:1px;font-family:monospace}
+#info{position:fixed;top:112px;left:26px;width:214px;background:rgba(18,24,32,.82);
+  border:1px solid var(--line);border-radius:6px;padding:15px;backdrop-filter:blur(8px)}
+#ctrl{position:fixed;top:112px;right:26px;width:200px;background:rgba(18,24,32,.82);
+  border:1px solid var(--line);border-radius:6px;padding:15px;backdrop-filter:blur(8px)}
+h2{font-size:10px;letter-spacing:2px;color:var(--dim);margin-bottom:11px;font-weight:600}
+h2.mt{margin-top:15px}
+.stat{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(37,48,60,.5)}
+.stat:last-child{border-bottom:none}
+.stat span:first-child{color:var(--dim)}
+.stat span:last-child{font-family:monospace;color:var(--txt)}
+.color-row{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+.sw{width:19px;height:19px;border-radius:3px;border:1px solid rgba(255,255,255,.12)}
+.btn{display:block;width:100%;margin-bottom:6px;padding:8px 10px;text-align:left;
+  background:rgba(37,48,60,.35);border:1px solid var(--line);border-radius:4px;
+  color:var(--txt);font-size:12px;cursor:pointer;transition:.16s}
+.btn:hover{background:rgba(127,176,208,.15);border-color:var(--accent)}
+.btn.on{background:rgba(127,176,208,.2);border-color:var(--accent);color:#fff}
+.btn.act{border-color:#4a5a44}
+.btn.act.on{background:rgba(184,160,106,.22);border-color:var(--accent2);color:#fff}
+.btn .k{float:right;color:var(--dim);font-size:10px;font-family:monospace}
+.sep{height:1px;background:var(--line);margin:11px 0}
+#hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--dim);
+  letter-spacing:.4px;pointer-events:none;background:rgba(11,15,20,.6);padding:7px 16px;
+  border-radius:20px;border:1px solid var(--line);text-align:center}
+#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  background:var(--bg);color:#c96b5a;font-size:14px;text-align:center;padding:40px}
+#load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);color:var(--accent);font-size:12px;letter-spacing:2px;font-family:monospace}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="load">LOADING MODEL…</div>
+<div id="err"></div>
+
+<div id="title">
+  <h1>骷髅怪物 · SKELETON WRAITH</h1>
+  <div class="sub">LOW-POLY HORROR CREATURE / RIGGED MODEL INSPECTOR</div>
+  <div class="tag">长四肢 · 夸张下颌 · 重力长发 · 血渍 · 18 骨骼</div>
+</div>
+
+<div id="info">
+  <h2>MESH DATA</h2>
+  <div class="stat"><span>顶点</span><span id="s-vert">—</span></div>
+  <div class="stat"><span>面数</span><span id="s-face">—</span></div>
+  <div class="stat"><span>材质分区</span><span id="s-mat">—</span></div>
+  <div class="stat"><span>骨骼</span><span id="s-bone">—</span></div>
+  <div class="stat"><span>动作</span><span id="s-anim">—</span></div>
+  <div class="stat"><span>高度</span><span id="s-h">—</span></div>
+  <div class="stat"><span>渲染</span><span>Flat Shading</span></div>
+  <h2 class="mt">BONE / BLOOD PALETTE</h2>
+  <div class="color-row">
+    <div class="sw" title="枯燥象牙" style="background:#c7ba94"></div>
+    <div class="sw" title="腐褐" style="background:#6b4f30"></div>
+    <div class="sw" title="暗灰斑" style="background:#45402f"></div>
+    <div class="sw" title="黄疸" style="background:#9e8542"></div>
+    <div class="sw" title="残皮" style="background:#855e4a"></div>
+    <div class="sw" title="血渍" style="background:#8e2a20"></div>
+  </div>
+</div>
+
+<div id="ctrl">
+  <h2>VIEW / 视角</h2>
+  <div class="btn" data-view="front">正面 <span class="k">1</span></div>
+  <div class="btn" data-view="side">侧面 <span class="k">2</span></div>
+  <div class="btn" data-view="back">背面 <span class="k">3</span></div>
+  <div class="btn" data-view="three">3/4 视角 <span class="k">4</span></div>
+  <div class="sep"></div>
+  <h2>ACTION / 动作</h2>
+  <div class="btn act" data-act="Idle">待机 · 呼吸 <span class="k">Z</span></div>
+  <div class="btn act" data-act="Wave">挥手 <span class="k">X</span></div>
+  <div class="btn" id="b-play">暂停/播放 <span class="k">空格</span></div>
+  <div class="sep"></div>
+  <h2>DISPLAY / 显示</h2>
+  <div class="btn" id="b-bones">显示骨骼 <span class="k">B</span></div>
+  <div class="btn on" id="b-rot">自动旋转 <span class="k">R</span></div>
+  <div class="btn" id="b-wire">线框结构 <span class="k">W</span></div>
+  <div class="btn" id="b-fog">浓雾氛围 <span class="k">F</span></div>
+  <div class="btn" id="b-reset">重置视角 <span class="k">0</span></div>
+</div>
+
+<div id="hint">拖拽旋转 · 滚轮缩放 · 1-4 切视角 · Z/X 换动作 · B 看骨骼 · W 看低面数线框</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script src="assets/monster_concepts/skeleton_monster_data.js"></script>
+<script>
+function fail(msg){var e=document.getElementById('err');e.style.display='flex';e.textContent=msg;
+  document.getElementById('load').style.display='none';}
+
+var canvas=document.getElementById('cv');
+var renderer,scene,camera,root,mixer,clock,skeletonHelper,bonesGroup;
+var yaw=0.5,pitch=0.06,dist=4.9,tYaw=0.5,tPitch=0.06,tDist=4.9;
+var autoRot=true,wire=false,fogOn=false,showBones=false,playing=true;
+var actions={},curAction=null;
+
+function init(){
+  if(!window.THREE) return fail('three.js 未加载');
+  if(!window.GLTFLoader) return fail('GLTFLoader 未加载');
+  if(!window.SKELETON_MONSTER_B64) return fail('模型数据缺失：assets/monster_concepts/skeleton_monster_data.js');
+  renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0b0f14);
+  camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.05,120);
+  clock=new THREE.Clock();
+
+  var bin=atob(window.SKELETON_MONSTER_B64);
+  var buf=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+  new window.GLTFLoader().parse(buf.buffer,'',
+    function(gltf){onLoaded(gltf);},undefined,
+    function(err){console.error(err);fail('模型解析失败');});
+  bindUI(); animate();
+}
+
+function onLoaded(gltf){
+  root=gltf.scene;
+  scene.add(root);
+  var verts=0,faces=0,mats=new Set(),boneCount=0;
+  root.traverse(function(o){
+    if(o.isMesh){
+      var g=o.geometry;
+      verts+=g.attributes.position.count;
+      faces+=g.index?g.index.count/3:g.attributes.position.count/3;
+      (Array.isArray(o.material)?o.material:[o.material]).forEach(function(m){mats.add(m.uuid);});
+      o.userData._solidMats=Array.isArray(o.material)?o.material.map(forceMat):forceMat(o.material);
+      o.material=o.userData._solidMats;
+      if(o.isSkinnedMesh){boneCount=Math.max(boneCount,o.skeleton.bones.length);}
+    }
+  });
+  document.getElementById('s-vert').textContent=verts.toLocaleString();
+  document.getElementById('s-face').textContent=Math.round(faces).toLocaleString();
+  document.getElementById('s-mat').textContent=mats.size;
+  document.getElementById('s-bone').textContent=boneCount||0;
+  document.getElementById('s-anim').textContent=(gltf.animations||[]).length;
+  var box=new THREE.Box3().setFromObject(root);
+  document.getElementById('s-h').textContent=(box.max.y-box.min.y).toFixed(2)+' m';
+
+  // 骨骼可视化（默认隐藏）
+  bonesGroup=new THREE.Group(); scene.add(bonesGroup);
+  var firstSkinned=null;
+  root.traverse(function(o){if(o.isSkinnedMesh&&!firstSkinned)firstSkinned=o;});
+  if(firstSkinned){
+    skeletonHelper=new THREE.SkeletonHelper(firstSkinned);
+    skeletonHelper.material.linewidth=2;
+    skeletonHelper.visible=true;
+    bonesGroup.add(skeletonHelper);
+    firstSkinned.skeleton.bones.forEach(function(b){
+      var dot=new THREE.Mesh(new THREE.SphereGeometry(0.028,8,6),
+        new THREE.MeshBasicMaterial({color:0xffd27f,depthTest:false}));
+      dot.renderOrder=999;
+      dot.userData.bone=b;
+      dot.position.copy(b.getWorldPosition(new THREE.Vector3()));
+      bonesGroup.add(dot);
+    });
+  }
+  bonesGroup.visible=false;
+
+  // 动画
+  if(gltf.animations&&gltf.animations.length){
+    mixer=new THREE.AnimationMixer(root);
+    gltf.animations.forEach(function(clip){ actions[clip.name]=mixer.clipAction(clip); });
+    var names=gltf.animations.map(function(a){return a.name;});
+    playAction(names.indexOf('Idle')>=0?'Idle':names[0]);
+  }
+
+  var key=new THREE.DirectionalLight(0xaaccff,1.5);key.position.set(3,5,4);scene.add(key);
+  var fill=new THREE.DirectionalLight(0xffd9a0,0.5);fill.position.set(-4,2,-2);scene.add(fill);
+  scene.add(new THREE.AmbientLight(0x405060,0.9));
+  var grid=new THREE.GridHelper(12,24,0x223040,0x18222c);
+  grid.material.transparent=true;grid.material.opacity=0.5;scene.add(grid);
+  document.getElementById('load').style.display='none';
+}
+
+var _flatMats=[];
+function forceMat(m){
+  var col=m.color?m.color.getHex():0x999999;
+  var nm=new THREE.MeshLambertMaterial({color:col,flatShading:true,side:THREE.DoubleSide});
+  _flatMats.push(nm); return nm;
+}
+var _wireMat=new THREE.MeshBasicMaterial({color:0x7fd8e8,wireframe:true,side:THREE.DoubleSide});
+function setWire(on){
+  wire=on; if(!root)return;
+  root.traverse(function(o){
+    if(!o.isMesh||!o.userData._solidMats)return;
+    o.material=on?_wireMat:o.userData._solidMats;
+  });
+}
+function setBones(on){ showBones=on; if(bonesGroup) bonesGroup.visible=on; }
+
+function playAction(name){
+  if(!mixer||!actions[name])return;
+  if(curAction) curAction.fadeOut(0.25);
+  curAction=actions[name];
+  curAction.reset().fadeIn(0.25).play();
+  playing=true; mixer.timeScale=1;
+  document.getElementById('b-play').classList.remove('on');
+  document.querySelectorAll('.btn.act').forEach(function(b){b.classList.toggle('on',b.dataset.act===name);});
+}
+function setFog(on){ fogOn=on; scene.fog=on?new THREE.FogExp2(0x0b0f14,0.11):null; }
+function goView(v){
+  if(v!=='reset'){autoRot=false;var br=document.getElementById('b-rot');if(br)br.classList.remove('on');}
+  if(v==='front'){tYaw=0;tPitch=0.05;}
+  else if(v==='side'){tYaw=Math.PI/2;tPitch=0.05;}
+  else if(v==='back'){tYaw=Math.PI;tPitch=0.05;}
+  else if(v==='three'){tYaw=Math.PI/4;tPitch=0.10;}
+  else if(v==='reset'){tYaw=0.5;tPitch=0.06;tDist=4.9;}
+  document.querySelectorAll('.btn[data-view]').forEach(function(b){b.classList.toggle('on',b.dataset.view===v);});
+}
+
+function bindUI(){
+  document.querySelectorAll('.btn[data-view]').forEach(function(b){
+    b.addEventListener('click',function(){goView(b.dataset.view);});
+  });
+  document.querySelectorAll('.btn[data-act]').forEach(function(b){
+    b.addEventListener('click',function(){playAction(b.dataset.act);});
+  });
+  var br=document.getElementById('b-rot'),bw=document.getElementById('b-wire'),
+      bf=document.getElementById('b-fog'),bres=document.getElementById('b-reset'),
+      bb=document.getElementById('b-bones'),bp=document.getElementById('b-play');
+  br.onclick=function(){autoRot=!autoRot;br.classList.toggle('on',autoRot);};
+  bw.onclick=function(){setWire(!wire);bw.classList.toggle('on',wire);};
+  bf.onclick=function(){setFog(!fogOn);bf.classList.toggle('on',fogOn);};
+  bres.onclick=function(){goView('reset');};
+  bb.onclick=function(){setBones(!showBones);bb.classList.toggle('on',showBones);};
+  bp.onclick=function(){
+    playing=!playing; bp.classList.toggle('on',!playing);
+    if(mixer) mixer.timeScale=playing?1:0;
+  };
+
+  var drag=false,px=0,py=0;
+  canvas.addEventListener('pointerdown',function(e){drag=true;px=e.clientX;py=e.clientY;autoRot=false;br.classList.remove('on');});
+  addEventListener('pointerup',function(){drag=false;});
+  addEventListener('pointermove',function(e){
+    if(!drag)return;
+    tYaw-=(e.clientX-px)*0.008;tPitch+=(e.clientY-py)*0.006;
+    tPitch=Math.max(-0.6,Math.min(0.8,tPitch));px=e.clientX;py=e.clientY;
+  });
+  canvas.addEventListener('wheel',function(e){tDist+=e.deltaY*0.0025;tDist=Math.max(1.8,Math.min(10,tDist));e.preventDefault();},{passive:false});
+
+  addEventListener('keydown',function(e){
+    var k=e.key.toLowerCase();
+    if(k==='1')goView('front');if(k==='2')goView('side');if(k==='3')goView('back');if(k==='4')goView('three');if(k==='0')goView('reset');
+    if(k==='r')br.onclick();if(k==='w')bw.onclick();if(k==='f')bf.onclick();if(k==='b')bb.onclick();
+    if(k==='z')playAction('Idle');if(k==='x')playAction('Wave');
+    if(k===' '){e.preventDefault();bp.onclick();}
+  });
+  addEventListener('resize',function(){
+    camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  });
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  var dt=clock.getDelta();
+  if(mixer&&playing) mixer.update(dt);
+  if(autoRot) tYaw+=0.0035;
+  yaw+=(tYaw-yaw)*0.12;pitch+=(tPitch-pitch)*0.12;dist+=(tDist-dist)*0.12;
+  var cy=Math.cos(pitch);
+  camera.position.set(Math.sin(yaw)*cy*dist,Math.sin(pitch)*dist+1.5,Math.cos(yaw)*cy*dist);
+  camera.lookAt(0,1.45,0);
+  if(showBones&&bonesGroup){
+    bonesGroup.children.forEach(function(o){
+      if(o.userData.bone){o.position.copy(o.userData.bone.getWorldPosition(new THREE.Vector3()));}
+    });
+  }
+  renderer.render(scene,camera);
+}
+init();
+</script>
+</body>
+</html>
