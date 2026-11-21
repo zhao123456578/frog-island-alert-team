@@ -127,6 +127,15 @@
   #introSkip{position:fixed;right:16px;top:14px;z-index:6;font-size:11px;letter-spacing:.1em;
     color:rgba(207,210,192,.5);opacity:0;visibility:hidden;transition:opacity .5s,visibility .5s;pointer-events:none;}
   #introSkip.on{opacity:1;visibility:visible;}
+  /* 横屏矮屏（手机横放）：困意条挪到左列堆叠，别压住车尾；后视监控收小 */
+  @media (max-height:450px){
+    #touch.on ~ #hud #hDrow{left:14px;top:84px;bottom:auto;width:170px;}
+    #rearCamHud{width:180px;height:63px;top:60px;right:10px;}
+    #hRadio{max-width:240px;font-size:11px;}
+    /* 提示横幅挂到天空带：不压车尾，也不挡前方路面 */
+    #hGuide{bottom:auto;top:120px;}
+    #toast{bottom:auto;top:88px;}
+  }
   /* 竖屏 390×844：标题/操作文字完整换行，不左右裁切 */
   @media (max-width:540px){
     #title h1{font-size:25px;letter-spacing:.06em;}
@@ -159,7 +168,7 @@
   <div class="pill" id="hSpeed">0 km/h</div>
   <div class="pill" id="hRadio">电台 <b>深夜交通台</b><br><span id="hRadioLine"></span></div>
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
-  <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · 1-4 换台 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
+  <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · 滚轮 / [ ] 调镜头高度 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · C 切换镜头 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
   <div id="hGuide"></div>
 </div>
 <div id="rearCamHud" aria-hidden="true"><canvas id="rearCamCanvas" width="472" height="164"></canvas></div>
@@ -170,7 +179,7 @@
   <div class="shotline">奶厂停车场 · 车灯亮起</div>
   <h1>夜班 · 回家路</h1>
   <div class="sub">一个普通的周三 02:47</div>
-  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 变道 · E 停车 · SPACE 开窗 · R 雨刷 · F 咖啡 · 1-4 换台<br><span style="opacity:.72">更多操作会在路上慢慢告诉你</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视<br><span style="opacity:.72">停车时停在车位白线内，点「停」</span></span></div>
+  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 变道 · E 停车 · 拖动环视(±180°) · 滚轮/[ ] 升降镜头 · - = 调距离<br>C 切换驾驶舱 · SPACE 开窗 · R 雨刷 · F 咖啡<br><span style="opacity:.72">松手后镜头保留 1.4s（停车 2.4s）再平滑回正；看不到前车就往上滚滚轮抬高</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视<br><span style="opacity:.72">停车时停在车位白线内，点「停」</span></span></div>
   <div id="diffPick">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
   <button id="btnStart">打卡下班 →</button>
 </div>
@@ -227,8 +236,8 @@ renderer.toneMapping=THREE.LinearToneMapping;
 renderer.toneMappingExposure=1.2;
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x0a1018);
-scene.fog=new THREE.FogExp2(0x141c2a,0.013);
+scene.background=new THREE.Color(0x05080d);
+scene.fog=new THREE.FogExp2(0x0c1219,0.0150);
 
 const camera=new THREE.PerspectiveCamera(62,16/9,0.1,600);
 camera.rotation.order='YXZ';
@@ -242,8 +251,9 @@ function mkTex(w,h,draw){
   draw(c.getContext('2d'),w,h);
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  t.magFilter=THREE.LinearFilter;
-  /* 开 mipmap：不然远处的路面/草地纹理一步一抖，整条路像在“爬” */
+  t.magFilter=THREE.NearestFilter;
+  /* 开 mipmap：不然远处的路面/草地纹理一步一抖，整条路像在“爬”。
+     近处 Nearest 出像素硬边，远处 mipmap 防抖——PS1 的抖动是顶点级的，不是纹理糊 */
   const pot=(n)=>n>0&&(n&(n-1))===0;
   if(pot(w)&&pot(h)){t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;}
   else{t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;}
@@ -430,17 +440,17 @@ reflTex.wrapS=reflTex.wrapT=THREE.ClampToEdgeWrapping;
 reflTex.flipY=false;
 
 /* ---------- 灯光 ---------- */
-const hemi=new THREE.HemisphereLight(0x3d5166,0x181a12,0.95);scene.add(hemi);
+const hemi=new THREE.HemisphereLight(0x2a3a4e,0x101208,0.42);scene.add(hemi);
 /* 一层很弱的冷底光：只把"死黑"抬成能看出轮廓的深蓝黑，车灯照到的地方仍然占主导 */
-const amb=new THREE.AmbientLight(0x24304a,0.35);scene.add(amb);
+const amb=new THREE.AmbientLight(0x1c2637,0.16);scene.add(amb);
 /* 压低仰角、往左偏：路面法线有起伏时才拉得出方向性明暗，而不是被 hemi 照平。
    仰角低了同样的冷光摊在路面上少了，强度补到 0.45，整体亮度不变 */
-const moonLight=new THREE.DirectionalLight(0x9fb4d8,0.45);
+const moonLight=new THREE.DirectionalLight(0x8fa3c4,0.22);
 moonLight.position.set(-85,70,-45);scene.add(moonLight);
 
 /* ---------- 地面 ---------- */
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(420,420),
-  new THREE.MeshLambertMaterial({map:groundTex,color:0x3a4034}));
+  new THREE.MeshLambertMaterial({map:groundTex,color:0x20262a}));
 ground.rotation.x=-Math.PI/2;ground.position.set(0,-4.2,-150);scene.add(ground);
 
 /* ---------- 公路中心线：一条真的会拐弯的路 ---------- */
@@ -700,12 +710,15 @@ function updateRibbon(rb){
   rb.geo.attributes.normal.needsUpdate=true;
   if(col)rb.geo.attributes.color.needsUpdate=true;
 }
-const roadRib=makeRibbon(-4.5,4.5,0,0,
+/* A/B 段地坪以外不该露出高速路面：96 m 之前整条沥青路沉到地坪以下，
+   围墙和封肩外面是野地，不是"窄门旁边还有一条八车道"。 */
+const roadSink=s=>-0.85*(1-sm01(96,130,s));
+const roadRib=makeRibbon(-4.5,4.5,roadSink,roadSink,
   new THREE.MeshLambertMaterial({map:roadTex,color:0xa8aaad,emissive:0x0b0d11,vertexColors:true}),false,true);
-makeRibbon(-5.7,-4.5,0,0,new THREE.MeshLambertMaterial({color:0x23241b}));
-makeRibbon(4.5,5.7,0,0,new THREE.MeshLambertMaterial({color:0x23241b}));
+makeRibbon(-5.7,-4.5,roadSink,roadSink,new THREE.MeshLambertMaterial({color:0x1a1d1f}));
+makeRibbon(4.5,5.7,roadSink,roadSink,new THREE.MeshLambertMaterial({color:0x1a1d1f}));
 /* 路两侧的野地跟着路基一起起伏，坡顶坡底才不会穿帮 */
-const vergeMat=new THREE.MeshLambertMaterial({color:0x1b1e16});
+const vergeMat=new THREE.MeshLambertMaterial({color:0x141719});
 makeRibbon(-160,-5.7,-0.05,-0.05,vergeMat);
 makeRibbon(5.7,160,-0.05,-0.05,vergeMat);
 
@@ -759,6 +772,13 @@ const yardTex=mkTex(512,2048,(x,w,h)=>{
     x.fillStyle='rgba(14,16,18,.75)';x.fillRect(w*0.34,y,w*0.30,26);
     x.fillStyle='rgba(120,124,120,.5)';
     for(let i=0;i<11;i++)x.fillRect(w*0.34+6+i*(w*0.30/11),y+3,w*0.30/22,20);
+    /* 奶渍：从沟盖往下拖的白痕，雨冲了一路也没冲干净 */
+    for(let i=0;i<6;i++){
+      const sx=w*0.36+Math.random()*w*0.26;
+      const g=x.createLinearGradient(0,y+26,0,y+26+90);
+      g.addColorStop(0,'rgba(214,220,208,0.20)');g.addColorStop(1,'rgba(214,220,208,0)');
+      x.fillStyle=g;x.fillRect(sx,y+26,2+Math.random()*3,90);
+    }
   }
 });
 yardTex.wrapS=THREE.ClampToEdgeWrapping;yardTex.wrapT=THREE.RepeatWrapping;
@@ -831,11 +851,12 @@ const sheenMat=new THREE.ShaderMaterial({
     '}'].join('\n'),
   transparent:true,blending:THREE.AdditiveBlending,depthWrite:false
 });
-const sheenRib=makeRibbon(-4.4,4.4,0.014,0.014,sheenMat);
+const sheenRib=makeRibbon(s=>Math.max(-4.4,apronA(s)+0.05),s=>Math.min(4.4,apronB(s)-0.05),
+  s=>Math.max(0.014,apronY(s)+0.014),s=>Math.max(0.014,apronY(s)+0.014),sheenMat);
 
 /* ---------- 天空：星 / 月 ---------- */
 (function stars(){
-  const n=340,pos=new Float32Array(n*3);
+  const n=110,pos=new Float32Array(n*3);
   for(let i=0;i<n;i++){
     const a=Math.random()*Math.PI*2,e=Math.random()*0.55+0.12,r=260;
     pos[i*3]=Math.cos(a)*Math.cos(e)*r;
@@ -845,18 +866,20 @@ const sheenRib=makeRibbon(-4.4,4.4,0.014,0.014,sheenMat);
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.BufferAttribute(pos,3));
   scene.add(new THREE.Points(g,new THREE.PointsMaterial({
-    color:0xb9c9dd,size:1.6,sizeAttenuation:false,fog:false,transparent:true,opacity:0.7})));
+    color:0x8fa0b4,size:1.3,sizeAttenuation:false,fog:false,transparent:true,opacity:0.32})));
 })();
-const moon=new THREE.Mesh(new THREE.CircleGeometry(9,20),
-  new THREE.MeshBasicMaterial({color:0xdfe2cc,fog:false}));
+/* 月被云压着：参考片里天空几乎是纯黑_void_，只留一点被遮住的月晕，
+   不让月亮变成第二盏照亮全场景的灯 */
+const moon=new THREE.Mesh(new THREE.CircleGeometry(6,16),
+  new THREE.MeshBasicMaterial({color:0x8f957f,fog:false}));
 moon.position.set(130,132,-300);moon.lookAt(0,1,0);scene.add(moon);
-const moonHalo=glowSprite(0xcfd8e8,32,0.15);moonHalo.position.copy(moon.position);scene.add(moonHalo);
+const moonHalo=glowSprite(0x9aa4b4,22,0.06);moonHalo.position.copy(moon.position);scene.add(moonHalo);
 /* 天际线渐变：远处城市的光污染，让地平线不是一条硬边 */
 const skyTex=mkTex(16,256,(x,w,h)=>{
   const g=x.createLinearGradient(0,0,0,h);
-  g.addColorStop(0,'#070b12');g.addColorStop(0.55,'#0b121c');
-  g.addColorStop(0.8,'#141d28');g.addColorStop(0.93,'#2a2a2b');
-  g.addColorStop(1,'#3b342b');
+  g.addColorStop(0,'#04070c');g.addColorStop(0.55,'#070d14');
+  g.addColorStop(0.8,'#0d141d');g.addColorStop(0.93,'#191b1d');
+  g.addColorStop(1,'#232019');
   x.fillStyle=g;x.fillRect(0,0,w,h);
 });
 const sky=new THREE.Mesh(new THREE.PlaneGeometry(1600,400),
@@ -864,36 +887,47 @@ const sky=new THREE.Mesh(new THREE.PlaneGeometry(1600,400),
 sky.position.set(0,120,-560);scene.add(sky);
 
 /* ---------- 路灯 / 反光柱 / 地标 ---------- */
-const LAMP_SPAN=300;
+const LAMP_SPAN=320;
 const lampMat=new THREE.MeshLambertMaterial({color:0x3a4048});
-const lampHeadMat=new THREE.MeshBasicMaterial({color:0xffcf8a});
+const lampHeadMat=new THREE.MeshBasicMaterial({color:0xffbe73});
+const lampDeadMat=new THREE.MeshBasicMaterial({color:0x181c22});
 const lampPoleGeo=new THREE.CylinderGeometry(0.09,0.12,6.2,6);
 const lampArmGeo=new THREE.BoxGeometry(1.8,0.09,0.09);
 const lampHeadGeo=new THREE.BoxGeometry(0.55,0.14,0.28);
 const lamps=[];
-for(let i=0;i<10;i++){
-  const side=i%2?1:-1;
+/* 灯不铺匀：两三盏一小簇（间距 17~22 m），簇与簇之间留 50~60 m 的黑段。
+   等距复制的一排路灯是"测试场景"最快的暴露方式。 */
+const lampSlots=[
+  [6,-1,'on'],[24,1,'on'],[41,-1,'flicker'],
+  [96,1,'on'],[114,-1,'dead'],[131,1,'on'],
+  [186,-1,'on'],[204,1,'flicker'],[221,-1,'on'],
+  [279,1,'on'],[297,-1,'dead']
+];
+for(let i=0;i<lampSlots.length;i++){
+  const ds=lampSlots[i][0],side=lampSlots[i][1],type=lampSlots[i][2];
   const g=new THREE.Group();
   const pole=new THREE.Mesh(lampPoleGeo,lampMat);pole.position.y=3.1;g.add(pole);
   const arm=new THREE.Mesh(lampArmGeo,lampMat);arm.position.set(-side*0.85,6.1,0);g.add(arm);
-  const head=new THREE.Mesh(lampHeadGeo,lampHeadMat);head.position.set(-side*1.7,6.03,0);g.add(head);
-  const halo=glowSprite(0xffc78a,3.4,0.55);halo.position.set(-side*1.7,5.95,0);g.add(halo);
+  const head=new THREE.Mesh(lampHeadGeo,type==='dead'?lampDeadMat:lampHeadMat.clone());
+  head.position.set(-side*1.7,6.03,0);g.add(head);
+  const halo=glowSprite(0xffc78a,3.4,0.42);halo.position.set(-side*1.7,5.95,0);g.add(halo);
   const pool=new THREE.Mesh(poolGeo,new THREE.MeshBasicMaterial({map:glowTex,color:0xffb972,
-    transparent:true,opacity:0.13,blending:THREE.AdditiveBlending,depthWrite:false}));
+    transparent:true,opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}));
   pool.rotation.x=-Math.PI/2;pool.position.set(-side*1.7,0.012,0);g.add(pool);
   /* 湿路面上的灯头倒影，拉长的一条，跟着灯一起往后跑 */
   const streak=new THREE.Mesh(new THREE.PlaneGeometry(1.5,11),
     new THREE.MeshBasicMaterial({map:reflTex,color:0xffab5e,transparent:true,
       opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}));
   streak.rotation.x=-Math.PI/2;streak.position.set(-side*1.7,0.013,4.4);g.add(streak);
-  g.position.set(side*5.6,0,-i*30);
-  scene.add(g);lamps.push({grp:g,light:null,base:1,side:side,z:-i*30,head,pool,streak,halo});
+  if(type==='dead'){halo.visible=false;pool.visible=false;streak.visible=false;}
+  g.position.set(side*5.6,0,-ds);
+  scene.add(g);lamps.push({grp:g,light:null,base:type==='dead'?0:1,type,side:side,z:-ds,head,pool,streak,halo});
 }
 /* 十盏路灯共用四盏点光源：每帧挑最近的四根灯杆挪过去。
    远处的灯靠灯头高光、地面光斑和湿路倒影撑场面，座舱里看不出少了几盏 */
 const lampLights=[];
 for(let i=0;i<4;i++){
-  const l=new THREE.PointLight(0xffc27a,0,30,2);
+  const l=new THREE.PointLight(0xffc27a,0,24,2);
   scene.add(l);lampLights.push(l);
 }
 const lampHeadWorld=new THREE.Vector3();
@@ -949,29 +983,133 @@ for(let i=0;i<24;i++){
   g.userData.z=tz;g.userData.lat=g.position.x;g.userData.baseYaw=g.rotation.y;
   scene.add(g);trees.push(g);
 }
-/* 远处厂房轮廓：整面墙的窗格纹理 + 楼板暗线，比零星几个亮方块更像一片城 */
-const facadeTex=mkTex(256,256,(x,w,h)=>{
-  x.fillStyle='#0d1117';x.fillRect(0,0,w,h);
-  x.fillStyle='rgba(3,5,8,.55)';
-  for(let yy=0;yy<h;yy+=32)x.fillRect(0,yy,w,3);
-  for(let xx=0;xx<w;xx+=64)x.fillRect(xx,0,3,h);
-  for(let yy=8;yy<h-10;yy+=32)for(let xx=8;xx<w-10;xx+=16){
-    if(Math.random()<0.74)continue;
-    const warm=Math.random()<0.72;
-    x.fillStyle=warm?'rgba(255,198,126,'+(0.22+Math.random()*0.55)+')'
-                    :'rgba(150,192,224,'+(0.18+Math.random()*0.38)+')';
-    x.fillRect(xx,yy,9,8);
+/* 远处立面：三种性格的楼，窗按"整层亮 / 整层黑 / 零星几户"来画，
+   不是随机撒点——随机点远看是噪点，整层黑才是"有人住但没人醒"的城。
+   亮度整体比旧版收两成：灯少一点，但亮的那几户更集中。
+   一套立面 = map + emissive 两张贴图：窗位共享；墙体走 Lambert（车灯扫
+   过去有明暗过渡，不是恒亮一块板），亮窗走自发光（不随灯光变暗）。 */
+function facadeDraw(kind){
+  const layout=[];
+  for(let fy=0;fy<8;fy++){
+    const floorKind=Math.random();
+    const row=[];
+    for(let xx=8;xx<256-10;xx+=16){
+      let lit=false,warm=true,a=0;
+      if(kind==='res'){
+        if(floorKind<0.20){lit=Math.random()<0.85;warm=true;a=0.34+Math.random()*0.42;}
+        else if(floorKind<0.42){lit=false;}
+        else{lit=Math.random()<0.20;warm=Math.random()<0.8;a=0.22+Math.random()*0.44;}
+      }else if(kind==='ind'){
+        lit=Math.random()<0.13;warm=Math.random()<0.35;a=0.18+Math.random()*0.32;
+      }else{
+        lit=(xx>=120&&xx<136)?Math.random()<0.8:Math.random()<0.04;
+        warm=false;a=0.22+Math.random()*0.30;
+      }
+      row.push({xx:8+(((xx-8)/16)|0)*16,yy:fy*32+8,lit,warm,a});
+    }
+    layout.push(row);
+  }
+  const doorLeak=[];
+  for(let sxi=8;sxi<256-14;sxi+=34){doorLeak.push({xx:sxi,on:Math.random()<.45});}
+  const paintCommon=(x,w,h)=>{
+    x.fillStyle=kind==='ind'?'#101619':'#141a1d';x.fillRect(0,0,w,h);
+    /* 雨渍：从窗台往下拖的脏水痕，立面不是一块干净的深色板 */
+    for(let i=0;i<26;i++){
+      const sx=Math.random()*w,sy=Math.random()*h*0.7,len=20+Math.random()*70;
+      const g=x.createLinearGradient(0,sy,0,sy+len);
+      g.addColorStop(0,'rgba(4,6,9,0.34)');g.addColorStop(1,'rgba(4,6,9,0)');
+      x.fillStyle=g;x.fillRect(sx,sy,2+Math.random()*4,len);
+    }
+    x.fillStyle='rgba(3,5,8,.55)';
+    for(let yy=0;yy<h;yy+=32)x.fillRect(0,yy,w,3);
+    for(let xx=0;xx<w;xx+=64)x.fillRect(xx,0,3,h);
+  };
+  const map=mkTex(256,256,(x,w,h)=>{
+    paintCommon(x,w,h);
+    layout.forEach(row=>row.forEach(cw=>{
+      x.fillStyle='rgba(5,8,11,0.86)';x.fillRect(cw.xx,cw.yy,9,8);
+    }));
+    if(kind==='res'){
+      /* 楼梯间在 map 里只是一条更深的竖槽 */
+      x.fillStyle='rgba(3,5,8,0.55)';x.fillRect(158,10,10,180);
+    }
+    if(kind==='ind'){
+      x.fillStyle='rgba(2,3,5,0.8)';x.fillRect(0,h-26,w,26);
+      x.fillStyle='rgba(70,76,82,0.25)';
+      for(let yy=h-24;yy<h;yy+=4)x.fillRect(0,yy,w,1);
+    }else if(kind==='res'){
+      doorLeak.forEach(d=>{x.fillStyle='rgba(3,5,7,.78)';x.fillRect(d.xx,h-21,25,15);});
+    }
+  });
+  const emis=mkTex(256,256,(x,w,h)=>{
+    x.fillStyle='#000';x.fillRect(0,0,w,h);
+    layout.forEach(row=>row.forEach(cw=>{
+      if(!cw.lit)return;
+      x.fillStyle=cw.warm?'rgba(255,190,116,'+cw.a.toFixed(2)+')'
+                          :'rgba(148,190,214,'+cw.a.toFixed(2)+')';
+      x.fillRect(cw.xx,cw.yy,9,8);
+      x.fillStyle=cw.warm?'rgba(255,190,116,0.10)':'rgba(148,190,214,0.08)';
+      x.fillRect(cw.xx,cw.yy+8,9,2);
+    }));
+    if(kind==='res'){
+      /* 楼梯间：唯一连续亮着的病态乳白竖条 */
+      x.fillStyle='rgba(196,214,190,0.30)';x.fillRect(159,12,8,176);
+      doorLeak.forEach(d=>{if(!d.on)return;
+        x.fillStyle='rgba(198,210,188,0.20)';x.fillRect(d.xx+2,h-19,21,2);});
+    }else if(kind==='ind'){
+      x.fillStyle='rgba(156,190,176,0.18)';x.fillRect(26,84,86,6);
+      x.fillStyle='rgba(255,166,84,0.14)';
+      for(let di=0;di<3;di++)if(Math.random()<.5)x.fillRect(16+di*84,h-20,42,3);
+    }else{
+      x.fillStyle='rgba(148,190,214,0.26)';x.fillRect(120,8,16,244);
+    }
+  });
+  return {map,emis};
+}
+/* 每种性格画两版，相邻同类型楼也不会共用同一张脸 */
+const facadeSets={
+  res:[facadeDraw('res'),facadeDraw('res')],
+  ind:[facadeDraw('ind'),facadeDraw('ind')],
+  off:[facadeDraw('off'),facadeDraw('off')]
+};
+facadeSets.ind.forEach(s=>{s.map.repeat.set(2,1);s.emis.repeat.set(2,1);});
+function facadeMaterial(kind,vi,tint){
+  const set=facadeSets[kind][vi%2];
+  return new THREE.MeshLambertMaterial({map:set.map,emissiveMap:set.emis,
+    emissive:new THREE.Color(0xffffff),color:tint});
+}
+/* 最远一层：只剩剪影和几粒灯，雾里读得出"城还没完" */
+const silTex=mkTex(128,256,(x,w,h)=>{
+  x.fillStyle='#0a0f16';x.fillRect(0,0,w,h);
+  for(let i=0;i<26;i++){
+    x.fillStyle=Math.random()<0.7?'rgba(255,190,116,0.20)':'rgba(150,190,214,0.16)';
+    x.fillRect(4+Math.random()*(w-10),4+Math.random()*(h-10),2,2);
   }
 });
-facadeTex.repeat.set(2,2);
 const blds=[],blinkLights=[];
-for(let i=0;i<18;i++){
-  const side=i%2?1:-1;
-  const w=10+Math.random()*18,h=7+Math.random()*17,d=10+Math.random()*14;
+const bldKinds=['res','ind','off'];
+const bldTints=[0x9da4a2,0x7f8985,0x81888a];
+const bldDarkMat=new THREE.MeshBasicMaterial({color:0x070b10});
+/* 中景地标复用的两张脸（仓库 / 塔楼） */
+const facadeIndMat=facadeMaterial('ind',0,0x7f8985);
+const facadeOffMat=facadeMaterial('off',0,0x81888a);
+/* 不再左右交替、每 20 m 塞一个同规格盒子。这里用人工排的“地块”：
+   近中远景有密度差，偶尔连续两栋、偶尔留一整段黑路。 */
+const bldSlots=[
+  [-27,1,0,17,20,13],[-49,-1,1,22,8,14],[-58,1,2,11,18,11],
+  [-91,-1,0,15,24,12],[-105,1,1,20,7,16],[-118,-1,2,9,22,9],
+  [-151,1,0,18,15,14],[-171,-1,1,27,9,18],[-206,1,2,12,20,10],
+  [-243,-1,0,23,27,15],[-257,1,1,13,8,11],[-286,1,0,16,17,12],
+  [-309,-1,2,10,25,9],[-344,-1,0,21,14,16],[-363,1,1,25,10,17]
+];
+for(let i=0;i<bldSlots.length;i++){
+  const [bz0,side,kind,w,h,d]=bldSlots[i];
+  const bz=bz0-Math.random()*5;
   const b=new THREE.Group();
-  const box=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-    new THREE.MeshBasicMaterial({map:facadeTex}));
+  const mtl=facadeMaterial(bldKinds[kind],i,bldTints[kind]);
+  const box=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mtl);
   box.position.y=h/2;b.add(box);
+  b.userData.box=box;b.userData.mat=mtl;
   /* 屋顶水箱 / 通风机的剪影，别让厂房都是一样的方盒子 */
   if(Math.random()<0.7){
     const tw=2+Math.random()*3;
@@ -980,18 +1118,99 @@ for(let i=0;i<18;i++){
     tank.position.set((Math.random()-0.5)*w*0.5,h+tw*0.4,(Math.random()-0.5)*d*0.4);
     b.add(tank);
   }
+  if(kind===1&&Math.random()<0.6){
+    const vent=cy(b,0.5,0.6,2.2,artSteel,(Math.random()-0.5)*w*0.6,h+1.1,(Math.random()-0.5)*d*0.5,6);
+  }
+  /* 临路立面不能只有一层窗贴图：空调外机、排水管、雨棚、卷帘门
+     和局部防盗窗让每栋楼的“正脸”都不同，也把几何层次从一张平板救回来。 */
+  const face=-side*(w/2+0.10);
+  const extend=-side*(w/2+0.45);
+  if(kind===0||kind===2){
+    const acN=2+(i%3);
+    for(let a=0;a<acN;a++){
+      const ay=3.2+((a*3.1+i)%Math.max(4,h-4));
+      const az=(a-(acN-1)/2)*d/Math.max(2,acN)*.62;
+      bx(b,0.52,0.52,0.82,new THREE.MeshLambertMaterial({color:0x363c3d}),face,ay,az);
+      bx(b,0.08,0.32,0.58,new THREE.MeshBasicMaterial({color:0x111719}),
+        face-side*.28,ay,az);
+    }
+    [d*.28,-d*.30].forEach((z,zi)=>{
+      cy(b,0.07,0.07,h*.72,artSteel,face-side*.04,h*.39,z,6);
+      bx(b,0.5,0.06,0.9,artSteel,extend,2.6+zi*.3,z);
+    });
+  }
+  if(kind===1){
+    bx(b,0.16,1.8,d*.58,new THREE.MeshBasicMaterial({color:0x0b0f12}),
+      face-side*.02,1.0,0);
+    bx(b,1.3,0.10,1.4,artSteel,extend,2.0,-d*.26);
+  }
+  if(i===3||i===8||i===12){
+    const signCols=[0x84613c,0x6a7f69,0x76504a];
+    bx(b,0.10,.74,Math.min(4.4,d*.52),new THREE.MeshBasicMaterial({color:signCols[i%3]}),
+      face-side*.08,2.55,0);
+    const l=glowSprite(i===8?0x9fc7aa:0xffae6b,2.3,.12);
+    l.position.set(face-side*.35,2.45,0);b.add(l);
+    /* 门脸在湿路肩上的反光只朝道路方向拖一条，不是一圈均匀亮斑 */
+    const spill=new THREE.Mesh(new THREE.PlaneGeometry(5.2,2.4),
+      new THREE.MeshBasicMaterial({map:glowTex,color:i===8?0x8fb69f:0xff9c5d,
+        transparent:true,opacity:.12,blending:THREE.AdditiveBlending,depthWrite:false}));
+    spill.rotation.x=-Math.PI/2;spill.position.set(face-side*2.2,.035,0);b.add(spill);
+  }
   /* 高楼顶上的红色航空障碍灯：一明一暗，远处才有夜城的呼吸 */
   if(h>13){
     const bl=glowSprite(0xff4d3d,0.95,0.6);
     bl.position.set(0,h+0.7,0);b.add(bl);
     blinkLights.push({s:bl,ph:Math.random()*6.283});
   }
-  const bz=-20-i*20-Math.random()*10;
-  b.position.set(side*(28+Math.random()*40),0,bz);
+  /* 尺度重排：住宅/办公楼近墙压到 8~9.5 m，厂房退到 10.5~12.5 m
+     留装卸院。近墙和路之间必须有隔离：矮围墙 + 铁门缺口 + 排水沟，
+     "楼很近"和"开不进人家院子"同时成立。 */
+  const nearWall=kind===1?10.5+Math.random()*2:8+Math.random()*1.5;
+  const lat=nearWall+w/2;
+  if(Math.random()<0.8){
+    const fenceMat=new THREE.MeshLambertMaterial({color:0x23272b});
+    const fh=1.05+Math.random()*0.25;
+    const fx=face-side*2.3;
+    bx(b,0.09,fh,d*0.30,fenceMat,fx,fh/2,-d*0.33);
+    bx(b,0.09,fh,d*0.30,fenceMat,fx,fh/2,d*0.33);
+    bx(b,0.06,fh*1.25,0.06,fenceMat,fx,fh*0.9,0);      /* 门柱 */
+    /* 院门口一盏小灯：五栋里挑一栋，门口才有那种"等你回家"的暖点 */
+    if(i%5===2){
+      const fg=glowSprite(0xffb579,1.1,0.22);
+      fg.position.set(fx,fh+0.25,0);b.add(fg);
+      const fp=new THREE.Mesh(poolGeo,new THREE.MeshBasicMaterial({map:glowTex,
+        color:0xffa869,transparent:true,opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}));
+      fp.rotation.x=-Math.PI/2;fp.position.set(fx-side*1.0,0.02,0);fp.scale.set(0.5,0.5,1);b.add(fp);
+    }
+    /* 沿院墙的排水明沟：一条深色带把楼和路肩隔出层次 */
+    const ditch=new THREE.Mesh(new THREE.PlaneGeometry(0.42,d*0.92),
+      new THREE.MeshBasicMaterial({color:0x0a0e12}));
+    ditch.rotation.x=-Math.PI/2;ditch.position.set(fx-side*1.15,0.02,0);b.add(ditch);
+  }
+  b.position.set(side*lat,0,bz);
   b.userData.z=bz;b.userData.lat=b.position.x;
   scene.add(b);blds.push(b);
 }
 const BLD_SPAN=380;
+/* 第四层天际线： lat ±75–135 的巨型剪影，回收周期比中景长一倍，
+   开很久它才换一批——"远处那片城"是稳定的，不是走马灯 */
+const farBlds=[];
+for(let i=0;i<12;i++){
+  const side=i%2?1:-1;
+  const w=26+Math.random()*40,h=18+Math.random()*34,d=20+Math.random()*30;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshBasicMaterial({map:silTex}));
+  m.position.y=h/2;
+  const g=new THREE.Group();g.add(m);
+  if(h>38){const bl=glowSprite(0xff4d3d,1.3,0.5);bl.position.set(0,h+1,0);g.add(bl);
+    blinkLights.push({s:bl,ph:Math.random()*6.283});}
+  const fz=-40-i*62-Math.random()*20;
+  g.position.set(side*(75+Math.random()*60),0,fz);
+  g.userData.z=fz;g.userData.lat=g.position.x;
+  scene.add(g);farBlds.push(g);
+}
+const FAR_SPAN=760;
+let blackT=8,blackHold=0,blackPick=null;
 /* 高速指示牌：每隔 620 m 从头顶掠过，给长直路一个节奏点 */
 const signTex=mkTex(512,160,(x,w,h)=>{
   x.fillStyle='#1f5d3c';x.fillRect(0,0,w,h);
@@ -1437,7 +1656,7 @@ const emergencyLamps=[
 emergencyLamps.forEach(o=>car.add(o.spr));
 /* 车尾补一盏很弱的冷光，只让低清贴图在夜路上保持可读。
    不是“自发光的白车”，亮度低于车灯，也不会把路面照平。 */
-const carRearFill=new THREE.PointLight(0x91aeb8,0.58,9,2);
+const carRearFill=new THREE.PointLight(0x91aeb8,0.22,6,2);
 carRearFill.position.set(0.25,2.8,3.9);
 car.add(carRearFill);
 let carModelOK=false,carModelErrReported=false,carModelScale=1;
@@ -1475,7 +1694,7 @@ function mountCarRoot(root,sourceLabel,animations){
     const src=o.material;
     if(!shared){
       shared=new THREE.MeshLambertMaterial({
-        color:0xc6c8c1,emissive:0x555750,flatShading:true
+        color:0xc6c8c1,emissive:0x20221e,flatShading:true
       });
       if(src&&src.map){
         shared.map=src.map;
@@ -2300,7 +2519,7 @@ const chaserRefl=new THREE.Mesh(new THREE.PlaneGeometry(5.2,15),
 chaserRefl.rotation.x=-Math.PI/2;chaserRefl.visible=false;scene.add(chaserRefl);
 
 /* ---------- 雨：粒子 + 挡风玻璃水膜 + 雨刷 ---------- */
-const rainCount=900;
+const rainCount=620;
 const rainHead=new Float32Array(rainCount*3);
 const rainPos=new Float32Array(rainCount*6);
 for(let i=0;i<rainCount;i++){
@@ -2311,7 +2530,7 @@ for(let i=0;i<rainCount;i++){
 }
 const rainGeo=new THREE.BufferGeometry();
 rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
-const rainMat=new THREE.LineBasicMaterial({color:0xc2d4e2,transparent:true,opacity:0.34,depthWrite:false});
+const rainMat=new THREE.LineBasicMaterial({color:0x9fb2c2,transparent:true,opacity:0.17,depthWrite:false});
 const rain=new THREE.LineSegments(rainGeo,rainMat);
 rain.frustumCulled=false;
 rain.visible=true;scene.add(rain);
@@ -3093,8 +3312,10 @@ const yardLot=new THREE.Group();
   const crateMat=new THREE.MeshLambertMaterial({color:0x6f766c,emissive:0x090b08});
   const vanMats=[
     new THREE.MeshLambertMaterial({color:0x1a2430,emissive:0x04060a}),   /* 泥蓝皮卡 */
-    new THREE.MeshLambertMaterial({color:0x77796e,emissive:0x0b0c0a}),   /* 掉漆奶白厢货 */
-    new THREE.MeshLambertMaterial({color:0x2a2018,emissive:0x060403})    /* 锈褐面包车 */
+    new THREE.MeshLambertMaterial({color:0x83867a,emissive:0x0b0c0a}),   /* 脏奶白厢货 */
+    new THREE.MeshLambertMaterial({color:0x5c6b5e,emissive:0x080a08}),   /* 灰绿老面包 */
+    new THREE.MeshLambertMaterial({color:0x6e3a2a,emissive:0x0a0504}),   /* 锈红 sedan */
+    new THREE.MeshLambertMaterial({color:0x8a6f2a,emissive:0x0d0a03})    /* 暗黄工程车 */
   ];
 
   /* 顺向停死的一排车：车宽 2.0、车长 4.5，驾驶室在前（−z）。
@@ -3121,34 +3342,61 @@ const yardLot=new THREE.Group();
     ybx(v,2.04,0.34,0.16,lotSteel,0,0.34,2.32);          /* 后杠 */
     addBox(LOT_S-z,x,4.5,2.0,'停车场·停放车辆');
   }
-  /* 左停车带贴左墙（内缘 0.70），右停车带贴右墙（内缘 5.30），中间留行车缝 */
-  [-24,-10,4,18].forEach((s,i)=>lotVan(-0.35,LOT_S-s,i%3));
-  [-21,-7,9,23].forEach((s,i)=>lotVan(6.35,LOT_S-s,(i+1)%3));
+  /* 左停车带贴左墙（内缘 0.70），右停车带贴右墙（内缘 5.30），中间留行车缝。
+     间距故意不匀：有的车位空着、有的挤在一起，右带 s21 那个位被废奶箱占死——
+     停车场是"有人用过又走了"，不是展车 */
+  [[-26,1],[-13,2],[1,0],[16,3],[33,4]].forEach(([s,mi])=>lotVan(-0.35,LOT_S-s,mi));
+  [[-19,2],[-2,4],[13,1],[29,3],[42,0]].forEach(([s,mi])=>lotVan(6.35,LOT_S-s,mi));
+  /* 被占死的车位：一摞奶箱 + 一只倒桶， collision 和看见的一致 */
+  {
+    const x=6.35,z=LOT_S-21;
+    for(let i=0;i<6;i++)
+      ybx(g,0.62,0.3,0.42,crateMat,x+((i%2)*0.14-0.07),0.16+Math.floor(i/2)*0.3,z+((i<2)?0.3:-0.2));
+    cy(g,0.30,0.30,0.86,lotSteel,x-0.7,0.30,z+0.9).rotation.z=Math.PI/2;
+    addBox(21,x,1.6,1.4,'停车场·占位奶箱');
+  }
 
   /* 密集柱网：行车缝两侧每 11 m 一根，柱身 0.26，内缘正好 0.98 / 5.07。
-     这就是"处处要蹭"的来源：贴着缝走（lat 2.20）左边只剩 12 cm。 */
+     这就是"处处要蹭"的来源：贴着缝走（lat 2.20）左边只剩 12 cm。
+     柱位带一点施工误差般的偏移——碰撞盒跟着同一个偏移走，看见的就是撞到的 */
   const colS=[-28,-17,-6,5,16,27,38,49];
-  colS.forEach(s=>{
-    [0.85,5.20].forEach(x=>{
-      ybx(g,0.26,3.02,0.26,lotSteel,x,1.51,LOT_S-s);
-      ybx(g,0.32,0.06,0.32,lotHi,x,3.05,LOT_S-s);
-      ybx(g,0.34,0.14,0.34,lotSteel,x,0.07,LOT_S-s);
-      addBox(s,x,0.26,0.26,'停车场·车棚立柱');
-    });
-  });
-  /* 两道矮车棚：棚顶底面 3.02 m，只盖停车带，行车缝上方是开口天空 */
-  [[-0.25,2.5],[6.45,2.5]].forEach(([x,w])=>{
-    ybx(g,w,0.16,76,lotRoof,x,3.10,LOT_S-8);
-    ybx(g,w-0.2,0.05,76,lotGlass,x,2.99,LOT_S-8);        /* 棚底压一道暗色，别烤成白棚 */
-  });
-  /* 棚下钠灯：整片唯一暖源，停放车的车顶和柱子靠它出形。不用点光，发光块 + 光晕。 */
+  const colJit=[0.04,-0.05,0.06,-0.03,0.05,-0.06,0.03,-0.04];
   colS.forEach((s,i)=>{
-    if(i%2)return;
-    [[-0.25],[6.45]].forEach(([x])=>{
-      ybx(g,0.5,0.08,0.14,new THREE.MeshBasicMaterial({color:0xffe0b0}),x,2.94,LOT_S-s);
-      const sp=glowSprite(0xffcd92,2.2,0.34);sp.position.set(x,2.88,LOT_S-s);g.add(sp);
+    [0.85,5.20].forEach((x,xi)=>{
+      const jx=x+colJit[(i+xi*3)%8];
+      ybx(g,0.26,3.02,0.26,lotSteel,jx,1.51,LOT_S-s);
+      ybx(g,0.32,0.06,0.32,lotHi,jx,3.05,LOT_S-s);
+      ybx(g,0.34+(i%3)*0.04,0.14,0.34,lotSteel,jx,0.07,LOT_S-s);
+      addBox(s,jx,0.26,0.26,'停车场·车棚立柱');
     });
   });
+  /* 两道矮车棚：棚顶底面 3.02 m，只盖停车带，行车缝上方是开口天空。
+     棚顶按跨间分块：左带第 3 跨破了（板斜挂着），右带第 6 跨整块没了——
+     雨从破口灌进来，下面的积水才说得通 */
+  const tubes=[];
+  const tubeStateL=[1,1,0,2,1,0,1],tubeStateR=[1,2,1,1,0,1,0];
+  [[-0.25,2.5,tubeStateL],[6.45,2.5,tubeStateR]].forEach(([x,w,states],ri)=>{
+    for(let i=0;i<colS.length-1;i++){
+      const a=colS[i],b=colS[i+1],cz=LOT_S-(a+b)/2,len=b-a-0.5;
+      const broken=(ri===0&&i===2),missing=(ri===1&&i===5);
+      if(missing){
+        /* 掉下来的棚板斜靠在右墙上 */
+        const fall=ybx(g,w,0.10,len*0.8,lotRoof,x+1.1,1.2,cz);
+        fall.rotation.z=0.9;
+        continue;
+      }
+      const panel=ybx(g,w,0.16,len,lotRoof,x,broken?3.18:3.10,cz);
+      if(broken)panel.rotation.x=0.10;
+      ybx(g,w-0.2,0.05,len,lotGlass,x,2.99,cz);
+      /* 棚下灯管：亮 / 闪 / 死 三种，死灯只留一根灰管 */
+      const st=states[i];
+      const tube=ybx(g,0.5,0.08,0.14,
+        st===0?lotSteel:new THREE.MeshBasicMaterial({color:0xffe0b0}),x,2.94,cz);
+      const sp=glowSprite(0xffcd92,2.2,st===0?0:0.34);sp.position.set(x,2.88,cz);g.add(sp);
+      tubes.push({tube,sp,st,ph:i*1.7+ri*2.9});
+    }
+  });
+  yardLot.userData.tubes=tubes;
 
   /* 叉车：横在左侧车位口，叉齿探进行车缝（右缘 lat 0.95），
      看得见、有灯、有碰撞盒，从缝里过去要往右带一点点。 */
@@ -3197,6 +3445,44 @@ const yardLot=new THREE.Group();
       sh.scale.set(r*0.5,r*0.22,1);g.add(sh);
     }
   }
+  /* 门卫亭：出口左角，窗里一点病态绿光——里面有没有人，看不清 */
+  {
+    const gb=new THREE.Group();gb.position.set(-0.72,0,LOT_S-44);g.add(gb);
+    ybx(gb,1.1,2.3,2.4,lotSteel,0,1.15,0);
+    ybx(gb,1.2,0.10,2.6,lotRoof,0,2.35,0);
+    const win=ybx(gb,0.04,0.7,1.4,new THREE.MeshBasicMaterial({color:0x9fd8b4}),0.56,1.45,0);
+    win.material.color.multiplyScalar(0.55);
+    const gs=glowSprite(0x9fd8b4,1.4,0.16);gs.position.set(0.62,1.45,0);gb.add(gs);
+    ybx(gb,0.06,1.6,0.7,artDark,0.56,0.8,0.8);           /* 门 */
+    addBox(44,-0.72,2.4,1.1,'停车场·门卫亭');
+  }
+  /* 右墙一排设备柜：锈铁壳 + 一颗琥珀指示灯，间距不匀 */
+  [[8,0],[24,1],[40,0]].forEach(([s,hi])=>{
+    ybx(g,0.5,1.8,1.2,lotSteel,7.35,0.9,LOT_S-s);
+    ybx(g,0.52,0.06,1.24,lotHi,7.35,1.82,LOT_S-s);
+    if(hi){const ind=glowSprite(0xffc27a,0.5,0.4);ind.position.set(7.08,1.5,LOT_S-s);g.add(ind);}
+  });
+  /* 左墙蒸汽管：一路贴着墙走，阀门处冒一点白汽 */
+  {
+    const pipe=new THREE.Mesh(new THREE.CylinderGeometry(0.10,0.10,72,6),lotSteel);
+    pipe.rotation.x=Math.PI/2;pipe.position.set(-1.12,1.9,LOT_S-8);g.add(pipe);
+    [-20,6,30].forEach(s=>{
+      cy(g,0.16,0.16,0.3,lotSteel,-1.12,1.9,LOT_S-s,6);
+      const st=glowSprite(0xcfd8d2,1.6,0.10);st.position.set(-1.0,2.2,LOT_S-s);g.add(st);
+    });
+  }
+  /* 围墙外的奶厂：半截烟囱 + 泵房一点红警示灯。墙内是停车场，墙外才是"厂" */
+  {
+    const chim=cy(g,1.1,1.5,20,artDark,-6,10,LOT_S-30,8);
+    const cl=glowSprite(0xff4d3d,1.2,0.5);cl.position.set(-6,20.4,LOT_S-30);g.add(cl);
+    blinkLights.push({s:cl,ph:1.3});
+    ybx(g,4,3,5,artDark,10.5,1.5,LOT_S-52);
+    const pr=glowSprite(0xff3b2a,2.0,0.4);pr.position.set(9.4,2.6,LOT_S-52);g.add(pr);
+    ybx(g,0.3,0.3,0.3,new THREE.MeshBasicMaterial({color:0x8a2418}),9.4,2.6,LOT_S-52);
+  }
+  /* 近景遮挡：开局镜头左缘一根垂下来的管线，画面第一帧就有前景层 */
+  cy(g,0.07,0.07,3.4,lotSteel,0.62,1.7,LOT_S-2,6);
+  cy(g,0.05,0.05,2.6,lotSteel,0.78,2.1,LOT_S-3,6);
 }
 scene.add(yardLot);yardLot.visible=false;
 
@@ -3234,12 +3520,35 @@ const gateNarrow=new THREE.Group();
   }
   /* 窄门门架：横梁底面 3.10 m，救护车 GLB 实高 2.64 m，只剩 0.46 m。
      过的时候横梁真的从车顶上方压过来。招牌挂在横梁上面，接近时可读、过时不挡视线。
-     门牌写 2.8 m，护栏内缘实际 4.20-1.40=2.80 m——数字和几何逐字对上。 */
+     门牌写 2.8 m，护栏内缘实际 4.20-1.40=2.80 m——数字和几何逐字对上。
+     门架用脏金属贴图：旧漆、划痕、螺栓，雨夜里有一点湿反光 */
+  const gateMetalTex=mkTex(128,128,(x,w,h)=>{
+    x.fillStyle='#3d434a';x.fillRect(0,0,w,h);
+    for(let i=0;i<40;i++){
+      x.fillStyle=Math.random()<0.5?'rgba(96,74,48,0.35)':'rgba(20,24,28,0.4)';
+      x.fillRect(Math.random()*w,Math.random()*h,3+Math.random()*14,2+Math.random()*8);
+    }
+    x.strokeStyle='rgba(150,156,162,0.30)';x.lineWidth=1;
+    for(let i=0;i<14;i++){
+      x.beginPath();x.moveTo(Math.random()*w,Math.random()*h);
+      x.lineTo(Math.random()*w,Math.random()*h);x.stroke();
+    }
+    x.fillStyle='rgba(140,146,152,0.5)';
+    for(let yy=8;yy<h;yy+=24)for(let xx=8;xx<w;xx+=24)x.fillRect(xx,yy,3,3);
+    /* 雨水痕：从上往下的亮湿条 */
+    for(let i=0;i<8;i++){
+      const sx=Math.random()*w;
+      const g=x.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,'rgba(180,190,200,0.16)');g.addColorStop(1,'rgba(180,190,200,0)');
+      x.fillStyle=g;x.fillRect(sx,0,2,h);
+    }
+  });
+  const gateMetal=new THREE.MeshLambertMaterial({map:gateMetalTex,emissive:0x07090c});
   [GL-0.40,GR+0.40].forEach(x=>{
-    bx(gateNarrow,0.30,3.24,0.30,artSteel,x,1.62,13.5);
+    bx(gateNarrow,0.30,3.24,0.30,gateMetal,x,1.62,13.5);
     bx(gateNarrow,0.34,0.07,0.34,artAmber,x,3.26,13.5);
   });
-  bx(gateNarrow,4.9,0.30,0.36,artSteel,mid,3.25,13.5);
+  bx(gateNarrow,4.9,0.30,0.36,gateMetal,mid,3.25,13.5);
   const gateTex=artSignTex({w:256,h:96,bg:'#14140f',border:'#c8b06a',
     title:'窄 门 · 慢 行',sub:'限宽 2.8 m · 注意后视镜',size:36,subSize:18,
     fg:'#f2e6c6',subC:'#c8b06a'});
@@ -3344,6 +3653,59 @@ const gateNarrow=new THREE.Group();
       new THREE.MeshBasicMaterial({color:0x080a0c,transparent:true,opacity:0.5}));
     tr.rotation.x=-Math.PI/2;tr.position.set(x,0.012,0);gateNarrow.add(tr);
   });
+  /* 左侧泵房：红警示灯 + 落地管，把"左边是厂务、不是路"说清楚。
+     右缘 x=0.0，离 NARROW_L 还有 1.4 m，不吃净宽 */
+  {
+    const ph=new THREE.Group();ph.position.set(-0.75,0,4);gateNarrow.add(ph);
+    bx(ph,1.5,2.7,4.5,artDark,0,1.35,0);
+    bx(ph,1.6,0.12,4.6,artSteel,0,2.76,0);
+    bx(ph,0.06,1.7,0.8,artSteel,0.76,0.85,-1.2);          /* 门 */
+    const rl=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.16,0.16),
+      new THREE.MeshBasicMaterial({color:0xff3b2a}));
+    rl.position.set(0.78,2.3,1.6);ph.add(rl);
+    const rg=glowSprite(0xff3b2a,1.8,0.4);rg.position.set(0.82,2.3,1.6);ph.add(rg);
+    gateNarrow.userData.pumpLamp=rg;
+    cy(ph,0.09,0.09,2.4,artSteel,0.6,1.2,2.0,6);
+    addGateBox(-0.75,4,1.5,4.5,'窄门左泵房');
+  }
+  /* 右侧铁丝网 + 网后废铁堆：通道右边不是开阔地，是厂的废料场 */
+  {
+    const linkTex=mkTex(64,64,(x,w,h)=>{
+      x.clearRect(0,0,w,h);
+      x.strokeStyle='rgba(120,128,134,0.55)';x.lineWidth=1.5;
+      for(let i=-h;i<w+h;i+=8){
+        x.beginPath();x.moveTo(i,0);x.lineTo(i+h,h);x.stroke();
+        x.beginPath();x.moveTo(i+h,0);x.lineTo(i,h);x.stroke();
+      }
+    });
+    const linkMat=new THREE.MeshBasicMaterial({map:linkTex,transparent:true,
+      side:THREE.DoubleSide,depthWrite:false});
+    for(let z=-2;z>=-18;z-=4){
+      cy(gateNarrow,0.05,0.05,2.2,artSteel,5.05,1.1,z,6);
+      const fence=new THREE.Mesh(new THREE.PlaneGeometry(4,2.2),linkMat);
+      fence.rotation.y=-Math.PI/2;fence.position.set(5.05,1.1,z-2);gateNarrow.add(fence);
+    }
+    /* 网后：压扁的旧车壳、轮胎堆、斜靠的铁板 */
+    bx(gateNarrow,1.8,0.7,3.6,artDark,6.1,0.35,-6);
+    bx(gateNarrow,1.5,0.5,1.6,artSteel,6.0,0.95,-6.4);
+    for(let i=0;i<5;i++)
+      cy(gateNarrow,0.42,0.42,0.22,artDark,5.8+(i%2)*0.3,0.12+Math.floor(i/2)*0.24,-12,8);
+    const plate=bx(gateNarrow,0.08,2.0,1.4,artSteel,6.3,1.0,-15);
+    plate.rotation.z=0.35;
+  }
+  /* 通道尾段头顶的管桥 + 垂链：从门里望出去，视线被管子切碎，
+     不能一眼看穿到出口外的公路——出了这道管桥才"豁然开朗" */
+  {
+    cy(gateNarrow,0.10,0.10,4.6,artSteel,mid,3.35,-14,6).rotation.z=Math.PI/2;
+    cy(gateNarrow,0.07,0.07,4.6,artSteel,mid,3.55,-14.6,6).rotation.z=Math.PI/2;
+    for(let x=GL+0.3;x<GR;x+=0.55){
+      const len=0.35+((x*7)%3)*0.12;
+      bx(gateNarrow,0.03,len,0.03,artSteel,x,3.30-len/2,-14);
+    }
+    /* 两侧斜靠的废铁挡板：把余光里的出口也遮住 */
+    const sl=bx(gateNarrow,2.6,3.2,0.15,artDark,-1.1,1.6,-18);sl.rotation.y=0.5;
+    const sr=bx(gateNarrow,3.0,3.4,0.15,artDark,6.4,1.7,-18);sr.rotation.y=-0.5;
+  }
 
   /* ---- 碰撞体登记：全部照抄上面画出来的几何，不再另编一套数字 ----
      护栏的碰撞内缘 = 护栏网格的内缘；罐车的碰撞盒 = 罐体网格本身。
@@ -3356,6 +3718,248 @@ const gateNarrow=new THREE.Group();
   addGateBox(5.32,20.5,2.24,7.1,'停死的奶罐车');
 }
 scene.add(gateNarrow);gateNarrow.visible=false;
+
+/* ---------- C 段出厂连接路（s 105–220）：暖封闭厂区 → 冷开阔城郊的反转 ----------
+   左手废弃公交站（唯一一盏闪灯），右手低仓库 + 装卸台 + 死火旧卡车，
+   尽头一栋不该出现在这里的中层住宅——"厂"和"城"之间那段没人管的路。 */
+const milkStainTex=mkTex(64,256,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  for(let i=0;i<7;i++){
+    const sx=w*0.2+Math.random()*w*0.6;
+    const g=x.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'rgba(216,222,210,0.30)');
+    g.addColorStop(0.6,'rgba(206,212,200,0.12)');
+    g.addColorStop(1,'rgba(206,212,200,0)');
+    x.fillStyle=g;
+    x.beginPath();x.moveTo(sx,0);
+    x.bezierCurveTo(sx+6,h*0.3,sx-6,h*0.6,sx+3,h);
+    x.lineTo(sx+3+2+Math.random()*3,h);
+    x.bezierCurveTo(sx-2,h*0.6,sx+10,h*0.3,sx+4,0);
+    x.fill();
+  }
+});
+milkStainTex.wrapS=milkStainTex.wrapT=THREE.ClampToEdgeWrapping;
+const shadowTex=mkTex(64,128,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  x.fillStyle='rgba(2,3,5,0.85)';
+  x.beginPath();x.ellipse(w/2,h*0.16,w*0.16,h*0.10,0,0,6.283);x.fill();   /* 头 */
+  x.beginPath();x.moveTo(w*0.30,h*0.24);x.lineTo(w*0.70,h*0.24);
+  x.lineTo(w*0.62,h*0.95);x.lineTo(w*0.38,h*0.95);x.fill();              /* 拉长的身 */
+});
+shadowTex.wrapS=shadowTex.wrapT=THREE.ClampToEdgeWrapping;
+const crateMatL=new THREE.MeshLambertMaterial({color:0x6f766c,emissive:0x090b08});
+const LM=[];
+function landmark(s,a,b,build){
+  const g=new THREE.Group();build(g);scene.add(g);g.visible=false;
+  LM.push({g,s,a,b});return g;
+}
+/* 路肩上的小尺度和远景建筑轮换出现：电线杆、废轮胎、混凝土排水管。
+   它们比再加一排路灯更能说明“车正在穿过有人生活过的城郊”。 */
+function servicePole(g,lat,seed){
+  const p=new THREE.Group();p.position.set(lat,0,0);g.add(p);
+  cy(p,0.13,0.20,7.2,artSteel,0,3.6,0,6);
+  bx(p,2.2,0.12,0.12,artSteel,0,6.85,0);
+  bx(p,1.45,0.10,0.10,artSteel,0,6.35,0);
+  [-0.82,0,0.82].forEach((x,i)=>
+    bx(p,0.10,0.34,0.10,new THREE.MeshBasicMaterial({color:i===1?0xa9b49a:0x4f5657}),
+      x,7.06,0));
+  cy(p,0.34,0.38,1.15,artDark,0.38,5.55,0.10,8);
+  const l=glowSprite(0xffc27a,1.2,.10);
+  l.position.set(lat<0?0.7:-0.7,4.9,0.5);p.add(l);
+  bx(p,0.52,0.58,0.20,new THREE.MeshBasicMaterial({color:0x151a1a}),
+    lat<0?0.82:-0.82,2.4,0.08);
+}
+function roadsidePipes(g,lat){
+  for(let i=0;i<3;i++){
+    const p=cy(g,0.55,0.55,1.2,new THREE.MeshLambertMaterial({color:0x3c4241}),
+      lat+(i%2)*.68,.55+Math.floor(i/2)*.82,0,10);
+    p.rotation.x=Math.PI/2;
+    cy(g,0.43,0.43,1.22,new THREE.MeshBasicMaterial({color:0x070a0c}),
+      lat+(i%2)*.68,.55+Math.floor(i/2)*.82,0.01,10).rotation.x=Math.PI/2;
+  }
+}
+[
+  [136,-6.8,'pole'],[143,6.7,'tires'],[178,6.8,'pole'],[226,-6.7,'pipes'],
+  [239,-6.9,'pole'],[274,6.8,'pipes'],[318,-6.8,'pole'],[389,6.8,'tires'],
+  [438,-6.8,'pipes'],[486,6.8,'pole']
+].forEach(([s,lat,kind])=>{
+  landmark(s,Math.max(80,s-52),s+78,g=>{
+    if(kind==='pole')servicePole(g,lat,s|0);
+    else if(kind==='pipes')roadsidePipes(g,lat);
+    else{
+      for(let i=0;i<7;i++){
+        const t=cy(g,.34,.34,.20,new THREE.MeshLambertMaterial({color:0x151819}),
+          lat+(i%3)*.22,.12+Math.floor(i/3)*.22,(i%2)*.18-.09,8);
+        t.rotation.z=Math.PI/2;
+      }
+      bx(g,.26,.52,.18,artSteel,lat-.75,.26,.08);
+    }
+  });
+});
+/* 每个道具按自己的桩号锚定：弯道里整组共用一个锚点会被曲率横移，
+   卡车就停进车道了——一件一锚，lat 才永远是设计值 */
+const cBus=landmark(152,90,240,g=>{
+  /* 废弃公交站：棚 + 长椅 + 一块奶白广告灯箱 + 唯一一盏频闪灯管 */
+  const bs=new THREE.Group();bs.position.set(-7.2,0,0);g.add(bs);
+  [[-1.6],[1.6]].forEach(([x])=>bx(bs,0.09,2.4,0.09,artSteel,x,1.2,0));
+  bx(bs,3.6,0.10,1.3,artSteel,0,2.42,0);
+  bx(bs,3.2,0.06,0.4,artDark,0,0.45,0.2);                              /* 长椅 */
+  const ad=bx(bs,1.1,1.6,0.12,new THREE.MeshBasicMaterial({color:0xb9bdb0}),-1.0,1.3,-0.5);
+  ad.material.color.multiplyScalar(0.5);                              /* 奶白但没人换灯片 */
+  const adGlow=glowSprite(0xcfd3c6,2.0,0.14);adGlow.position.set(-1.0,1.3,-0.4);bs.add(adGlow);
+  const tube=bx(bs,1.4,0.06,0.10,new THREE.MeshBasicMaterial({color:0xffe0b0}),0.4,2.34,0);
+  const sp=glowSprite(0xffcd92,2.4,0.4);sp.position.set(0.4,2.28,0);bs.add(sp);
+  g.userData.busTube=tube;g.userData.busSp=sp;
+  /* 恐怖节拍②：站旁地面一道人形阴影，慢慢淡出来又淡没，没有人 */
+  const sh=new THREE.Mesh(new THREE.PlaneGeometry(0.7,2.2),
+    new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,opacity:0,depthWrite:false}));
+  sh.rotation.x=-Math.PI/2;sh.rotation.z=0.4;sh.position.set(2.6,0.02,1.2);bs.add(sh);
+  g.userData.busShadow=sh;
+});
+/* 右手低仓库：卷帘门 + 装卸台 + 奶箱垛 */
+landmark(184,120,270,g=>{
+  const wh=new THREE.Group();wh.position.set(14,0,0);g.add(wh);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(10,6,34),facadeIndMat);
+  body.position.y=3;wh.add(body);
+  for(let i=0;i<3;i++){
+    const door=new THREE.Mesh(new THREE.PlaneGeometry(3,3.4),
+      new THREE.MeshLambertMaterial({color:0x14181d,emissive:0x04060a}));
+    door.rotation.y=-Math.PI/2;door.position.set(-5.02,1.7,-10+i*10);wh.add(door);
+    bx(wh,0.3,0.12,3.2,artSteel,-5.1,3.5,-10+i*10);
+  }
+  bx(wh,2.2,0.9,12,artDark,-6.0,0.45,0);                              /* 装卸台 */
+  for(let i=0;i<5;i++)
+    bx(wh,0.62,0.3,0.42,crateMatL,-6.0+((i%2)*0.2-0.1),1.05+Math.floor(i/2)*0.3,-3+i*1.4);
+});
+/* 死火旧卡车：头朝路停在装卸台前，大灯灭，只有一颗琥珀示宽灯还活着 */
+landmark(174,110,250,g=>{
+  const tk=new THREE.Group();tk.position.set(7.0,0,0);tk.rotation.y=0.35;g.add(tk);
+  bx(tk,2.2,1.5,4.6,artDark,0,1.0,0);
+  bx(tk,2.1,1.1,1.6,artSteel,0,1.9,-2.6);
+  bx(tk,1.9,0.5,0.08,new THREE.MeshBasicMaterial({color:0x0c141a}),0,2.0,-3.42);
+  [[-0.8,-1.6],[0.8,-1.6],[-0.8,1.7],[0.8,1.7]].forEach(([x,z])=>{
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(0.44,0.44,0.24,8),artDark);
+    w.rotation.z=Math.PI/2;w.position.set(x,0.44,z);tk.add(w);});
+  const mk=glowSprite(0xffc27a,0.6,0.35);mk.position.set(1.1,1.6,-2.4);tk.add(mk);
+});
+/* 不该在这里的中层住宅：整面窗黑，只有一条楼梯间竖灯亮着 */
+landmark(212,130,310,g=>{
+  const tw=new THREE.Group();tw.position.set(-14,0,0);g.add(tw);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(9,26,9),facadeOffMat);
+  body.position.y=13;tw.add(body);
+  bx(tw,0.5,24,0.1,new THREE.MeshBasicMaterial({color:0x9fb8ac}),2.6,12,4.56)
+    .material.color.multiplyScalar(0.5);
+  bx(tw,2.4,1.6,2.4,artDark,1.5,26.8,1.5);
+  const bl=glowSprite(0xff4d3d,0.9,0.5);bl.position.set(-2,27.4,-2);tw.add(bl);
+  blinkLights.push({s:bl,ph:2.2});
+});
+/* 路面：补块 / 井盖 / 奶渍——水泥路换成碎沥青的证据，各自按桩号贴路 */
+const patchMat=new THREE.MeshBasicMaterial({color:0x101215,transparent:true,opacity:0.75});
+[[140,1.4,3.4,2.2],[172,-1.8,4.2,2.6],[205,2.6,3.0,2.0]].forEach(([s,lat,w,d])=>{
+  landmark(s,s-70,s+70,g=>{
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(w,d),patchMat);
+    p.rotation.x=-Math.PI/2;p.position.set(lat,0.016,0);g.add(p);
+  });
+});
+[148,181,214].forEach(s=>{
+  landmark(s,s-70,s+70,g=>{
+    const mh=new THREE.Mesh(new THREE.CircleGeometry(0.42,10),
+      new THREE.MeshBasicMaterial({color:0x1a1e22}));
+    mh.rotation.x=-Math.PI/2;mh.position.set(2.2,0.018,0);g.add(mh);
+    const gl=glowSprite(0x9fc0d8,0.7,0.10);gl.position.set(2.3,0.05,0);g.add(gl);
+  });
+});
+landmark(128,60,200,g=>{
+  const ms=new THREE.Mesh(new THREE.PlaneGeometry(1.2,16),
+    new THREE.MeshBasicMaterial({map:milkStainTex,transparent:true,opacity:0.5,depthWrite:false}));
+  ms.rotation.x=-Math.PI/2;ms.position.set(-3.6,0.02,0);g.add(ms);
+});
+
+/* ---------- D 段地标链：每 120–180 m 一个可认的节点，中间留黑段 ---------- */
+/* 262 m 便利店：整条黑路上唯一一块奶白 storefront，亮得集中 */
+landmark(262,180,350,g=>{
+  g.position.x=0;
+  const st=new THREE.Group();st.position.set(8.6,0,0);g.add(st);
+  bx(st,6,3.2,5,artDark,0,1.6,0);
+  const band=bx(st,5.6,0.9,0.1,new THREE.MeshBasicMaterial({color:0xd8dcc9}),0,2.2,-2.56);
+  band.material.color.multiplyScalar(0.72);
+  const sg=artSign(st,artSignTex({w:256,h:64,bg:'#101418',border:'#3a4a44',
+    title:'24h 便利店',size:34,fg:'#dfe6d2',subC:'#8fa896'}),4.4,1.0,0,3.0,-2.6,0);
+  const gl=glowSprite(0xd8dcc9,4.5,0.22);gl.position.set(0,2.2,-2.8);st.add(gl);
+  bx(st,1.2,1.8,0.08,new THREE.MeshBasicMaterial({color:0x0a0f14}),-1.6,0.9,-2.56); /* 黑着的橱窗 */
+  const pool=new THREE.Mesh(poolGeo,new THREE.MeshBasicMaterial({map:glowTex,color:0xcfd3c6,
+    transparent:true,opacity:0.10,blending:THREE.AdditiveBlending,depthWrite:false}));
+  pool.rotation.x=-Math.PI/2;pool.position.set(0,0.02,-4);pool.scale.set(0.7,0.7,1);st.add(pool);
+});
+/* 300 m 水塔：四腿 + 罐体，城郊的标志物 */
+landmark(300,210,400,g=>{
+  const t=new THREE.Group();t.position.set(16,0,0);g.add(t);
+  [[-1.6,-1.6],[1.6,-1.6],[-1.6,1.6],[1.6,1.6]].forEach(([x,z])=>
+    bx(t,0.3,11,0.3,artSteel,x,5.5,z));
+  cy(t,3.2,3.2,4.4,artDark,0,13,0,10);
+  cy(t,0.4,3.3,1.6,artDark,0,16,0,10);
+  const bl=glowSprite(0xff4d3d,0.9,0.5);bl.position.set(0,17.2,0);t.add(bl);
+  blinkLights.push({s:bl,ph:0.7});
+});
+/* 345 m 第二座公交站：灯是死的，和 C 段那盏闪的对照 */
+landmark(345,265,430,g=>{
+  const bs=new THREE.Group();bs.position.set(-7.2,0,0);g.add(bs);
+  [[-1.6],[1.6]].forEach(([x])=>bx(bs,0.09,2.4,0.09,artSteel,x,1.2,0));
+  bx(bs,3.6,0.10,1.3,artSteel,0,2.42,0);
+  bx(bs,1.4,0.06,0.10,artSteel,0.4,2.34,0);                              /* 死灯管 */
+  bx(bs,1.1,1.6,0.12,artDark,-1.0,1.3,-0.5);                            /* 空灯箱 */
+});
+/* 560 m 恐怖节拍③：远处路灯下一个站姿人影，接近到 545 m 前就没了 */
+landmark(560,470,545,g=>{
+  const f=new THREE.Mesh(new THREE.PlaneGeometry(0.52,1.75),
+    new THREE.MeshBasicMaterial({color:0x04060a,side:THREE.DoubleSide}));
+  f.position.set(-5.4,0.88,0);g.add(f);
+  /* 人影专属钠灯：人始终站在光斑里，黑形才读得出来（不依赖回收路灯的明灭） */
+  bx(g,0.16,5.2,0.16,artSteel,-6.1,2.6,0.9);
+  bx(g,0.12,0.12,1.5,artSteel,-5.75,5.14,0.45);
+  bx(g,0.6,0.14,0.3,new THREE.MeshBasicMaterial({color:0xffdca8}),-5.4,5.1,0);
+  const hl=glowSprite(0xffca86,3.2,0.5);hl.position.set(-5.4,5.05,0);g.add(hl);
+  const pool=new THREE.Mesh(poolGeo,new THREE.MeshBasicMaterial({map:glowTex,color:0xffb972,
+    transparent:true,opacity:0.34,blending:THREE.AdditiveBlending,depthWrite:false}));
+  pool.rotation.x=-Math.PI/2;pool.position.set(-5.4,0.02,0.6);pool.scale.set(1.1,1.6,1);g.add(pool);
+});
+/* 640 m 通信塔：格构桅杆 + 红闪 */
+landmark(640,540,760,g=>{
+  const t=new THREE.Group();t.position.set(-22,0,0);g.add(t);
+  cy(t,0.35,1.6,30,artSteel,0,15,0,4);
+  [8,16,24].forEach(y=>bx(t,2.6-y*0.06,0.12,0.12,artSteel,0,y,0));
+  const bl=glowSprite(0xff4d3d,1.4,0.6);bl.position.set(0,30.6,0);t.add(bl);
+  blinkLights.push({s:bl,ph:3.1});
+});
+/* 820 m 旧广告大牌：半幅灯管死了的奶白灯箱，字是病态绿 */
+landmark(820,720,930,g=>{
+  const b=new THREE.Group();b.position.set(12,0,0);g.add(b);
+  bx(b,0.28,7,0.28,artSteel,-3,3.5,0);bx(b,0.28,7,0.28,artSteel,3,3.5,0);
+  const tex=artSignTex({w:512,h:192,bg:'#151a16',border:'#2c3a30',
+    title:'鲜 奶 到 家',size:72,fg:'#bfe6cf',sub:'半夜也送',subSize:30,subC:'#7fa88e'});
+  const board=artSign(b,tex,8,3,0,7.6,0,0);
+  /* 左半幅死灯：压一块半透明黑板，灯箱亮一半灭一半 */
+  const dead=new THREE.Mesh(new THREE.PlaneGeometry(4,3),
+    new THREE.MeshBasicMaterial({color:0x05080a,transparent:true,opacity:0.72}));
+  dead.position.set(-2,7.6,0.02);b.add(dead);
+  const gl=glowSprite(0xbfe6cf,5,0.16);gl.position.set(2,7.6,0.4);b.add(gl);
+});
+/* 940 m 双烟囱：厂区的尾巴伸进城里 */
+landmark(940,850,1040,g=>{
+  const c=new THREE.Group();c.position.set(26,0,0);g.add(c);
+  cy(c,1.0,1.5,24,artDark,-2,12,0,8);
+  cy(c,0.8,1.2,28,artDark,2.5,14,-3,8);
+  const b1=glowSprite(0xff4d3d,1.1,0.5);b1.position.set(-2,24.5,0);c.add(b1);
+  const b2=glowSprite(0xff4d3d,1.1,0.5);b2.position.set(2.5,28.5,-3);c.add(b2);
+  blinkLights.push({s:b1,ph:1.9},{s:b2,ph:4.4});
+});
+/* 1180 m 冷却塔：双曲面剪影 + 一点白汽 */
+landmark(1180,1080,1290,g=>{
+  const t=new THREE.Group();t.position.set(-30,0,0);g.add(t);
+  cy(t,7,10,22,artDark,0,11,0,12);
+  cy(t,7.4,7,1.2,artDark,0,22.4,0,12);
+  const st=glowSprite(0xcfd8d2,9,0.08);st.position.set(0,25,0);t.add(st);
+});
 
 /* ---------- 300–650 m：城市高架（失真广告 / 破损隔音墙 / 烟囱） ---------- */
 const overpass=new THREE.Group();
@@ -3387,18 +3991,35 @@ const overpass=new THREE.Group();
   bx(overpass,0.16,3.0,0.16,artSteel,10.2,1.5,-8);
   /* 破损隔音墙：路两侧的板，故意留缺口与不同高度 */
   const wallTex=mkTex(128,128,(x,w,h)=>{
-    x.fillStyle='#2a3138';x.fillRect(0,0,w,h);
-    x.fillStyle='#20262c';for(let i=0;i<w;i+=22)x.fillRect(i,0,4,h);
+    x.fillStyle='#252c30';x.fillRect(0,0,w,h);
+    x.fillStyle='#1a2024';for(let i=0;i<w;i+=22)x.fillRect(i,0,5,h);
     x.fillStyle='rgba(10,12,14,.6)';x.fillRect(0,h*0.6,w,6);
+    /* 雨污从上往下拖成一条条暗带，局部贴过招租纸又被人撕掉 */
+    for(let i=0;i<18;i++){
+      const sx=Math.random()*w,g=x.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,'rgba(7,10,11,.38)');g.addColorStop(1,'rgba(7,10,11,0)');
+      x.fillStyle=g;x.fillRect(sx,0,1+Math.random()*3,h);
+    }
+    for(let i=0;i<4;i++){
+      x.fillStyle='rgba(185,180,158,.20)';
+      x.fillRect(12+i*29,46+(i%2)*18,12,16);
+      x.fillStyle='rgba(4,7,8,.62)';
+      x.beginPath();x.moveTo(13+i*29,45+(i%2)*18);x.lineTo(24+i*29,50+(i%2)*18);
+      x.lineTo(18+i*29,62+(i%2)*18);x.fill();
+    }
+    x.fillStyle='rgba(124,151,128,.28)';
+    x.font='700 18px sans-serif';x.fillText('慢',78,30);
   });
   wallTex.repeat.set(6,1);
-  const wallMat=new THREE.MeshBasicMaterial({map:wallTex,side:THREE.DoubleSide});
+  const wallMat=new THREE.MeshBasicMaterial({map:wallTex,color:0x545c5e,side:THREE.DoubleSide});
   [-1,1].forEach(side=>{
     for(let i=0;i<5;i++){
       if(i===2&&side>0)continue;   /* 缺口 */
       const hgt=2.6+((i%3)-1)*0.5;
       const p=new THREE.Mesh(new THREE.PlaneGeometry(9,hgt),wallMat);
       p.position.set(side*8.4,hgt/2,-i*10+16);p.rotation.y=Math.PI/2;overpass.add(p);
+      bx(overpass,.18,hgt+.45,.18,artSteel,side*8.3,(hgt+.45)/2,-i*10+11.45);
+      bx(overpass,.45,.08,.08,artSteel,side*8.0,.22,-i*10+16);
     }
   });
   /* 远处奶厂烟囱：高塔 + 顶端红色航空灯 + 缓缓的烟 */
@@ -3520,6 +4141,15 @@ addEventListener('keydown',e=>{
   /* C：低机位追车 ↔ 驾驶舱第一人称 */
   if(e.key.toLowerCase()==='c'){S.camMode=S.camMode==='chase'?'cockpit':'chase';
     toast(S.camMode==='chase'?'车外镜头。':'驾驶舱。');}
+  /* 追车镜头现场微调：不把可读道路锁死在一个固定构图里 */
+  if(e.key===']'||e.key==='['){
+    camRig.lift=Math.max(LIFT_MIN,Math.min(LIFT_MAX,camRig.lift+(e.key===']'?0.25:-0.25)));
+    toast('镜头高度 车顶+'+camRig.lift.toFixed(2)+' m');
+  }
+  if(e.key==='='||e.key==='-'){
+    camRig.back=Math.max(BACK_MIN,Math.min(BACK_MAX,camRig.back+(e.key==='='?0.35:-0.35)));
+    toast('镜头距离 车尾+'+(4.00+camRig.back).toFixed(2)+' m');
+  }
 });
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
 
@@ -3553,9 +4183,60 @@ if(isTouch){
 }
 
 /* ---------- 环视：拖动画面看副驾、后视镜，松手再平滑回正 ----------
-   松手不立即清零：行驶留 160ms 稳定期、停车留 1.2s（方便观察停车场），
+   松手不立即清零：行驶也先保留 1.4s 的观察时间、停车保留 2.4s，
    到点后把目标角缓慢收回 0，避免瞬间拉回造成眩晕。 */
 const look={yaw:0,pitch:0,ty:0,tp:0,drag:false,px:0,py:0,released:false,releaseT:0};
+/* 追车镜头现场微调，页面内持续生效（不刷新）：
+   lift = 相机高出车顶多少米（默认 1.0，落在要求的 0.9~1.1 区间；
+          下限 0.35 保证永远在车顶之上，不会扎进车顶/车体）；
+   back = 在"车尾后 4.0 m"基准上再让出的距离（默认 1.25，落在 1.0~1.5）。
+   ] / [ 调 lift，= / - 调 back，滚轮调 lift。 */
+const camRig={lift:1.00,back:1.25};
+const LIFT_MIN=0.35,LIFT_MAX=2.60,BACK_MIN=0.40,BACK_MAX=3.60;
+/* 环视时相机绕车旋转的半径（遮挡推近后的实际值），autoK=玩家是否接管镜头 */
+let camR=0,camRInit=false,autoK=1;
+const CAM_PIVOT_Y=1.15,CAM_PIVOT_Z=0.15;
+/* 追车相机遮挡检测：从车附近枢轴向目标机位发射线，命中柱/护栏柱/建筑/围栏/
+   门架/停放车等实体时返回可见比例(0~1)，相机据此平滑推近。只读场景几何，
+   不碰 COLLIDERS、不碰车辆物理。发光 sprite/加法混合/半透玻璃不算遮挡。 */
+const camRay=new THREE.Raycaster();
+camRay.camera=camera;   /* Sprite.raycast 需要相机；命中后只取 Mesh，发光片不算遮挡 */
+const camRayDir=new THREE.Vector3();
+const camRayOri=new THREE.Vector3();
+function chaseClearance(tx,ty,tz){
+  const px=0,py=CAM_PIVOT_Y,pz=CAM_PIVOT_Z;
+  camRayDir.set(tx-px,ty-py,tz-pz);
+  const dist=camRayDir.length();
+  if(dist<1e-3)return 1;
+  camRayDir.multiplyScalar(1/dist);
+  camRayOri.set(px,py,pz);
+  camRay.set(camRayOri,camRayDir);
+  camRay.near=0;camRay.far=dist;
+  const roots=[];
+  const near=(o,rz,rx)=>o&&o.visible!==false&&Math.abs(o.position.z)<rz&&Math.abs(o.position.x)<rx;
+  for(const b of blds)if(near(b,26,22))roots.push(b);
+  for(const p of gposts)if(near(p,16,12))roots.push(p);
+  for(const t of trees)if(near(t,20,18))roots.push(t);
+  for(const L of lamps)if(near(L.grp,16,12))roots.push(L.grp);
+  for(const g of signs)if(near(g,22,16))roots.push(g);
+  if(near(gateNarrow,30,16))roots.push(gateNarrow);
+  if(yardLot.visible)roots.push(yardLot);
+  if(yardProps.visible)roots.push(yardProps);
+  if(typeof LM!=='undefined')for(const L of LM)if(near(L.g,26,24))roots.push(L.g);
+  if(typeof overpass!=='undefined'&&near(overpass,30,20))roots.push(overpass);
+  if(typeof dairyGate!=='undefined'&&near(dairyGate,26,18))roots.push(dairyGate);
+  if(!roots.length)return 1;
+  for(const r of roots)r.updateMatrixWorld(true);
+  const hits=camRay.intersectObjects(roots,true);
+  for(const h of hits){
+    const o=h.object,m=o.material;
+    if(!o.isMesh||!m)continue;
+    if(m.blending===THREE.AdditiveBlending)continue;
+    if(m.transparent&&m.opacity<0.6)continue;
+    return Math.max(0,Math.min(1,(h.distance-0.30)/dist));
+  }
+  return 1;
+}
 canvas.addEventListener('pointerdown',e=>{
   /* 开场：点画面即推进/拉门/跳过，不做环视 */
   if(S.intro.active){introInteract();return;}
@@ -3565,14 +4246,20 @@ canvas.addEventListener('pointerdown',e=>{
 });
 canvas.addEventListener('pointermove',e=>{
   if(!look.drag)return;
-  look.ty=Math.max(-1.35,Math.min(1.35,look.ty-(e.clientX-look.px)*0.0042));
-  look.tp=Math.max(-0.62,Math.min(0.42,look.tp-(e.clientY-look.py)*0.0034));
+  /* 水平 ±180°（绕车旋转，见 update）；垂直向下约 66°/向上约 40°，全量作用到相机 */
+  look.ty=Math.max(-Math.PI,Math.min(Math.PI,look.ty-(e.clientX-look.px)*0.0042));
+  look.tp=Math.max(-1.05,Math.min(0.80,look.tp-(e.clientY-look.py)*0.0034));
   look.px=e.clientX;look.py=e.clientY;
 });
 ['pointerup','pointercancel'].forEach(t=>canvas.addEventListener(t,()=>{
   look.drag=false;look.released=true;look.releaseT=performance.now();
   canvas.classList.remove('grabbing');
 }));
+canvas.addEventListener('wheel',e=>{
+  if(S.camMode!=='chase'||!S.started||S.ended)return;
+  e.preventDefault();
+  camRig.lift=Math.max(LIFT_MIN,Math.min(LIFT_MAX,camRig.lift-e.deltaY*0.0018));
+},{passive:false});
 
 /* ---------- 电台 ---------- */
 const STATIONS=[
@@ -4031,18 +4718,22 @@ function update(dt){
   const shakeX=Math.sin(tnow*46)*buzz+Math.sin(tnow*7.3)*windJitter;
   const shakeY=Math.sin(tnow*9)*0.0028*(0.6+S.speed*0.16)
     +Math.sin(tnow*63)*buzz*0.7+Math.sin(tnow*11.7)*windJitter*0.6;
-  /* 环视：拖动时跟手；松手先稳定一段（停车 1.2s / 行驶 160ms）再平滑回正。
-     分两级：先把"目标角"慢慢收回 0，实际视角再缓动跟随目标，杜绝瞬间弹回。 */
-  if(!look.drag&&look.released){
-    const hold=(Math.abs(S.speed)<0.5)?1.2:0.16;
-    if((performance.now()-look.releaseT)*0.001>=hold){
-      const back=Math.min(1,dt*3.4);
-      look.ty+=(0-look.ty)*back;
-      look.tp+=(0-look.tp)*back;
-    }
+  /* 环视：拖动时跟手；松手先保留观察时间（行驶 1.4s / 停车 2.4s）再平滑回正。
+     分两级：先把"目标角"用指数阻尼慢慢收回 0，实际视角再缓动跟随目标，杜绝瞬间弹回。
+     回正只动 look（镜头），绝不改 S.psi / 转向 —— 车辆朝向不受影响。 */
+  const holdSec=(Math.abs(S.speed)<0.5)?2.4:1.4;
+  const holdLeft=look.released?Math.max(0,holdSec-(performance.now()-look.releaseT)*0.001):0;
+  if(!look.drag&&look.released&&holdLeft<=0){
+    const back=Math.min(1,dt*1.8);
+    look.ty+=(0-look.ty)*back;
+    look.tp+=(0-look.tp)*back;
   }
   look.yaw+=(look.ty-look.yaw)*Math.min(1,dt*(look.drag?14:4));
   look.pitch+=(look.tp-look.pitch)*Math.min(1,dt*(look.drag?14:4));
+  /* 玩家接管镜头时（拖动中 / 松手保留期 / 目标角未归零），自动回头与困意点头
+     一律让权：autoK→0，追逐回头镜头和困意镜头都不得抢夺控制权。 */
+  const lookHold=look.drag||holdLeft>0||Math.abs(look.ty)>0.05||Math.abs(look.tp)>0.05;
+  autoK+=((lookHold?0:1)-autoK)*Math.min(1,dt*5);
   /* 侧视遮挡淡出：向右看(yaw<0)淡出右侧门板/A柱/后视镜壳，向左看(yaw>0)淡出左侧。
      以各件原始透明度为基准淡到 0.10，且透明件不写深度——彻底露出窗外停车场，
      只留一丝轮廓避免车身像凭空消失而穿帮。 */
@@ -4059,8 +4750,8 @@ function update(dt){
   const dz=Math.max(0,(S.drowsy-55)/45);
   const calm=S.recover>0?0.35:1;
   let nod=0,sway=0;
-  if(dz>0){nod=Math.max(0,Math.sin(tnow*1.05))*0.05*dz*calm;
-    sway=Math.sin(tnow*0.55)*0.03*dz*calm;}
+  if(dz>0){nod=Math.max(0,Math.sin(tnow*1.05))*0.05*dz*calm*autoK;
+    sway=Math.sin(tnow*0.55)*0.03*dz*calm*autoK;}
   const grade=(elevOf(S.dist+7)-elevOf(S.dist-7))/14;
   /* 急刹点头：刹车瞬间镜头往前一顿，0.5 秒内回正 */
   const nodBrake=-Math.sin(Math.min(1,S.brakeSlam/0.5)*Math.PI)*0.022;
@@ -4068,35 +4759,44 @@ function update(dt){
   const sc=Math.max(0,S.scrapeT);
   const scAmp=Math.min(0.5,sc)*0.05;          /* 擦碰抖动：只 0.2 秒，幅度有上限 */
   if(S.camMode==='chase'){
-    /* 镜头距离按"车尾往后 2.55 m"算，不是按车中心算：救护车 4.77 m 长，
-       要是还按老数字 4.30 m，相机就贴在后保险杠里面，整车糊满画面、路面全被挡住。
-       高度取车顶再高一点点——车顶线正好压在画面中间，下半幅是笨重的车身，
-       上半幅是压过来的窄门和护栏，这才是"近"而不是"远"。 */
-    const turn=S.psi;
-    /* 回望只做小幅肩后偏转；追兵主要由独立后视监控交代，
-       不再把主镜头转出车道。 */
-    const pv=Math.max(0,Math.min(1,S.pan))*0.55;
-    const camBack=carHalfL+4.00,camH=carTop+0.45;
-    /* 侧后偏转：只做约24°的肩后注视。镜头不飞离车尾，
-       玩家必须始终能看见己方车身和前方道路。 */
-    const panYaw=-0.42*pv;
-    const panSide=0.82*pv;
-    const panBack=0.34*pv;
-    const panUp=0.28*pv;
+    /* 默认机位：车顶以上 camRig.lift（默认 1.0 m，落在 0.9~1.1）、车尾以后
+       4.0+camRig.back（默认再让 1.25 m，落在 1.0~1.5）。视线轻微下视约 6°
+       越过车顶：车身落在画面下方作速度/侧倾参照，不占下半幅；前方车道线、
+       路口、窄门横梁和前车车尾都在上半幅可读。绝不靠缩小车模型假装视野大。 */
+    const yaw=look.yaw;
+    const R0=carHalfL+4.00+camRig.back;
+    const camH=carTop+camRig.lift;
+    /* 水平环视绕车附近枢轴公转（不是原地平面甩镜头）：机位随 yaw 绕枢轴转，
+       朝向同步转，±180° 全程车身留在画面里，松手不硬切回 0°。 */
+    const desX=Math.sin(yaw)*R0,desZ=CAM_PIVOT_Z+Math.cos(yaw)*R0;
+    /* 遮挡平滑推近：被柱/护栏/建筑/门架/停放车挡住时向车辆靠近，解除后平滑回位。
+       相机恒在车顶之上（LIFT_MIN=0.35），不会扎进车顶/车体；半径下限防退化。 */
+    const clr=chaseClearance(desX,camH,desZ);
+    const allowR=Math.max(0.9,R0*Math.max(0.16,clr));
+    if(!camRInit){camR=allowR;camRInit=true;}
+    camR+=(allowR-camR)*Math.min(1,dt*(allowR<camR?12:3.5));  /* 推近快、回位慢 */
+    camR=Math.max(0.9,Math.min(camR,allowR));                 /* 硬上限：不穿障碍 */
+    /* 追逐回头镜头：玩家接管镜头时 autoK→0，让权不抢镜（追逐逻辑本身不动） */
+    const pv=Math.max(0,Math.min(1,S.pan))*0.55*autoK;
+    const panYaw=-0.42*pv,panSide=0.82*pv,panBack=0.34*pv,panUp=0.28*pv;
     camera.position.set(
-      -turn*2.2+Math.sin(tnow*41)*scAmp-panSide,
+      Math.sin(yaw)*camR+Math.sin(tnow*41)*scAmp-panSide,
       camH+S.bob*0.55+Math.sin(tnow*9)*0.004+Math.sin(tnow*37)*scAmp*0.8+panUp,
-      camBack-Math.abs(turn)*0.42+panBack);
+      CAM_PIVOT_Z+Math.cos(yaw)*camR+panBack);
     camera.rotation.order='YXZ';
-    camera.rotation.y=look.yaw-turn*0.42+S.camLagYaw*0.55+panYaw;
-    camera.rotation.x=-0.055+look.pitch*0.45+grade*0.6+nod*0.5+nodBrake*0.6+0.02*pv;
-    const chaseRattle=S.chaserStage>=3?Math.sin(tnow*24)*0.0022:0;
+    camera.rotation.y=yaw+S.camLagYaw*0.55+panYaw;
+    /* 俯仰全量作用到相机（不再 ×0.92）：向下可达约 66°、向上约 36° */
+    camera.rotation.x=-0.105+look.pitch+grade*0.6+nod*0.5+nodBrake*0.6+0.02*pv;
+    const chaseRattle=S.chaserStage>=3?Math.sin(tnow*24)*0.0022*autoK:0;
     camera.rotation.z=S.rollVis*0.010+Math.sin(tnow*33)*scAmp*0.5+chaseRattle;
   }else{
+    /* 驾驶舱：与追车共用同一套水平/垂直观察输入；机位固定在驾驶位头部，
+       不随环视平移，因此不会穿入仪表台/门板/座椅（头部净空见座舱几何）。 */
     camera.position.set(DRIVER_X+shakeX,1.26+S.bob+shakeY,0.22);
     camera.rotation.y=look.yaw+S.camLagYaw;
     camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85;
     camera.rotation.z=S.rollVis*0.0095+sway+Math.sin(tnow*39)*buzz*0.25;
+    camRInit=false;
   }
   chaseRearFrame.visible=false;
   drawRearCamHud(dt);
@@ -4143,13 +4843,13 @@ function update(dt){
   roadRibbons.forEach(updateRibbon);
   lamps.forEach(L=>{L.z+=scroll;if(L.z>36)L.z-=LAMP_SPAN;
     placeRoad(L.grp,S.dist-L.z,L.side*5.6,0);
-    /* 湿了以后灯头在路面的倒影和光斑都更亮、更长 */
-    L.streak.material.opacity=0.09+0.34*S.wet;
-    L.pool.material.opacity=0.13+0.09*S.wet;
+    /* 湿了以后灯头在路面的倒影和光斑都更亮、更长；死灯乘 base=0 全灭 */
+    L.streak.material.opacity=(0.09+0.34*S.wet)*L.base;
+    L.pool.material.opacity=(0.10+0.09*S.wet)*L.base;
     /* 困意上来：灯光晕开、发虚——从边缘光晕开始变，不是突然黑屏 */
     if(L.halo){
       const bl=Math.max(0,(S.drowsy-48)/52);   /* 48% 起开始晕 */
-      L.halo.material.opacity=0.55+0.30*bl;
+      L.halo.material.opacity=(0.42+0.30*bl)*L.base;
       const hs=3.4*(1+0.35*bl);L.halo.scale.set(hs,hs,1);
     }});
   /* 四盏点光源挪到最近的灯头：远处路灯靠光晕+地面光斑，省下六盏的逐片元开销 */
@@ -4164,7 +4864,7 @@ function update(dt){
     L.grp.updateMatrixWorld();
     L.head.getWorldPosition(lampHeadWorld);
     l.position.copy(lampHeadWorld);l.position.y-=0.18;
-    l.intensity=2.1*L.base*(1-0.85*darkZone);
+    l.intensity=2.6*L.base*(1-0.85*darkZone);
   });
   /* 头顶路灯经过时，暖光扫进座舱 */
   let spill=0;
@@ -4185,6 +4885,20 @@ function update(dt){
     placeRoad(t,S.dist-t.userData.z,t.userData.lat,t.userData.baseYaw);});
   blds.forEach(b=>{b.userData.z+=scroll;if(b.userData.z>14)b.userData.z-=BLD_SPAN;
     placeRoad(b,S.dist-b.userData.z,b.userData.lat,0);});
+  farBlds.forEach(b=>{b.userData.z+=scroll;if(b.userData.z>30)b.userData.z-=FAR_SPAN;
+    placeRoad(b,S.dist-b.userData.z,b.userData.lat,0);});
+  /* 恐怖节拍①：前方某栋楼整面窗突然全黑半秒，再恢复。不闪红、不出声，
+     只是"刚才还亮着的那几户，没了"。每 23 s 一次，只挑车前 60–120 m 的楼。 */
+  blackT-=dt;
+  if(blackT<=0){
+    blackT=23;blackHold=0.5;
+    blackPick=null;
+    for(const b of blds){const ahead=b.userData.z;
+      if(ahead<-60&&ahead>-120){blackPick=b;break;}}
+    if(blackPick)blackPick.userData.box.material=bldDarkMat;
+  }
+  if(blackHold>0){blackHold-=dt;
+    if(blackHold<=0&&blackPick){blackPick.userData.box.material=blackPick.userData.mat;blackPick=null;}}
   signs.forEach(g=>{g.userData.z+=scroll;if(g.userData.z>12)g.userData.z-=SIGN_SPAN;
     placeRoad(g,S.dist-g.userData.z,0,0);});
   /* 车流：同向的慢慢吞吞，对向的迎面扑来 */
@@ -4364,12 +5078,33 @@ function update(dt){
   /* A 段停车场：真正开车穿过去的两道停车带 + 柱网，出窄门以前一直在身边 */
   placeRoad(yardLot,LOT_S,0,0);
   yardLot.visible=S.dist<120;
+  if(yardLot.visible){
+    const tt=performance.now()*0.001;
+    yardLot.userData.tubes.forEach(tb=>{
+      if(tb.st!==2)return;
+      const f=(Math.sin(tt*6.1+tb.ph)+Math.sin(tt*11.7+tb.ph*2))>1.2?0.1:1;
+      tb.tube.material.color.setRGB(f,f*0.88,f*0.69);
+      tb.sp.material.opacity=0.34*f;
+    });
+  }
   /* 厂区背景（围墙以外）：厂房、货柜、远处的车，360° 环视时的天际线 */
   placeRoad(yardProps,22,0,0);
   yardProps.visible=S.dist<150;
   /* 厂区出口窄道：B 段通道，穿过去才是开阔公路 */
   placeRoad(gateNarrow,GATE_S,0,0);
   gateNarrow.visible=S.dist<170;
+  if(gateNarrow.visible&&gateNarrow.userData.pumpLamp)
+    gateNarrow.userData.pumpLamp.material.opacity=0.28+0.22*(Math.sin(tnow*2.6)>0?1:0.2);
+  /* C 段连接路：废弃公交站的灯管独自闪，站旁人形阴影淡入淡出 */
+  if(cBus.visible){
+    const f=(Math.sin(tnow*5.7)+Math.sin(tnow*13.1+0.8))>1.15?0.08:1;
+    cBus.userData.busTube.material.color.setRGB(f,f*0.88,f*0.69);
+    cBus.userData.busSp.material.opacity=0.4*f;
+    const shK=(S.dist>118&&S.dist<158)?0.30*(0.5+0.5*Math.sin(tnow*0.7)):0;
+    cBus.userData.busShadow.material.opacity=shK;
+  }
+  /* D 段地标链 */
+  LM.forEach(L=>{placeRoad(L.g,L.s,0,0);L.g.visible=S.dist>L.a&&S.dist<L.b;});
   /* 城市高架 300–650：天桥、失真广告牌、远处冒烟的烟囱 */
   placeRoad(overpass,470,0,0);
   overpass.visible=S.dist>300&&S.dist<660;
@@ -4534,9 +5269,9 @@ function update(dt){
       pa[i*6+3]=x+0.06;pa[i*6+4]=y-0.5;pa[i*6+5]=z+0.12+S.speed*0.016;
     }
     rainGeo.attributes.position.needsUpdate=true;
-    hemi.intensity=0.72;scene.fog.density=0.017;
+    hemi.intensity=0.42;scene.fog.density=0.0150;
   }else{
-    hemi.intensity=0.95;scene.fog.density=0.013;
+    hemi.intensity=0.36;scene.fog.density=0.0140;
   }
   /* 车灯体积光：雨里最明显，光锥里的雨丝一起提亮 */
   const beamOn=S.rain?1:Math.min(1,S.wet*0.5);
@@ -4641,10 +5376,18 @@ function update(dt){
   doll.rotation.z=-S.steer*0.12+Math.sin(performance.now()*0.0016)*0.04;
   doll.rotation.x=tired*0.36+Math.sin(performance.now()*0.0021)*0.03;
   doll.userData.eyes.forEach(e=>{e.scale.y=1-tired*0.7;});
-    /* 灯闪：只闪灯头颜色，点光源留给附近灯杆 */
+    /* 灯闪：老化灯不定周期地跌暗，灯头/光晕/点光一起灭，才是"这盏坏了" */
   const t=performance.now()*0.001;
-  lamps.forEach((L,i)=>{const f=(i===3&&Math.sin(t*7.3)>0.93)?0.15:1;
-    L.grp.children[2].material.color.setRGB(f,f*0.8,f*0.55);});
+  lamps.forEach((L,i)=>{
+    if(L.type==='dead'){L.base=0;return;}
+    let f=1;
+    if(L.type==='flicker'){
+      const ph=i===3?7.3:5.1;
+      f=(Math.sin(t*ph)+Math.sin(t*ph*2.7+1.3))>1.35?0.12:1;
+    }
+    L.base=f;
+    L.head.material.color.setRGB(f,f*0.78,f*0.5);
+  });
   /* 困意：专心开能撑到终点；开窗提神有衰减，停车休息才是硬解 */
   S.drowsy+=(S.speed>4?drowsyRate():0.35)*dt;
   S.windy=!!keys[' '];
@@ -4770,11 +5513,17 @@ function update(dt){
   if(gear!==S.gear){S.gear=gear;S.gearDip=0.22;}
   const rpm=(S.speed-gear*6.6)/6.6;
   S.rpm+=(0.18+Math.max(0,Math.min(1,rpm))*0.82-S.rpm)*Math.min(1,dt*10);
-  /* 停车等人也是着着车的，怠速得有点底噪 */
-  if(actx&&engGain)engGain.gain.value=(0.009+Math.min(0.041,S.speed*0.0021))*(S.gearDip>0?0.5:1);
-  if(actx&&engOsc)engOsc.frequency.value=38+S.rpm*58;
-  if(actx&&engOsc2)engOsc2.frequency.value=(38+S.rpm*58)*0.5;
-  if(actx&&engLp)engLp.frequency.value=170+S.rpm*260;
+  /* 切挡/碰撞帧可能把物理速度瞬间写成负值。音频层再兜一次底，
+     否则 Biquad 频率会收到负数并被浏览器逐帧警告、偶发爆音。 */
+  S.rpm=isFinite(S.rpm)?Math.max(0.05,Math.min(1.25,S.rpm)):0.2;
+  /* 停车等人也是着着车的，怠速得有点底噪。
+     全部频率写点前过 safeF：NaN/负值/超低频一律钉在下限，
+     不给 Biquad 任何逐帧警告和爆音的机会。 */
+  const safeF=(v,lo)=>{v=+v;return (isFinite(v)&&v>lo)?v:lo;};
+  if(actx&&engGain)engGain.gain.value=Math.max(0,(0.009+Math.min(0.041,S.speed*0.0021))*(S.gearDip>0?0.5:1));
+  if(actx&&engOsc)engOsc.frequency.value=safeF(38+S.rpm*58,24);
+  if(actx&&engOsc2)engOsc2.frequency.value=safeF((38+S.rpm*58)*0.5,12);
+  if(actx&&engLp)engLp.frequency.value=safeF(170+S.rpm*260,60);
   if(rainGain)rainGain.gain.value+=((S.rain?0.055:0)-rainGain.gain.value)*Math.min(1,dt*1.6);
   if(tireGain)tireGain.gain.value+=(((S.speed/27)*0.030+(S.rain?0.006:0))-tireGain.gain.value)*Math.min(1,dt*2.2);
   /* 风声包络：开窗时随车速抬起来，关窗归零；五种速度感里的“耳边的风” */
@@ -4848,25 +5597,36 @@ const blurMat=new THREE.ShaderMaterial({
   depthTest:false,depthWrite:false
 });
 const compMat=new THREE.ShaderMaterial({
-  uniforms:{tScene:{value:null},tBloom:{value:null},uMix:{value:0.68},uTime:{value:0}},
+  uniforms:{tScene:{value:null},tBloom:{value:null},uMix:{value:0.60},uTime:{value:0},
+    uLevels:{value:24},uResolution:{value:new THREE.Vector2(1280,720)}},
   vertexShader:VS_QUAD,
   fragmentShader:[
-    'uniform sampler2D tScene;uniform sampler2D tBloom;uniform float uMix;uniform float uTime;varying vec2 vUv;',
+    'uniform sampler2D tScene;uniform sampler2D tBloom;',
+    'uniform float uMix,uTime,uLevels;uniform vec2 uResolution;varying vec2 vUv;',
+    'float b2(vec2 a){a=floor(a);return fract(a.x*0.5+a.y*a.y*0.75);}',
+    'float b4(vec2 a){return b2(0.5*a)*0.25+b2(a);}',
     'void main(){',
     '  vec3 c=texture2D(tScene,vUv).rgb;',
     '  vec3 b=texture2D(tBloom,vUv).rgb;',
     '  c+=b*uMix;',
     '  float lum=dot(c,vec3(0.299,0.587,0.114));',
-    '  float lo=smoothstep(0.03,0.46,lum);',
-    '  vec3 sick=vec3(0.78,1.02,0.91);',
-    '  vec3 warm=vec3(1.07,0.95,0.79);',
+    /* 4×4 Bayer 抖动 + 24 级亮度量化：和工厂/停车场同一套低色阶，
+       远处的渐变天和雾会转成 PSX 的色带，而不是糊成一片。 */
+    '  float dn=(b4(gl_FragCoord.xy)-0.5)/uLevels;',
+    '  float lq=clamp(floor(lum*uLevels+dn+0.5)/uLevels,0.0,1.0);',
+    '  c=c*(lq/max(lum,0.0001));c=clamp(c,0.0,1.0);',
+    '  float lo=smoothstep(0.05,0.40,lum);',
+    '  vec3 sick=vec3(0.80,1.00,0.90);',
+    '  vec3 warm=vec3(1.10,0.94,0.74);',
     '  c*=mix(sick,warm,lo);',
     '  c=mix(vec3(lum),c,1.08);',
     '  vec2 q=vUv-0.5;',
-    '  float vig=1.0-0.68*dot(q,q);',
+    '  float vig=1.0-0.80*dot(q,q);',
     '  c*=vig;',
+    /* 黑位压缩：暗部往冷绿里沉一点，画面才有"磁带夜景"的底，不是灰蒙蒙 */
+    '  c=max(c-vec3(0.010,0.012,0.014),vec3(0.0));',
     '  float grain=fract(sin(dot(gl_FragCoord.xy+uTime*vec2(17.1,31.7),vec2(12.9898,78.233)))*43758.5453)-0.5;',
-    '  c+=grain*0.018;',
+    '  c+=grain*0.020;',
     '  c*=0.994+0.006*sin(gl_FragCoord.y*3.14159);',
     '  gl_FragColor=vec4(max(c,vec3(0.0)),1.0);',
     '}'].join('\n'),
@@ -5192,6 +5952,8 @@ window.__game={
     phase:S.phase,brakeSlam:+S.brakeSlam.toFixed(2),recover:+S.recover.toFixed(2),
     rollVis:+S.rollVis.toFixed(3),camLagYaw:+S.camLagYaw.toFixed(3),windRush:+S.windRush.toFixed(3),
     lookYaw:+look.yaw.toFixed(2),lookPitch:+look.pitch.toFixed(2),
+    camLift:+camRig.lift.toFixed(2),camBack:+camRig.back.toFixed(2),camR:+camR.toFixed(2),
+    roofClear:+(camera.position.y-carTop).toFixed(2),autoK:+autoK.toFixed(2),
     introActive:S.intro.active,introPhase:S.intro.phase,introT:+S.intro.t.toFixed(2),
     camMode:S.camMode,scrapeN:S.scrapeN,
     /* 碰撞验收用：接触计时/单次结算窗口/受损计数 + 当前登记了多少个碰撞盒 */

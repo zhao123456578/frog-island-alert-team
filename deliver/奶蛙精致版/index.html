@@ -298,6 +298,9 @@ let renderer;
 try{renderer=new THREE.WebGLRenderer({canvas:document.getElementById("view"),antialias:false,alpha:false});}
 catch(e){document.getElementById("fatal").style.display="flex";return;}
 renderer.setPixelRatio(1);renderer.setSize(window.innerWidth,window.innerHeight,false);renderer.setClearColor(0x000000,1);
+/* 与 yard/outdoor 统一：线性色调映射、曝光 1.0（数学上等同原来的无色调映射，
+   显式声明保证三场景走同一条管线） */
+renderer.toneMapping=THREE.LinearToneMapping;renderer.toneMappingExposure=1.0;
 
 /* ===== MF 交互框架（背包 / 对话 / 结局 / 跳舞） ===== */
 MF.initUI();
@@ -1840,7 +1843,7 @@ function leaveFactory(){
   const f=document.getElementById("leaveFade");
   f.style.opacity="1";
   setTimeout(()=>f.classList.add("capOn"),420);
-  setTimeout(()=>{location.href="yard.html";},1200);
+  setTimeout(()=>{location.href="yard.html?from=factory";},1200);
 }
 window.addEventListener("pageshow",e=>{if(!e.persisted)return;
   leavingFactory=false;MF.setLock(false);

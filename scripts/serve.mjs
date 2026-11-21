@@ -22,22 +22,29 @@ const TYPES = {
 
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
-  // 开发用的截图落盘：页面把 canvas.toDataURL() POST 过来，只准写 root/_shots 下的 .png。
-  // 无头环境下 in-app browser 没有可见 surface，take_screenshot 用不了，靠这条路取证。
+  // 开发用的落盘端点：截图 POST dataURL（PNG），录屏 POST 原始 webm 字节。
+  // 只准写 root/_shots 下的 .png/.webm，无头环境下靠这条路取证。
   if (req.method === 'POST' && url.pathname === '/_save') {
     const name = String(url.searchParams.get('name') || '');
-    if (!/^[\w.-]+\.png$/.test(name)) { res.writeHead(400).end('bad name'); return; }
+    const isPng = /^[\w.-]+\.png$/.test(name);
+    const isWebm = /^[\w.-]+\.webm$/.test(name);
+    if (!isPng && !isWebm) { res.writeHead(400).end('bad name'); return; }
     const parts = [];
     let size = 0;
     for await (const c of req) {
       size += c.length;
-      if (size > 24e6) { res.writeHead(413).end('too big'); return; }
+      if (size > 48e6) { res.writeHead(413).end('too big'); return; }
       parts.push(c);
     }
-    const text = Buffer.concat(parts).toString('utf8');
+    const body = Buffer.concat(parts);
     const dir = join(root, '_shots');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, name), Buffer.from(text.slice(text.indexOf(',') + 1), 'base64'));
+    if (isPng) {
+      const text = body.toString('utf8');
+      writeFileSync(join(dir, name), Buffer.from(text.slice(text.indexOf(',') + 1), 'base64'));
+    } else {
+      writeFileSync(join(dir, name), body);
+    }
     res.writeHead(200, { 'content-type': 'text/plain' }).end(`saved _shots/${name}`);
     return;
   }
