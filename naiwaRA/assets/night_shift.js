@@ -9,6 +9,7 @@ window.createNightShift=function(ctx){
     last:new THREE.Vector3(),lost:0,search:0,stun:0,wait:1,repath:0,seen:false,cooldown:0,travel:0};
   const events=[];let elapsed=0,work=false,workT=0,cursor=0,breathT=0,noiseT=0,officeHum=null,footAt=0;
   let hiddenCabinet=null,capturePose=null,coworkerModel=null,coworkerMode='WAIT',coworkerPath=[],coworkerAt=0;
+  let npcVisYaw=0; /* 孙笑川视觉朝向平滑：有限角速度转身，不再整模型瞬转 */
   let arcade=null,arcadeTexture=null,cinematic=null,ventSeen=false;const fans=[];
   const population=createShiftPopulation({scene,camera,state:S,audio,psMat,colliders,objects});
   const ventTarget=new THREE.Vector3(3.39,4.03,-101.02);
@@ -43,6 +44,19 @@ window.createNightShift=function(ctx){
   const insideOffice=p=>p.x>-20.8&&p.x<-13.15&&p.z>-7.8&&p.z<1.8;
   const inSafe=p=>(p.x>13.4&&p.x<20.7&&p.z>-17.7&&p.z<-6.3)||(p.x<-13.4&&p.x>-20.7&&p.z>-67.7&&p.z<-56.3);
   const uiBusy=()=>MF.dialogOpen()||MF.confirmOpen()||MF.dancing()||document.getElementById('mf-ending').classList.contains('on');
+  const pageVoices={frog:['sfx_nw_gaga','sfx_nw_andi','sfx_nw_ganba','sfx_nw_yume','sfx_nw_hana'],
+    sun:['sfx_sc_roar','sfx_sc_attitude','sfx_sc_window','sfx_sc_property','sfx_sc_again','sfx_sc_revive','sfx_sc_whatever','sfx_sc_sumimasen']};
+  const voiceAt={frog:0,sun:0};let pageVoice=null;
+  function stopPageVoice(){if(!pageVoice)return;pageVoice.pause();audio.playing.delete(pageVoice);pageVoice=null;}
+  function playPageVoice(who,text){
+    stopPageVoice();
+    if(!S.started||S.pause||document.hidden||audio.muted||/沉思|玩家|广播/.test(who)||/^\s*[（(]/u.test(text))return;
+    const family=/^孙笑川(?:$|[ ·：:])/.test(who)?'sun':/^(?:NO\.?\s*0?7\b|工位奶蛙(?:$|[ ·])|奶泡(?:$|[ ·])|奶蛙(?:$|[ ·]))/i.test(who)?'frog':null;
+    if(!family)return;
+    const pool=pageVoices[family];pageVoice=audio.play(pool[voiceAt[family]++%pool.length],family==='frog'?0.16:0.32);
+  }
+  window.addEventListener('mf-dialog-page',e=>playPageVoice(e.detail.who,e.detail.text));
+  window.addEventListener('mf-dialog-close',stopPageVoice);
 
   box('遮挡·废弃压缩机',-9.24,-21.63,2.4,1.6,1.9,0x566460);
   box('遮挡·压缩机检修屏',-10.7,-22.1,0.28,3,2.35,0x65736c);
@@ -143,7 +157,8 @@ window.createNightShift=function(ctx){
     #night-work.on{display:block}#night-track{height:34px;background:#35433c;position:relative;margin:20px 0}#night-target{position:absolute;left:40%;width:24%;height:100%;background:#a1b776}#night-cursor{position:absolute;top:-4px;height:42px;width:4px;background:#fff}
     #night-work button,#night-shoot{background:#25352e;border:1px solid #849579;color:#e0e3d3;padding:10px;margin:4px;cursor:pointer;font:12px monospace}#night-work p{font-size:12px;color:#a6b09e;line-height:1.7}
     #night-hide{display:none;position:fixed;inset:0;pointer-events:none;z-index:28;background:radial-gradient(ellipse at center,transparent 6%,#03060466 45%,#030604e6 100%)}#night-hide.on{display:block}
-    #night-cinema{display:none;position:fixed;inset:0;z-index:44;pointer-events:none;background:linear-gradient(#000 0%,#000 7%,transparent 7%,transparent 93%,#000 93%)}#night-cinema.on{display:block}
+    #night-cinema{display:none;position:fixed;inset:0;z-index:44;pointer-events:none;background:linear-gradient(#000 0%,#000 7%,transparent 7%,transparent 93%,#000 93%)}#night-cinema.on{display:block;pointer-events:auto}
+    #night-cinema .next{position:absolute;bottom:8%;left:0;width:100%;text-align:center;color:#adb5a5;font:11px monospace}
     #night-cinema button{pointer-events:auto;position:absolute;bottom:3%;right:24px;background:transparent;border:0;color:#bcc4b4;font:12px monospace;cursor:pointer}
     #night-cinema span{position:absolute;top:2%;left:24px;color:#adb5a5;font:12px monospace;letter-spacing:3px}
     #night-cinema p{position:absolute;bottom:11%;left:50%;transform:translateX(-50%);margin:0;width:min(720px,88vw);text-align:center;white-space:pre-line;color:#eee9d3;font:17px/1.8 monospace;text-shadow:0 2px 5px #000,0 0 10px #000}
@@ -156,7 +171,7 @@ window.createNightShift=function(ctx){
   `;document.head.appendChild(style);
   const ui=document.createElement('div');ui.innerHTML=`<div id="night-status" hidden>夜班 / NO.13<strong></strong><span></span></div>
     <div id="night-work"><b>灌装工位 · 点击停在浅绿色区域</b><div id="night-track"><i id="night-target"></i><i id="night-cursor"></i></div><div id="night-result">合格 0 / 3</div><p>工位灯在闪。办公室那边却传来和机器不同的声音。</p><button id="night-stop">封盖 / 鼠标点击</button><button id="night-eat">偷吃一瓶</button><button id="night-stand">离开工位</button></div>
-    <div id="night-cinema"><span></span><p aria-live="polite"></p><button id="night-skip">跳过 / ESC</button></div><div id="night-hide"><span>躲在员工柜中 · E 离开 · 脚步声仍在外面</span></div><button id="night-shoot">G · 镇静枪</button><button id="night-bag">背包 / B</button>`;
+    <div id="night-cinema"><span></span><p aria-live="polite"></p><div class="next"></div><button id="night-skip">跳过 / ESC</button></div><div id="night-hide"><span>躲在员工柜中 · E 离开 · 脚步声仍在外面</span></div><button id="night-shoot">G · 镇静枪</button><button id="night-bag">背包 / B</button>`;
   document.body.appendChild(ui);
   const statusEl=document.getElementById('night-status'),workEl=document.getElementById('night-work');
   const resultEl=document.getElementById('night-result'),cursorEl=document.getElementById('night-cursor');
@@ -168,13 +183,42 @@ window.createNightShift=function(ctx){
   }
   function introDialog(){MF.dialog('NO.07 · 同事',['喂，第 13 号，你把传送带当床了？','从右边的窄门下来，沿黄线到操作椅。点击停线，浅绿色那段才算合格。','三瓶合格品就下班。我去调试室玩游戏了，你可别被孙笑川抓到。'],sendCoworkerToSeat);}
   const ease=v=>{v=Math.max(0,Math.min(1,v));return v*v*(3-2*v);};
-  const caption=cinemaEl.querySelector('p');
+  const caption=cinemaEl.querySelector('p'),captionNext=cinemaEl.querySelector('.next');
+  const captionWriter=MF.createTypewriter(caption);
+  const captionPages={
+    directions:[{at:0.4,end:2.5,who:'你',text:'厕所在哪？'},{at:2.5,end:7.4,who:'工位奶蛙',text:'就在你对面。'}],
+    toiletExit:[{at:0.4,end:2.6,who:'你',text:'刚才那声音……不是机器。'},{at:2.6,end:5.6,who:'你',text:'办公室就在那边。厂2也传来同样的声音。'}],
+    factoryArrival:[{at:1.05,end:4.3,who:'孙笑川',text:'そこで何をしている？持ち場に戻れ！'}]
+  };
+  function showCaptionPage(c,index){
+    c.page=index;c.pageClicked=false;c.waiting=false;
+    const page=c.pages[index];cinemaEl.dataset.state='typing';captionNext.textContent='E / 点击 补全字幕';
+    captionWriter.start(page.who+'：'+page.text,()=>{
+      cinemaEl.dataset.state='waiting';captionNext.textContent='E / 点击 继续 ▼';
+    });
+    playPageVoice(page.who,page.text);
+  }
+  function advanceCinematic(){
+    const c=cinematic;if(!c||S.pause||document.hidden)return;
+    if(captionWriter.reveal())return;
+    if(c.page<0||c.pageClicked)return;
+    c.pageClicked=true;
+    cinemaEl.dataset.state='playing';captionNext.textContent='镜头播放中…';
+    if(c.waiting)nextCaptionPage(c);
+  }
+  function nextCaptionPage(c){
+    if(captionWriter.isTyping()||!c.pageClicked)return;
+    if(c.page+1<c.pages.length)showCaptionPage(c,c.page+1);
+    else finishCinematic();
+  }
   function releaseCinematicActors(){
     ctx.built[1].props.ventGrille.rotation.x=0;ventFrogRoot.visible=false;
     if(directionWorker&&directionWorker.actor)directionWorker.actor.update(0,'sit',1);
-    caption.textContent='';
+    captionWriter.clear();captionNext.textContent='';cinemaEl.dataset.state='closed';stopPageVoice();
   }
   function startCinematic(kind){
+    if(kind==='directions'&&!(st.shiftDone&&st.good>=3))return;
+    MF.closeDialog();releaseCinematicActors();
     ctx.standUp();ctx.resetStance();ctx.clearKeys();
     const from=ctx.getView();
     if(kind==='vent'){
@@ -188,7 +232,7 @@ window.createNightShift=function(ctx){
         toiletExit:[[0,0],[1.6,0],[3.4,1],[5.6,1]],
         factoryArrival:[[0,0],[0.65,0],[1.25,1],[2.55,1],[3.2,2],[4.3,2]]};
       const cues=timings[kind].map(([at,i])=>({at,view:shots[i]}));
-      cinematic={kind,t:0,duration:cues[cues.length-1].at,shots,cues,sounded:false};
+      cinematic={kind,t:0,duration:cues[cues.length-1].at,shots,cues};
       if(kind==='opening')cinematic.after=introDialog;
       if(kind==='directions')st.askedToilet=true;
       if(kind==='toiletExit'){st.toiletExitSeen=true;audio.play('amb_distant_whispers',0.25);}
@@ -201,14 +245,23 @@ window.createNightShift=function(ctx){
       ctx.setView(shots[0]);
     }
     const titles={opening:'00:13 / 夜班开始',vent:'通风管里有声音',directions:'工位旁 / 问路',toiletExit:'走出厕所',factoryArrival:'02 / 身后的脚步'};
-    caption.textContent='';MF.setLock(true);document.body.classList.add('night-cinematic');cinemaEl.classList.add('on');cinemaEl.querySelector('span').textContent=titles[kind];
+    Object.assign(cinematic,{pages:captionPages[kind]||[],page:-1,pageClicked:false,waiting:false});
+    cinemaEl.dataset.state='playing';
+    MF.setLock(true);document.body.classList.add('night-cinematic');cinemaEl.classList.add('on');cinemaEl.querySelector('span').textContent=titles[kind];
   }
   function finishCinematic(){if(!cinematic)return;const c=cinematic;
     ctx.setView(c.kind==='vent'?c.to:c.shots[c.shots.length-1]);releaseCinematicActors();
     cinematic=null;MF.setLock(false);ctx.clearKeys();cinemaEl.classList.remove('on');document.body.classList.remove('night-cinematic');refreshHint();if(c.after)c.after();
   }
-  function updateCinematic(dt){if(!cinematic)return;const c=cinematic;c.t+=dt;
-    if(c.t>=c.duration){finishCinematic();return;}
+  function updateCinematic(dt){if(!cinematic)return;const c=cinematic;
+    const boundary=c.pages.length?(c.page<0?c.pages[0].at:c.pages[c.page].end):c.duration;
+    c.t=Math.min(c.t+dt,boundary);
+    if(c.page<0&&c.pages.length&&c.t>=boundary)showCaptionPage(c,0);
+    else if(c.t>=boundary){
+      if(!c.pages.length){finishCinematic();return;}
+      c.waiting=true;
+      if(c.pageClicked){nextCaptionPage(c);if(!cinematic)return;}
+    }
     if(c.kind==='vent'){
       ctx.setView(blendView(c.from,c.to,ease(c.t/1.25)));
       const push=ease((c.t-1.4)/1.2),pull=ease((c.t-4.35)/0.85),fall=ease((c.t-5.3)/0.32);
@@ -225,23 +278,30 @@ window.createNightShift=function(ctx){
       let i=0;while(i<c.cues.length-2&&c.t>c.cues[i+1].at)i++;
       const a=c.cues[i],b=c.cues[i+1];ctx.setView(blendView(a.view,b.view,ease((c.t-a.at)/(b.at-a.at))));
       if(c.kind==='directions'){
-        caption.textContent=c.t<0.4?'':c.t<2.5?'你：厕所在哪？':c.t<6.6?'工位奶蛙：就在你对面。':'';
         if(directionWorker&&directionWorker.actor){
           directionWorker.actor.update(0,'sit',1);
           const amount=ease((c.t-0.8)/1.5)*(1-ease((c.t-5.9)/1.4));
           directionWorker.actor.lookHead(1.4*amount,0.06*amount);
         }
-      }else if(c.kind==='toiletExit')caption.textContent=c.t<0.4?'':c.t<2.6?'你：刚才那声音……不是机器。':'你：办公室就在那边。厂2也传来同样的声音。';
-      else if(c.kind==='factoryArrival'){
+      }else if(c.kind==='factoryArrival'){
         actor.rotation.y=Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z);actor.rotation.z=0;
         setFrame(Math.floor(c.t*6)%atlas.count);
-        caption.textContent=c.t>1.05&&c.t<3.65?'孙笑川：そこで何をしている？持ち場に戻れ！':'';
-        if(c.t>0.9&&!c.sounded){c.sounded=true;audio.play('sfx_sc_attitude',0.6);}
       }
     }
   }
-  document.getElementById('night-skip').onclick=finishCinematic;
-  window.addEventListener('keydown',e=>{if(cinematic&&e.code==='Escape'){e.preventDefault();e.stopImmediatePropagation();finishCinematic();}},true);
+  window.addEventListener('click',e=>{
+    if(!cinematic||!e.target.closest||!e.target.closest('#night-cinema, #view, #btnE'))return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(S.pause||document.hidden)return;
+    if(e.target.closest('#night-skip'))finishCinematic();else advanceCinematic();
+  },true);
+  window.addEventListener('keydown',e=>{
+    if(!cinematic||!['Escape','KeyE'].includes(e.code)||e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(e.repeat||S.pause||document.hidden)return;
+    if(e.code==='Escape')finishCinematic();else advanceCinematic();
+  },true);
+  window.addEventListener('pagehide',resetPose);
   function closeWork(){work=false;workEl.classList.remove('on');ctx.clearKeys();ctx.standUp();}
   function openWork(){if(uiBusy()||st.capturing)return;finishArcadeChase();if(arcade)arcade.close();work=true;workT=0;workEl.classList.add('on');ctx.clearKeys();ctx.setPose(2.45,1.35,-16.96,Math.PI/2);resultEl.textContent='合格 '+st.good+' / 3 · 偷吃 '+st.eaten+' 瓶';}
   function completeShift(){if(st.shiftDone||st.good<3)return;st.shiftDone=true;MF.state.inv.floorKey=true;MF.state.inv.backpack=true;MF.refreshPanel();
@@ -254,7 +314,7 @@ window.createNightShift=function(ctx){
     resultEl.textContent='偷吃 '+st.eaten+' 瓶 · 合格 '+st.good+' / 3';
     if(st.eaten===3){closeWork();ctx.startLaugh();setAnger(40);npc.last.set(3.2,0,-17);npc.state='INVESTIGATE';npc.path=[];npc.repath=0;
       [0.25,0.7,1.15].forEach((d,i)=>later(d,()=>{const a=audio.play('sfx_frog_laugh_raw',0.2-i*0.035);if(a){a.playbackRate=0.88+i*0.12;later(3.5-i*0.5,()=>{a.pause();audio.playing.delete(a);});}}));
-      later(2,()=>{audio.play('sfx_sc_roar',0.65);MF.dialog('孙笑川',['そんなに大声を出して、何をしているんだ！','遊んでいないで、持ち場に戻れ！'],()=>MF.dialog('NO.07',['（办公室门口响起脚步声。NO.07 把笑憋了回去。）','先把三瓶合格品做完。想查那些声音，下班后去厕所听。']));});
+      later(2,()=>{MF.dialog('孙笑川',['そんなに大声を出して、何をしているんだ！','遊んでいないで、持ち場に戻れ！'],()=>MF.dialog('NO.07',['（办公室门口响起脚步声。NO.07 把笑憋了回去。）','先把三瓶合格品做完。想查那些声音，下班后去厕所听。']));});
     }
     refreshHint();}
   document.getElementById('night-stop').onclick=stopWork;document.getElementById('night-eat').onclick=eat;document.getElementById('night-stand').onclick=closeWork;
@@ -264,7 +324,7 @@ window.createNightShift=function(ctx){
   const coworkerProp=prop('coworker',2.66,7.88,'问问 NO.07',()=>MF.dialog('NO.07',['喂，第 13 号，别在传送带上摸鱼。','沿右侧黄线走到黄色操作椅。把划线停在浅绿色那段，三瓶就能下班。','我去调试室玩会儿游戏。你别玩太久，超过二十秒他会来抓你，赶紧回工位。'],sendCoworkerToSeat));
   arcade=createNightArcade({canInput:()=>S.started&&!S.pause&&!document.hidden&&!uiBusy()&&!st.capturing,onClose:()=>ctx.clearKeys(),onTimeout:()=>{
     st.arcadeChase=true;setAnger(Math.max(70,st.anger));npc.state='CHASE';npc.last.copy(camera.position);npc.path=[];npc.repath=0;npc.cooldown=0;npc.lost=0;
-    audio.play('sfx_sc_roar',0.65);MF.dialog('孙笑川',['仕事中にゲームだと？今すぐ持ち場に戻れ！']);refreshHint();
+    MF.dialog('孙笑川',['仕事中にゲームだと？今すぐ持ち場に戻れ！']);refreshHint();
   }});
   arcadeTexture=new THREE.CanvasTexture(arcade.textureCanvas);arcadeTexture.magFilter=THREE.NearestFilter;arcadeScreen.material.map=arcadeTexture;
   prop('night-arcade',7.5,6.87,()=>st.arcadeChase?'他正在找你，先回工位':'玩俄罗斯方块（超过 20 秒会被发现）',()=>{
@@ -277,7 +337,7 @@ window.createNightShift=function(ctx){
     MF.dialog('奶蛙 · 厕所沉思',['管道里传来一声：「爸爸，我不想喝奶了……」','孙笑川的办公室在西侧靠近传送带起点的房间，桌上放着夜班记录。进去会被发现。','NO.07 说：厂2也有这样的声音。沿传送带走到尽头，左侧门廊通往发酵厂。','你可以就此离开。但那声音听起来……不像机器。'],()=>{st.toiletDone=true;refreshHint();});refreshHint();},2);
   prop('office-record',-16.12,-4.17,'查看办公室的夜班记录',()=>{
     st.office=true;setAnger(65);npc.last.copy(camera.position);npc.state='INVESTIGATE';npc.repath=0;
-    MF.dialog('夜班记录',['「试饮员不是员工。它们是原料。」','桌下的录音机还在反复播放一个孩子的声音。'],()=>MF.dialog('孙笑川',['誰の許可で入ってきたんだ？']));audio.play('sfx_sc_attitude',0.6);refreshHint();},1.75);
+    MF.dialog('夜班记录',['「试饮员不是员工。它们是原料。」','桌下的录音机还在反复播放一个孩子的声音。'],()=>MF.dialog('孙笑川',['誰の許可で入ってきたんだ？']));refreshHint();},1.75);
   prop('stungun',-16,-57.2,()=>st.gun?'补充镇静弹（3 发）':'拿起镇静枪（G 射击）',()=>{st.gun=true;st.ammo=3;gun.visible=false;shootEl.style.display='block';MF.toast('G 瞄准射击，击晕 6 秒。不要隔着墙浪费子弹。');});
   cabinets.forEach(c=>prop(c.id,c.front.x,c.front.z,()=>st.hidden?'离开清洁柜':'躲入清洁柜',()=>{
     if(st.hidden){if(hiddenCabinet.enterT>=1.25)exitHide();return;}
@@ -294,14 +354,14 @@ window.createNightShift=function(ctx){
     const d=distance(camera.position,npc.pos),dx=npc.pos.x-camera.position.x,dz=npc.pos.z-camera.position.z;
     const aim=(-Math.sin(ctx.getYaw())*dx-Math.cos(ctx.getYaw())*dz)/Math.max(d,0.01);
     audio.play('sfx_pa_static',0.65);
-    if(d<15&&aim>0.9&&lineClear({...camera.position,y:1.4},{...npc.pos,y:1.4})){npc.stun=6;npc.state='STUNNED';MF.toast('击中了。六秒，快离开他的视线。');}
+    if(d<15&&aim>0.9&&lineClear({...camera.position,y:1.4},{...npc.pos,y:1.4},true)){npc.stun=6;npc.state='STUNNED';MF.toast('击中了。六秒，快离开他的视线。');}
     else{MF.toast('没有击中。剩余 '+st.ammo+' 发。');}
   }
   shootEl.onclick=shoot;
   document.getElementById('night-bag').onclick=()=>document.body.classList.toggle('inventory-open');
   window.addEventListener('keydown',e=>{if(e.repeat||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
     if(e.code==='KeyG')shoot();
-    if(e.code==='KeyB')document.body.classList.toggle('inventory-open');
+    if(e.code==='KeyB'){document.body.classList.toggle('inventory-open');ctx.clearKeys();}
     if(work&&e.code==='Escape'){closeWork();e.preventDefault();}
   });
 
@@ -319,25 +379,29 @@ window.createNightShift=function(ctx){
     wallSegments.push({x0:c.x+Math.sin(a-Math.PI/60)*c.r,z0:c.z+Math.cos(a-Math.PI/60)*c.r,x1:c.x+Math.sin(a+Math.PI/60)*c.r,z1:c.z+Math.cos(a+Math.PI/60)*c.r,h:c.H});}});
   const rooms=colliders.filter(c=>c.type==='bounds');
   const solid=colliders.filter(c=>c.type==='box'||c.type==='cyl'||c.type==='seg');
+  /* 角色碰撞体：玩家镜头不再穿进 NPC 模型（self 标记供 NPC 自身寻路/移动时跳过） */
+  const npcCol={type:'cyl',x:npc.pos.x,z:npc.pos.z,r:1.0,h:1.8,self:true};
+  const cowCol={type:'cyl',x:coworker.position.x,z:coworker.position.z,r:0.55,h:1.6,self:true};
+  colliders.push(npcCol,cowCol);solid.push(npcCol,cowCol);
   const pointSegment=(x,z,a)=>{const dx=a.x1-a.x0,dz=a.z1-a.z0,L=dx*dx+dz*dz;const u=L?Math.max(0,Math.min(1,((x-a.x0)*dx+(z-a.z0)*dz)/L)):0;return Math.hypot(x-a.x0-u*dx,z-a.z0-u*dz);};
   function inShape(x,z,c,r){
     if(c.type==='box')return Math.abs(x-c.x)<c.w/2+r&&Math.abs(z-c.z)<c.d/2+r;
     if(c.type==='cyl')return Math.hypot(x-c.x,z-c.z)<c.r+r;
     return pointSegment(x,z,c)<(c.r||0.1)+r;
   }
-  function blocked(x,z,r=0.31,planning=false){
+  function blocked(x,z,r=0.31,planning=false,selfCol=null){
     if(!rooms.some(c=>x>=c.minX-0.001&&x<=c.maxX+0.001&&z>=c.minZ-0.001&&z<=c.maxZ+0.001)&&!roundRooms.some(c=>Math.hypot(x-c.x,z-c.z)<=c.r-r))return true;
     if(inSafe({x,z}))return true;
     if(wallSegments.some(w=>pointSegment(x,z,w)<r+0.06))return true;
-    if(solid.some(c=>!c.off&&!(planning&&c.autoDoor)&&(c.yMin===undefined||c.yMin<0.35)&&inShape(x,z,c,r)))return true;
+    if(solid.some(c=>c!==selfCol&&!c.off&&!(planning&&c.autoDoor)&&(c.yMin===undefined||c.yMin<0.35)&&inShape(x,z,c,r)))return true;
     return surfaces.some(c=>c.solid&&c.y>0.46&&x>c.x0-r&&x<c.x1+r&&z>c.z0-r&&z<c.z1+r);
   }
-  function lineClear(a,b,interact=false){
+  function lineClear(a,b,interact=false,skipCol=null){
     const d=distance(a,b),n=Math.max(1,Math.ceil(d/0.16));
     for(let i=1;i<n;i++){
       const u=i/n,x=a.x+(b.x-a.x)*u,z=a.z+(b.z-a.z)*u,y=(a.y||1.35)+((b.y||1.35)-(a.y||1.35))*u;
       if(wallSegments.some(w=>w.h>y&&pointSegment(x,z,w)<0.1))return false;
-      for(const c of solid){if(c.off||c.type==='seg'||c.sight===false||(c.h||2)<y||(c.yMin||0)>y)continue;
+      for(const c of solid){if(c===skipCol||c.off||c.type==='seg'||c.sight===false||(c.h||2)<y||(c.yMin||0)>y)continue;
         if(interact&&inShape(b.x,b.z,c,0.12)&&!c.wall)continue;
         if(inShape(x,z,c,0))return false;}
     }
@@ -346,9 +410,9 @@ window.createNightShift=function(ctx){
   const grid={minX:-24,minZ:-140,step:0.6,w:85,h:256};
   const cell=(x,z)=>({x:Math.round((x-grid.minX)/grid.step),z:Math.round((z-grid.minZ)/grid.step)});
   const world=(x,z)=>({x:grid.minX+x*grid.step,z:grid.minZ+z*grid.step});
-  function findPath(a,b){
+  function findPath(a,b,selfCol=null){
     const total=grid.w*grid.h,cache=new Int8Array(total);
-    const ok=(x,z)=>{if(x<0||x>=grid.w||z<0||z>=grid.h)return false;const id=z*grid.w+x;if(!cache[id]){const p=world(x,z);cache[id]=blocked(p.x,p.z,0.31,true)?-1:1;}return cache[id]>0;};
+    const ok=(x,z)=>{if(x<0||x>=grid.w||z<0||z>=grid.h)return false;const id=z*grid.w+x;if(!cache[id]){const p=world(x,z);cache[id]=blocked(p.x,p.z,0.31,true,selfCol)?-1:1;}return cache[id]>0;};
     function nearest(p){const c=cell(p.x,p.z);for(let r=0;r<=4;r++)for(let dz=-r;dz<=r;dz++)for(let dx=-r;dx<=r;dx++){if(r&&Math.abs(dx)!==r&&Math.abs(dz)!==r)continue;if(ok(c.x+dx,c.z+dz))return {x:c.x+dx,z:c.z+dz};}return null;}
     const from=nearest(a),to=nearest(b);if(!from||!to)return [];
     const begin=from.z*grid.w+from.x,end=to.z*grid.w+to.x,queue=new Int32Array(total),parent=new Int32Array(total);parent.fill(-1);
@@ -360,8 +424,10 @@ window.createNightShift=function(ctx){
     const path=[];let id=end;while(id!==begin){path.push(world(id%grid.w,Math.floor(id/grid.w)));id=parent[id];}path.reverse();return path;
   }
   const routes=[[[-15.3,-4.17],[-14.1,-6],[-9,-6],[-3.2,-21],[-3.2,-38],[3.2,-38],[4,-22],[4,-10],[-3.3,-44],[-8,-26]],
-    [[4.5,-56],[0,-61],[-9.5,-62.5],[0,-69],[-2,-77],[0,-85],[10,-89],[0,-98],[-10,-82.5]]];
-  function sendCoworkerToSeat(){st.intro=true;if(coworkerMode!=='WAIT')return;coworkerPath=findPath(coworker.position,{x:6.99,z:10.54});coworkerAt=0;coworkerMode='WALK';}
+    [[4.5,-56],[0,-61],[-9.5,-62.5],[0,-69],[-2,-77],[0,-85],[10,-89],[0,-98],[-10,-82.5]],
+    /* 第三幕：绕母液罐巡逻（四角折返，不穿罐体） */
+    [[-8,-130],[8,-130],[8,-114],[-8,-114]]];
+  function sendCoworkerToSeat(){st.intro=true;if(coworkerMode!=='WAIT')return;coworkerPath=findPath(coworker.position,{x:6.99,z:10.54},cowCol);coworkerAt=0;coworkerMode='WALK';}
   const frogReady=FrogActor.ready.then(()=>{
     coworkerModel=FrogActor.create(1.5);coworker.add(coworkerModel.root);
     ventFrog=FrogActor.create(1.5);ventFrogRoot.add(ventFrog.root);
@@ -376,10 +442,21 @@ window.createNightShift=function(ctx){
       const p=coworkerPath[coworkerAt]||{x:6.99,z:10.54},dx=p.x-coworker.position.x,dz=p.z-coworker.position.z,d=Math.hypot(dx,dz);
       if(d<0.07){if(coworkerAt<coworkerPath.length)coworkerAt++;else{coworkerMode='PLAY';coworker.position.set(6.99,0.35,10.54);coworker.rotation.y=Math.PI;}}
       else{const step=Math.min(dt*1.1,d),x=coworker.position.x+dx/d*step,z=coworker.position.z+dz/d*step;
-        if(!blocked(x,z,0.22)){coworker.position.set(x,0,z);coworker.rotation.y=Math.atan2(-dx,-dz);}}
+        if(!blocked(x,z,0.22,false,cowCol)){coworker.position.set(x,0,z);coworker.rotation.y=Math.atan2(-dx,-dz);}}
     }
+    cowCol.x=coworker.position.x;cowCol.z=coworker.position.z;
     coworkerProp.pos.x=coworker.position.x;coworkerProp.pos.z=coworker.position.z;
-    if(coworkerModel){coworkerModel.update(dt,coworkerMode==='WALK'?'walk':coworkerMode==='PLAY'?'play':'idle',1);coworkerModel.root.rotation.x=coworkerMode==='WAIT'?-1.1*Math.PI/180:0;}
+    if(coworkerModel){
+      coworkerModel.update(dt,coworkerMode==='WALK'?'walk':coworkerMode==='PLAY'?'play':'idle',1);
+      coworkerModel.root.rotation.x=coworkerMode==='WAIT'?-1.1*Math.PI/180:0;
+      /* 待机或坐下时只转头看玩家，身体不会像纸片一样整体瞬间旋转 */
+      if(coworkerMode!=='WALK'){
+        const face=Math.atan2(camera.position.x-coworker.position.x,camera.position.z-coworker.position.z);
+        let rel=face-coworker.rotation.y;
+        rel=((rel+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+        if(Math.abs(rel)<1.35)coworkerModel.lookHead(rel*0.72,-0.035);
+      }
+    }
   }
   const actor=add('孙笑川',new THREE.Group());actor.position.copy(npc.pos);
   let npcMesh=null,frame=-1,sheets=[];
@@ -404,7 +481,6 @@ window.createNightShift=function(ctx){
     closeWork();if(arcade)arcade.close();if(st.hidden)exitHide();ctx.resetStance();ctx.clearKeys();
     capturePose={x:camera.position.x,y:Math.max(1.35,camera.position.y),z:camera.position.z,yaw:Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z)};
     ctx.setPose(capturePose.x,capturePose.y,capturePose.z,capturePose.yaw);
-    audio.play('sfx_sc_attitude',0.6);
     MF.dialog('孙笑川',['なんで私の言うことを聞いてくれないの？','なんでそんなに頑固なの？'],()=>{
       st.capturing=false;capturePose=null;ctx.clearKeys();npc.cooldown=10;npc.state='PATROL';npc.search=0;npc.lost=0;npc.path=[];npc.repath=0;
       MF.toast(st.arcadeChase?'他松开了你，赶紧回工位。':'他松开了你。利用转角离开，剧情与收集进度已保留。',4000);refreshHint();
@@ -414,7 +490,7 @@ window.createNightShift=function(ctx){
     if(d<0.1){npc.pathAt++;return true;}
     const speed=npc.state==='CHASE'?2.5+st.anger*0.01:npc.state==='TRANSFER'?2.4:1.25+st.anger*0.006;
     const step=Math.min(speed*dt,d),x=npc.pos.x+dx/d*step,z=npc.pos.z+dz/d*step;
-    if(blocked(x,z)){npc.path=[];npc.repath=0.2;return false;}
+    if(blocked(x,z,0.31,false,npcCol)){npc.path=[];npc.repath=0.2;return false;}
     npc.pos.set(x,0,z);npc.yaw=Math.atan2(dx,dz);npc.travel+=step;return true;
   }
   function updateNPC(dt){
@@ -422,12 +498,12 @@ window.createNightShift=function(ctx){
     if(npc.stun>0){npc.stun-=dt;npc.state='STUNNED';if(npc.stun<=0){npc.state='SEARCH';npc.search=5;npc.repath=0;}return;}
     const d=distance(npc.pos,camera.position),dx=camera.position.x-npc.pos.x,dz=camera.position.z-npc.pos.z;
     const facing=(Math.sin(npc.yaw)*dx+Math.cos(npc.yaw)*dz)/Math.max(0.01,d);
-    const see=!st.hidden&&!inSafe(camera.position)&&Math.abs(camera.position.y-1.35)<1.6&&d<17&&(facing>0.2||d<2)&&lineClear({...npc.pos,y:1.6},camera.position);
+    const see=!st.hidden&&!inSafe(camera.position)&&Math.abs(camera.position.y-1.35)<1.6&&d<17&&(facing>0.2||d<2)&&lineClear({...npc.pos,y:1.6},camera.position,false,npcCol);
     npc.seen=see;
     if(st.arcadeChase&&!st.hidden&&!inSafe(camera.position)&&npc.cooldown<=0){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
     else if(see&&st.anger>=60&&npc.cooldown<=0&&(!MF.state.dead||st.anger>=80)){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
     else if(npc.state==='CHASE'){npc.lost+=dt;if(npc.lost>1.5){npc.state='INVESTIGATE';npc.repath=0;}}
-    if(npc.state==='CHASE'&&d<0.95&&see&&npc.cooldown<=0){caught();return;}
+    if(npc.state==='CHASE'&&d<1.5&&see&&npc.cooldown<=0){caught();return;}
     if(st.hidden&&st.exposed&&d<2.6){npc.search+=dt;if(npc.search>3){caught();return;}}
     let target;
     if(npc.state==='TRANSFER'){target={x:4.5,z:-56};if(distance(npc.pos,target)<1.2){npc.state=st.valve?'INVESTIGATE':'PATROL';npc.repath=0;}}
@@ -438,7 +514,7 @@ window.createNightShift=function(ctx){
       const r=routes[npc.zone],p=r[npc.route%r.length];target={x:p[0],z:p[1]};
       if(distance(npc.pos,target)<1.2){npc.wait-=dt;if(npc.wait>0)return;npc.route=(npc.route+1)%r.length;npc.wait=1.2;npc.repath=0;target={x:r[npc.route][0],z:r[npc.route][1]};}
     }
-    if(target&&npc.repath<=0){npc.path=findPath(npc.pos,target);npc.pathAt=0;npc.repath=npc.state==='CHASE'?0.8:3;
+    if(target&&npc.repath<=0){npc.path=findPath(npc.pos,target,npcCol);npc.pathAt=0;npc.repath=npc.state==='CHASE'?0.8:3;
       if(!npc.path.length&&npc.state==='PATROL'){npc.route++;npc.repath=0.5;}}
     walkNPC(dt);
   }
@@ -475,15 +551,50 @@ window.createNightShift=function(ctx){
     if(!st.shiftDone){MF.toast('先完成夜班，再决定是否留下调查。');return;}
     if(st.unplugged&&st.escapeTime>0){MF.toast('后门解锁还需 '+Math.ceil(st.escapeTime)+' 秒。');return;}
     const truth=MF.state.flags.truthHeard;
-    MF.confirm(st.unplugged?'后门开了。带奶泡的最后一句话离开？':truth?'你已听见罐子里的声音。\n确定现在就走，留下仍在生产的工厂？':'按时下班，去停车场开车？\n也可以留下调查办公室和厂2。',ok=>{
+    MF.confirm(st.unplugged?'后门开了。带奶泡的最后一句话离开？':truth?'你已听见罐子里的声音，但工厂仍在生产。\n正常下班不等于解救。确定现在离厂？':'按时下班，去停车场开车？正常下班不等于解救。\n也可以留下调查办公室和厂2。',ok=>{
       if(!ok){ctx.setPose(S.scene===2?0:19.84,1.35,S.scene===2?-134:-17.0,0);return;}
       st.leaving=true;G.endingEscape=true;const branch=st.unplugged?'wean':st.visited2?'investigate':'early';
       try{sessionStorage.setItem('mf_handoff',JSON.stringify({branch,anger:st.anger,truthHeard:truth,tapes:MF.tapeCount(),elapsed:Math.round(MF.elapsed()),act:S.scene+1}));}catch(e){}
-      NightMusic.handoff();audio.playing.forEach(a=>a.pause());location.href='yard.html?from=factory&route='+branch;
+      /* 只延迟离厂导航：branch 仍只由拔管/到过厂2决定，磁带数不代表解救。 */
+      ctx.clearKeys();MF.setLock(true);
+      /* 不设 S.pause：室内帧循环会在暂停时连同 BGM/环境音一起静音。 */
+      const blockedEvents=['keydown','keyup','pointerdown','mousedown','mousemove','touchstart','touchmove','wheel'];
+      const blockDeparture=e=>{ctx.clearKeys();e.preventDefault();e.stopImmediatePropagation();};
+      blockedEvents.forEach(type=>window.addEventListener(type,blockDeparture,{capture:true,passive:false}));
+      const curtain=document.createElement('div');curtain.id='night-departure';
+      curtain.setAttribute('role','status');curtain.setAttribute('aria-live','polite');
+      curtain.style.cssText='position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:#000;color:#d8d3bd;font:15px/2 monospace;letter-spacing:2px;text-align:center;white-space:pre-line;padding:24px;';
+      curtain.textContent=st.unplugged?'离开员工后门\n带着奶泡的最后一句话走进雨里。':'离开员工出口 · 正常下班不等于解救\n工厂仍在身后运转。';
+      document.body.appendChild(curtain);
+      curtain.animate([{opacity:0},{opacity:1}],{duration:550,fill:'forwards'});
+      /* 音乐/环境音留到最后再交接，黑场期间不提前切断。单次定时器，无轮询链。 */
+      const departTimer=setTimeout(()=>{
+        ctx.clearKeys();NightMusic.handoff();audio.playing.forEach(a=>a.pause());
+        location.href='yard.html?from=factory&route='+branch+'&act='+(S.scene+1);
+      },950);
+      window.addEventListener('pagehide',()=>{
+        clearTimeout(departTimer);ctx.clearKeys();
+        blockedEvents.forEach(type=>window.removeEventListener(type,blockDeparture,true));
+      },{once:true});
     });
   }
   function refreshHint(){
-    let hint=!st.started?'夜班 / 第 13 号试饮员':!st.shiftDone?'NO.07：沿传送带右侧黄线，到操作椅封好三瓶。':!st.visited2?'钥匙在背包里。右侧绿门能下班；西侧厕所能听清异响。':!st.valve?'厂2：阀门后的声音在叫你。西侧绿灯是安全屋。':!st.pumpOff?'他已经追来了。利用罐体和转角断开视线，冷库里有磁带。':st.unplugged?'后门解锁 '+Math.ceil(st.escapeTime)+' 秒 · 向主泵室尽头走。':'奶泡还在罐子里。你可以拔管，也可以直接离开。';
+    const scene=S.scene;
+    let hint;
+    if(!st.started)hint='夜班 / 第 13 号试饮员';
+    else if(scene===0){
+      hint=!st.shiftDone?'NO.07：沿传送带右侧黄线，到操作椅封好三瓶。'
+        :!st.visited2?'钥匙在背包里。右侧绿门能下班；西侧厕所能听清异响。'
+        :'厂2门禁已解除。沿传送带尽头左转，穿过门廊去发酵厂。';
+    }else if(scene===1){
+      hint=!st.valve?'厂2：阀门后的声音在叫你。西侧绿灯是安全屋。'
+        :'厂2：他已经追来了。利用罐体和转角断开视线，冷库里有磁带。';
+    }else{
+      hint=!st.valve?'厂3：警报声还在响——回厂2对齐阀门（草莓3·巧克力2·薄荷1）。'
+        :!st.pumpOff?'厂3：主泵仍在运转。控制台插三盘磁带后按红色按钮；母液接口在罐体南侧。'
+        :st.unplugged?'后门解锁 '+Math.ceil(st.escapeTime)+' 秒 · 向主泵室尽头走。'
+        :'奶泡还在罐子里。你可以拔管，也可以直接离开。';
+    }
     if(st.arcadeChase)hint='孙笑川正在追你：回到黄色操作椅，结束这次摸鱼追捕。';
     if(st.capturing)hint='被孙笑川抓住 · E / 点击继续对话，结束后恢复行动。';
     document.getElementById('hudGoal').textContent=hint;
@@ -493,10 +604,51 @@ window.createNightShift=function(ctx){
     const names={PATROL:'巡逻',TRANSFER:'正前往厂2',INVESTIGATE:'查看声源',SEARCH:'搜索最后目击处',CHASE:'追捕',STUNNED:'被击晕',CAPTURE:'训话'};
     statusEl.querySelector('span').textContent='孙笑川 · '+(npc.pos.z<-106?'厂3':npc.pos.z<-50?'厂2':'厂1')+' · '+names[npc.state]+(st.gun?' / 镇静弹 '+st.ammo:'');
   }
-  function resetPose(){if(cinematic){cinematic=null;MF.setLock(false);cinemaEl.classList.remove('on');document.body.classList.remove('night-cinematic');releaseCinematicActors();}ctx.resetStance();closeWork();if(arcade)arcade.close();if(st.hidden)exitHide();if(st.capturing)capturePose={x:camera.position.x,y:camera.position.y,z:camera.position.z,yaw:ctx.getYaw()};ctx.clearKeys();}
+  function resetPose(){
+    MF.closeDialog();releaseCinematicActors();
+    if(cinematic){cinematic=null;MF.setLock(false);cinemaEl.classList.remove('on');document.body.classList.remove('night-cinematic');}
+    ctx.resetStance();closeWork();if(arcade)arcade.close();if(st.hidden)exitHide();
+    if(st.capturing){st.capturing=false;capturePose=null;npc.cooldown=10;npc.state='PATROL';npc.path=[];npc.repath=0;npc.search=0;npc.lost=0;}
+    ctx.clearKeys();
+  }
+  /* 统一幕初始化：HUD 目标 / NPC 区域·状态·路径 / 剧情旗标全部与当前幕同步，
+     主菜单直选、loadAct、开发者选关共用这一条路径，禁止残留上一幕状态。 */
+  function setupScene(sceneIdx,resetStory){
+    if(resetStory){
+      st.good=0;st.shiftDone=false;st.visited2=false;st.valve=false;st.pumpOff=false;st.unplugged=false;
+      st.escapeTime=0;st.foam=0;st.askedToilet=false;st.toiletDone=false;st.toiletExitSeen=false;
+      st.factoryArrivalSeen=false;st.eavesdrop=false;st.office=false;st.thought=false;st.arcadeChase=false;
+      st.anger=0;st.hidden=false;st.exposed=false;st.capturing=false;st.gun=false;st.ammo=0;
+      if(st.hidden)exitHide();
+      if(arcade&&arcade.isOpen())arcade.close();
+    }
+    if(sceneIdx===0){
+      npc.zone=0;npc.state='PATROL';npc.route=0;npc.wait=1.2;npc.path=[];npc.pathAt=0;
+      npc.repath=0;npc.stun=0;npc.cooldown=resetStory?0:6;npc.seen=false;
+      npc.pos.set(-15.3,0,-4.17);
+    }else if(sceneIdx===1){
+      st.good=3;st.shiftDone=true;MF.state.inv.floorKey=true;lock.col.off=true;lock.mesh.visible=false;
+      st.visited2=true;
+      if(!st.valve)setAnger(40);
+      npc.zone=1;npc.state='INVESTIGATE';npc.last.set(0,0,-57);npc.path=[];npc.pathAt=0;
+      npc.repath=0;npc.stun=0;npc.cooldown=2.5;npc.seen=false;
+      npc.pos.set(-3.43,0,-50.18);
+    }else{
+      st.shiftDone=true;MF.state.inv.floorKey=true;lock.col.off=true;lock.mesh.visible=false;
+      st.visited2=true;
+      if(resetStory)st.valve=true;
+      setAnger(st.valve?85:70);
+      npc.zone=2;npc.state='PATROL';npc.route=0;npc.wait=1;npc.path=[];npc.pathAt=0;
+      npc.repath=0;npc.stun=0;npc.cooldown=8;npc.seen=false;
+      npc.pos.set(0,0,-130);
+    }
+    npcCol.x=npc.pos.x;npcCol.z=npc.pos.z;
+    actor.position.copy(npc.pos);
+    refreshHint();
+  }
   function start(skip){st.started=true;statusEl.hidden=false;officeHum=audio.loop('amb_distant_whispers',0.01);population.start();
     if(!skip)startCinematic('opening');
-    else{sendCoworkerToSeat();if(S.scene>0){st.good=3;st.shiftDone=true;MF.state.inv.floorKey=true;lock.col.off=true;lock.mesh.visible=false;st.visited2=true;setAnger(40);transfer();}}
+    else{sendCoworkerToSeat();setupScene(S.scene,true);}
     refreshHint();
   }
   function canInteract(p){if(st.hidden)return p.id===hiddenCabinet.id;
@@ -514,7 +666,7 @@ window.createNightShift=function(ctx){
     if(cinematic){updateCinematic(dt);NightMusic.setDucked(true);return;}
     if(!uiBusy()&&!work&&!st.hidden&&!st.capturing&&!arcade.isOpen()&&!MF.state.dead){
       const near=kind=>Math.abs(camera.position.y-1.35)<0.65&&distance(camera.position,storyTriggers[kind])<=storyTriggers[kind].radius;
-      if(!st.askedToilet&&S.scene===0&&directionWorker&&directionWorker.actor&&near('directions')){startCinematic('directions');return;}
+      if(st.shiftDone&&st.good>=3&&!st.askedToilet&&S.scene===0&&directionWorker&&directionWorker.actor&&near('directions')){startCinematic('directions');return;}
       if(st.toiletDone&&!st.toiletExitSeen&&S.scene===0&&near('toiletExit')){startCinematic('toiletExit');return;}
       if(!st.factoryArrivalSeen&&S.scene===1&&near('factoryArrival')){startCinematic('factoryArrival');return;}
       if(!ventSeen&&ventFrog&&S.scene===1&&distance(camera.position,ventTrigger)<=ventTrigger.radius){startCinematic('vent');return;}
@@ -530,24 +682,41 @@ window.createNightShift=function(ctx){
     if(!uiBusy()&&!work&&!arcade.isOpen()&&!st.capturing){
       if(st.arcadeChase&&distance(camera.position,{x:2.8,z:-16.96})<1.65&&Math.abs(camera.position.y-1.35)<0.8)finishArcadeChase();
       if(S.scene===1&&!st.visited2){st.visited2=true;setAnger(Math.max(st.anger,40));transfer();audio.play('amb_distant_whispers',0.4);MF.toast('厂2的管道里也有人说话。先记住左侧安全屋，再碰阀门。',5500);}
-      if(insideOffice(camera.position)&&!st.office){st.office=true;setAnger(65);npc.last.copy(camera.position);npc.state='INVESTIGATE';npc.repath=0;audio.play('sfx_sc_attitude',0.6);MF.dialog('孙笑川',['誰の許可で事務所に入ってきたんだ？']);}
+      if(S.scene===2&&npc.zone!==2){
+        npc.zone=2;
+        if(npc.state!=='CHASE'&&npc.state!=='CAPTURE'){
+          if(npc.state==='INVESTIGATE'||npc.state==='SEARCH'){npc.state='INVESTIGATE';npc.last.copy(camera.position);}
+          else npc.state='PATROL';
+          npc.path=[];npc.repath=0;
+        }
+      }
+      if(insideOffice(camera.position)&&!st.office){st.office=true;setAnger(65);npc.last.copy(camera.position);npc.state='INVESTIGATE';npc.repath=0;MF.dialog('孙笑川',['誰の許可で事務所に入ってきたんだ？']);}
       if(st.unplugged)st.escapeTime=Math.max(0,st.escapeTime-dt);
       if(!uiBusy())updateNPC(dt);
     }
-    actor.position.copy(npc.pos);actor.rotation.y=Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z);
+    actor.position.copy(npc.pos);npcCol.x=npc.pos.x;npcCol.z=npc.pos.z;
+    /* 视觉朝向平滑（限角速度 5 rad/s）+ 待机呼吸起伏 */
+    const faceTarget=Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z);
+    let dY=faceTarget-npcVisYaw;dY=((dY+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+    npcVisYaw+=dY*Math.min(1,dt*5);
+    actor.rotation.y=npcVisYaw;
+    const moving=npc.path.length>npc.pathAt&&npc.state!=='SEARCH';
+    actor.position.y=0.04+Math.abs(Math.sin(elapsed*(npc.state==='CHASE'?7.5:2.2)))*0.04*(moving?0.6:1);
     actor.rotation.z=npc.stun>0?0.8:0;setFrame(Math.floor(npc.travel*7)%atlas.count);
     breathT+=dt;if(breathT>0.35){breathT=0;refreshHint();}
     if(st.shiftDone&&!st.eavesdrop&&!st.visited2){noiseT+=dt;if(noiseT>24){noiseT=0;audio.play('amb_distant_whispers',0.15);MF.toast('西侧厕所通风管又响了一声。');}}
     if(officeHum){const d=distance(camera.position,S.scene===0?{x:-16.12,z:-4.17}:{x:0,z:-106});officeHum.a.volume=Math.max(0,1-d/22)*(work?0.18:0.12);}
     if(npc.travel-footAt>1.1){footAt=npc.travel;const d=distance(npc.pos,camera.position);if(d<18)audio.play('sfx_sticky_step',(1-d/18)*0.23);}
   }
-  return {start,update,refreshHint,resetPose,leave,pullValve,setAnger,findPath,lineClear,blocked,ready:Promise.all([ready,frogReady,population.ready]),
+  return {start,update,refreshHint,resetPose,leave,pullValve,setAnger,findPath,lineClear,blocked,setupScene,
+    ready:Promise.all([ready,frogReady,population.ready]),
     nearNPC:(x,z)=>distance(npc.pos,{x,z}),
     blocksInput:()=>!!cinematic||work||st.hidden||st.capturing||arcade.isOpen(),workOpen:()=>work||arcade.isOpen(),isHidden:()=>st.hidden,
     cinematicActive:()=>!!cinematic,population:()=>population.status(),
     canInteract,status:()=>({story:{...st},npc:{x:npc.pos.x,z:npc.pos.z,yaw:npc.yaw,state:npc.state,zone:npc.zone,seen:npc.seen,path:npc.path.length,pathAt:npc.pathAt,stun:npc.stun},work,cursor,
       coworker:{x:coworker.position.x,z:coworker.position.z,yaw:coworker.rotation.y,mode:coworkerMode,path:coworkerPath.length,pathAt:coworkerAt},arcade:arcade.status(),cabinet:hiddenCabinet&&hiddenCabinet.id,
-      cinematic:cinematic?{kind:cinematic.kind,time:cinematic.t,duration:cinematic.duration}:null,ventSeen,ventTrigger:{...ventTrigger},
+      cinematic:cinematic?{kind:cinematic.kind,time:cinematic.t,duration:cinematic.duration,page:cinematic.page,pageCount:cinematic.pages.length,
+        typing:captionWriter.isTyping(),waiting:cinematic.waiting,pageClicked:cinematic.pageClicked,awaitingClick:cinematic.page>=0&&!cinematic.pageClicked}:null,ventSeen,ventTrigger:{...ventTrigger},
       vent:{visible:ventFrogRoot.visible,position:ventFrogRoot.position.toArray(),grille:ctx.built[1].props.ventGrille.rotation.x},storyTriggers}),
     cabinets:()=>cabinets.map(c=>({id:c.id,x:c.x,z:c.z,front:{...c.front},exit:{...c.exit},angle:c.angle,width:c.model.width,depth:c.model.depth,height:c.model.height,enterTime:c.enterT,doorAngle:c.model.doors[0].pivot.rotation.y})),
     routes:()=>routes.map(r=>r.map(p=>({x:p[0],z:p[1]})))};

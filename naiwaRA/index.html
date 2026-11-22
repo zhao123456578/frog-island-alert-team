@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:,">
-<title>奶蛙：午夜奶厂 — PS1 BUILD · 三幕场景</title>
+<title>奶蛙：午夜奶厂 · 整合试玩 Demo v2</title>
 <style>
   :root{--milk:#E6E2CF;--rust:#8C3B2E;--fluor:#86C24B;--dark:#1C1D24;}
   *{box-sizing:border-box;}
@@ -34,13 +34,15 @@
     padding:9px 16px;font-size:12px;letter-spacing:.06em;transition:.15s;}
   .btn:hover{background:#262a1c;border-color:var(--fluor);color:#eaffd0;}
   .btn.dev{border-color:var(--fluor);color:var(--fluor);}
-  .boot-btns{display:flex;gap:10px;justify-content:center;margin-top:18px;}
+  .boot-btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:18px;}
 
   /* HUD */
   #hud{position:fixed;inset:0;z-index:10;pointer-events:none;opacity:0;transition:opacity .6s;}
   #hud.on{opacity:1;}
   .hud-corner{position:absolute;padding:14px 18px;color:#b7c9a0;font-size:11px;letter-spacing:.12em;text-shadow:0 1px 2px #000;line-height:1.8;}
   .hud-tl{top:0;left:0;} .hud-tr{top:0;right:0;text-align:right;} .hud-bl{bottom:0;left:0;}
+  /* 正式游玩只保留区域名/目标/收集/状态；CAM LOW·FREE CAM 与 DEV MODE 仅开发者模式可见 */
+  .hud-bl{display:none;}body.dev-open .hud-bl{display:block;}
   .hud-tl .big{color:var(--milk);font-size:15px;letter-spacing:.24em;}
   .hud-tag{color:var(--rust);}
   /* 广播字幕 */
@@ -69,6 +71,12 @@
   #dpad button{font-family:inherit;font-size:15px;line-height:1;background:rgba(12,16,10,.72);
     color:#c6d9ad;border:1px solid #5c7a3e;cursor:pointer;user-select:none;touch-action:none;padding:0;}
   #dpad button.hold{background:var(--fluor);color:#0d1108;border-color:var(--fluor);}
+  /* 桌面端不需要方向板与转向钮（鼠标环视）；R/Q 开发按钮仅开发者模式显示 */
+  @media (pointer:fine){#dpad{display:none!important;}}
+  #dpad button[data-k="TurnL"],#dpad button[data-k="TurnR"]{display:none;}
+  @media (pointer:coarse){#dpad button[data-k="TurnL"],#dpad button[data-k="TurnR"]{display:block;}}
+  #dpad button[data-k="KeyR"]{display:none;}
+  body.dev-open #dpad button[data-k="KeyR"]{display:block;}
 
   /* 动作按钮（触屏 /  iframe 预览用，不依赖键盘焦点） */
   #actBtns{position:fixed;right:14px;bottom:14px;z-index:22;display:none;gap:6px;}
@@ -96,6 +104,9 @@
   #mfPanel .p-bar b{margin-left:auto;color:#e6e2cf;font-weight:500;}
   #mfPanel .p-sec{color:#9fc273;letter-spacing:.2em;font-size:10px;margin:10px 0 4px;border-bottom:1px solid #263021;padding-bottom:3px;}
   #mfPanel .p-list{line-height:1.8;color:#b9c4a8;}
+  /* 背包打开：非模态面板，但键盘移动/视角/交互暂停；面板明确标注 */
+  body.inventory-open #mfPanel::before{content:"员工背包 · B / Esc 关闭 · 游戏仍在继续";display:block;
+    color:#e8c02a;letter-spacing:.08em;margin-bottom:8px;border-bottom:1px solid #263021;padding-bottom:6px;font-size:10px;}
 
   /* 顶部场景切换条 */
   #sceneBar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:25;display:none;gap:6px;
@@ -105,10 +116,38 @@
     border:1px solid #465c33;padding:6px 12px;letter-spacing:.06em;}
   #sceneBar button.active{background:var(--fluor);color:#10150a;border-color:var(--fluor);}
 
+  /* 准星（很小、可隐藏） */
+  #cross{position:fixed;left:50%;top:50%;width:5px;height:5px;margin:-3px 0 0 -3px;z-index:24;display:none;
+    background:rgba(230,226,207,.92);border:1px solid rgba(28,29,36,.7);box-shadow:0 0 3px rgba(0,0,0,.8);pointer-events:none;}
+  #cross.on{display:block;}
+  /* 点击画面继续（Pointer Lock 提示遮罩） */
+  #plHint{position:fixed;inset:0;z-index:29;display:none;pointer-events:none;
+    background:none;}
+  #plHint.on{display:block;}
+  #plHint .pill{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);pointer-events:auto;cursor:pointer;
+    color:#eaffd0;background:rgba(10,14,8,.82);border:1px solid #86c24b;padding:9px 16px;font-size:12px;
+    letter-spacing:.08em;text-align:center;line-height:1.65;box-shadow:0 4px 18px rgba(0,0,0,.45);}
+  #plHint .pill b{color:#86c24b;}
+  /* 暂停 / 设置 */
+  #pauseMenu{position:fixed;inset:0;z-index:47;display:none;align-items:center;justify-content:center;background:rgba(6,8,6,.84);}
+  #pauseMenu.on{display:flex;}
+  .pm-card{width:min(420px,92vw);background:#101611;border:1px solid #86c24b;padding:22px 24px;color:#dfe2cd;font-size:12px;line-height:1.8;}
+  .pm-card h2{margin:0 0 10px;color:#eaffd0;font-size:16px;letter-spacing:.3em;font-weight:600;}
+  .pm-card .row{display:grid;grid-template-columns:92px 1fr 52px;align-items:center;gap:8px;margin:10px 0;}
+  .pm-card label.chk{display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer;}
+  .pm-card input[type=range]{width:100%;accent-color:#86c24b;}
+  .pm-card select{background:#12180f;color:#cbd6bd;border:1px solid #465c33;font-family:inherit;font-size:12px;padding:4px;}
+  .pm-card .val{text-align:right;color:#e6e2cf;font-variant-numeric:tabular-nums;}
+  .pm-btns{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+  .pm-card button{font-family:inherit;font-size:12px;cursor:pointer;background:#1b2415;color:#bcd4a2;border:1px solid #465c33;padding:9px 14px;letter-spacing:.05em;}
+  .pm-card button:hover{background:#2b3a1e;border-color:#86c24b;color:#eaffd0;}
+  .pm-hint{color:#6e7e60;font-size:10.5px;margin-top:12px;line-height:1.7;}
+
   /* DEV */
   #devToggle{position:fixed;top:14px;right:14px;z-index:31;cursor:pointer;font-family:inherit;
     background:rgba(10,12,10,.85);color:var(--fluor);border:1px solid var(--fluor);
-    padding:8px 12px;font-size:11px;letter-spacing:.14em;}
+    padding:8px 12px;font-size:11px;letter-spacing:.14em;display:none;}
+  body.dev-open #devToggle{display:block;}
   #devToggle:hover{background:var(--fluor);color:#0d1108;}
   #devToggle.active{background:#7a1f22;border-color:#d9605a;color:#ffe3dc;}
   #dev{position:fixed;top:52px;right:14px;z-index:30;width:306px;max-height:calc(100vh - 66px);
@@ -166,7 +205,7 @@
 
 <div id="boot">
   <div class="boot-card">
-    <div class="boot-kicker">ITCH 怪诞恐怖 · PS1 BUILD · 三幕可玩场景</div>
+    <div class="boot-kicker">整合试玩 DEMO v2 · 工厂 → 停车场 → 夜班归途</div>
     <h1 class="boot-title">奶蛙：午夜奶厂<span>MILK FROG · LAST DROP</span></h1>
     <div class="boot-line"></div>
     <div class="scene-pick">
@@ -180,8 +219,9 @@
     <div class="boot-btns">
       <button class="btn" id="btnEnter">进入第一幕</button>
       <button class="btn dev" id="btnDevEnter">以开发者模式进入</button>
+      <button class="btn dev" id="btnDriveDemo">直接试玩夜班开车</button>
     </div>
-    <div class="boot-foot">点击场景卡片选关 · 左下方向键 / WASD 移动 · 拖拽环视 · E 交互 · F 手电 · 空格装死<br>
+    <div class="boot-foot">点击场景卡片选关 · WASD / 方向键移动 · 鼠标环视 · E 交互 · F 手电 · 空格装死 · 按 ~ 打开开发者模式<br>
       角色模型来自 bigdiu/naiwa-nailoong-blender-model（奶龙，非商用）</div>
   </div>
 </div>
@@ -196,12 +236,12 @@
   <div class="hud-corner hud-bl"><div>CAM LOW · FOG <span id="hudFog">0.06</span></div><div id="hudMode">FREE CAM</div></div>
 </div>
 <div id="broadcast"><div class="who" id="bcWho">广播</div><div class="line" id="bcLine"></div></div>
-<div id="tip">方向键 / WASD 移动 · R/Q 升降 · 拖拽环视 · E 交互 · F 手电 · 按住空格装死 · ~ 开发者模式</div>
+<div id="tip">WASD / 方向键移动 · 鼠标环视 · E 交互 · F 手电 · 按住空格装死 · Esc 释放鼠标</div>
 
 <div id="dpad">
-  <button data-k="KeyR" title="上升">↑</button><button data-k="KeyW" title="前进">▲</button><button data-k="KeyQ" title="下降">↓</button>
+  <span></span><button data-k="KeyW" title="前进">▲</button><span></span>
   <button data-k="KeyA" title="左移">◀</button><button data-k="KeyS" title="后退">▼</button><button data-k="KeyD" title="右移">▶</button>
-  <button data-k="TurnL" title="左转">↶</button><span></span><button data-k="TurnR" title="右转">↷</button>
+  <button data-k="TurnL" title="左转">↶</button><button data-k="KeyR" title="上升(开发)">R</button><button data-k="TurnR" title="右转">↷</button>
 </div>
 
 <div id="actBtns">
@@ -211,6 +251,20 @@
 </div>
 <button id="muteBtn">♪ 音效开</button>
 <div id="mfPanel"></div>
+<div id="cross"></div>
+<div id="plHint"><div class="pill"><b>点击画面继续</b><br>鼠标环视 · Esc 释放 · P 暂停 / 设置</div></div>
+<div id="pauseMenu">
+  <div class="pm-card">
+    <h2>暂停 · 设置</h2>
+    <div class="row"><label>鼠标灵敏度</label><input type="range" id="set_sens" min="25" max="250" step="5" value="100"><span class="val" id="set_sens_v">1.00×</span></div>
+    <label class="chk"><input type="checkbox" id="set_invY">反转 Y 轴</label>
+    <label class="chk"><input type="checkbox" id="set_invX">反转 X 轴</label>
+    <div class="row"><label>镜头摆动</label><select id="set_bob">
+      <option value="0">关闭</option><option value="0.5">轻微</option><option value="1" selected>标准</option></select><span class="val"></span></div>
+    <div class="pm-btns"><button id="pm_resume">继续游戏</button><button id="pm_reload">回选关菜单</button></div>
+    <div class="pm-hint">Esc 关闭并返回游戏 · 设置自动保存到本地浏览器</div>
+  </div>
+</div>
 
 <div id="sceneBar">
   <button data-scene="0">Ⅰ 醒奶区</button><button data-scene="1">Ⅱ 发酵区</button><button data-scene="2">Ⅲ 主奶泵室</button>
@@ -240,12 +294,12 @@
   </div>
   <div class="grp"><h4>► 渲染管线 / RENDER</h4>
     <div class="row"><label>内部分辨率</label><select id="d_res">
-      <option value="160,120">160 × 120 (粗)</option><option value="320,240">320 × 240 (标准)</option>
-      <option value="480,360" selected>480 × 360 (细)</option><option value="640,480">640 × 480 (调试)</option></select><span></span></div>
+      <option value="320,180">320 × 180 (粗)</option><option value="480,270">480 × 270 (标准)</option>
+      <option value="640,360" selected>640 × 360 (细)</option><option value="960,540">960 × 540 (调试)</option></select><span></span></div>
     <div class="row"><label>色阶数</label><input type="range" id="d_levels" min="2" max="32" step="1" value="24"><span class="val">24</span></div>
-    <div class="row"><label>顶点抖动</label><input type="range" id="d_wobble" min="0" max="80" step="1" value="4"><span class="val">0.004</span></div>
-    <div class="row"><label>CRT 噪点</label><input type="range" id="d_noise" min="0" max="100" step="1" value="2"><span class="val">0.02</span></div>
-    <div class="row"><label>扫描线</label><input type="range" id="d_scan" min="0" max="100" step="1" value="4"><span class="val">0.04</span></div>
+    <div class="row"><label>顶点抖动</label><input type="range" id="d_wobble" min="0" max="80" step="1" value="3"><span class="val">0.003</span></div>
+    <div class="row"><label>CRT 噪点</label><input type="range" id="d_noise" min="0" max="100" step="1" value="1"><span class="val">0.01</span></div>
+    <div class="row"><label>扫描线</label><input type="range" id="d_scan" min="0" max="100" step="1" value="3"><span class="val">0.03</span></div>
     <div class="row"><label>桶形畸变</label><input type="range" id="d_warp" min="0" max="30" step="1" value="5"><span class="val">0.05</span></div>
   </div>
   <div class="grp"><h4>► 光雾 / ATMOSPHERE</h4>
@@ -282,7 +336,7 @@
   </div>
   <div class="grp"><h4>► 统计 / STATS</h4>
     <div class="stat"><span>FPS</span><b id="s_fps">--</b></div><div class="stat"><span>三角面</span><b id="s_tri">--</b></div>
-    <div class="stat"><span>Draw Calls</span><b id="s_call">--</b></div><div class="stat"><span>分辨率</span><b id="s_res">480×360</b></div>
+    <div class="stat"><span>Draw Calls</span><b id="s_call">--</b></div><div class="stat"><span>分辨率</span><b id="s_res">640×360</b></div>
     <div class="stat"><span>物件组</span><b id="s_obj">--</b></div><div class="stat"><span>角色模型</span><b id="s_char">加载中</b></div>
   </div>
 </div>
@@ -315,7 +369,7 @@ MF.initUI();
 document.querySelector("#mf-ending button").textContent="返回工厂";
 MF.bindPanel(document.getElementById("mfPanel"));
 
-const S={levels:24,wobble:0.004,noise:0.02,scan:0.04,warp:0.05,fogDensity:0.062,fogHue:205,
+const S={levels:24,wobble:0.003,noise:0.01,scan:0.03,warp:0.04,fogDensity:0.062,fogHue:205,
   light:1.2,ambient:0.35,flicker:true,fly:true,pause:false,wire:false,grid:false,noFog:false,
   showChar:true,started:false,scene:0,showColliders:false,collide:true,walkAssist:true,noclip:false};
 const clock=new THREE.Clock();let simTime=0,nightShift=null;
@@ -475,11 +529,13 @@ const grungeTex=(function(){
   const blob=(px,py,cx,cy,r,a)=>{const dx=px-cx,dy=py-cy;return a*Math.exp(-(dx*dx+dy*dy)/(r*r));};
   for(let i=0;i<N*N;i++){
     const px=i%N,py=(i/N)|0;
-    let v=236+(Math.random()*2-1)*9;
-    v-=blob(px,py,64,88,26,16)+blob(px,py,188,176,32,13)+blob(px,py,150,40,20,10);
-    v-=9*Math.pow(Math.max(0,Math.sin(px*0.11+py*0.017)),10);
-    if(Math.random()<0.05)v-=14;
-    v=Math.max(150,Math.min(255,v));
+    /* 低中频污渍 + 极少量可用像素：避免每颗像素随机跳色造成的“雪花噪点”。 */
+    let v=242;
+    v-=blob(px,py,64,88,38,11)+blob(px,py,188,176,44,9)+blob(px,py,150,40,30,7);
+    v-=2.8*(0.5+0.5*Math.sin(px*0.052+py*0.031));
+    v-=1.8*(0.5+0.5*Math.sin((px+py)*0.093));
+    if(Math.random()<0.008)v-=5;
+    v=Math.max(176,Math.min(252,v));
     d[i*4]=d[i*4+1]=d[i*4+2]=v;d[i*4+3]=255;
   }
   x.putImageData(img,0,0);
@@ -578,8 +634,65 @@ function splitHoles(u0,u1,y0,y1,holes){
   if(u1>u)out.push([u,u1,y0,y1]);
   return out;
 }
-function buildRoom(g,add,opt){
+/* ===== 静态几何合并：同材质网格合成单一 BufferGeometry，减少 Draw Calls =====
+   只用于「确定无逐子级动画」的组（房间/廊道/天幕/环墙），动画件一律不并入。 */
+function mergeGeometries(meshes){
+  const allPos=[],allNor=[],allUv=[],allIdx=[];
+  let vc=0,hasUv=true,hasNor=true;
+  const p=new THREE.Vector3(),n=new THREE.Vector3(),nm=new THREE.Matrix3();
+  for(const m of meshes){
+    m.updateWorldMatrix(true,false);
+    const g=m.geometry;
+    if(!g.attributes.position)continue;
+    const pos=g.attributes.position.array;
+    const nor=g.attributes.normal?g.attributes.normal.array:null;
+    const uv=g.attributes.uv?g.attributes.uv.array:null;
+    const idx=g.index?g.index.array:null;
+    if(!nor)hasNor=false;
+    if(!uv)hasUv=false;
+    nm.getNormalMatrix(m.matrixWorld);
+    const base=vc;
+    for(let i=0;i<pos.length;i+=3){
+      p.set(pos[i],pos[i+1],pos[i+2]).applyMatrix4(m.matrixWorld);
+      allPos.push(p.x,p.y,p.z);
+      if(nor){n.set(nor[i],nor[i+1],nor[i+2]).applyMatrix3(nm).normalize();allNor.push(n.x,n.y,n.z);}
+      if(uv)allUv.push(uv[(i/3)*2],uv[(i/3)*2+1]);
+    }
+    if(idx)for(let i=0;i<idx.length;i++)allIdx.push(idx[i]+base);
+    else for(let i=0;i<pos.length/3;i++)allIdx.push(base+i);
+    vc+=pos.length/3;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(allPos,3));
+  if(hasNor)geo.setAttribute('normal',new THREE.Float32BufferAttribute(allNor,3));
+  if(hasUv)geo.setAttribute('uv',new THREE.Float32BufferAttribute(allUv,2));
+  geo.setIndex(allIdx);
+  return geo;
+}
+function mergeStatic(root){
+  const groups=new Map();
+  for(let i=root.children.length-1;i>=0;i--){
+    const m=root.children[i];
+    if(!m.isMesh||m.userData.noMerge)continue;
+    if(m.geometry.attributes.skinIndex||m.geometry.morphAttributes)continue;
+    const mat=m.material;
+    if(!groups.has(mat))groups.set(mat,[]);
+    groups.get(mat).push(m);
+    root.remove(m);
+  }
+  for(const [mat,meshes] of groups){
+    if(meshes.length<2){root.add(meshes[0]);continue;}
+    const geo=mergeGeometries(meshes);
+    const nm=new THREE.Mesh(geo,mat);
+    nm.name="合并·"+(mat.name||"材质")+" ×"+meshes.length;
+    root.add(nm);
+  }
+}
+
+function buildRoom(g,regAdd,opt){
   const {W,D,H,cx=0,cz=0,colliders,wallColor=0xffffff}=opt;
+  const roomG=new THREE.Group();
+  const add=(n,o)=>{o.name=n;roomG.add(o);return o;};
   const doors=opt.doors||[];
   const windows=opt.windows||[];
   const skylights=opt.skylights||[];
@@ -639,6 +752,9 @@ function buildRoom(g,add,opt){
   if(!skipW.s)wallRun('x',1,cz+D/2,cx-W/2,cx+W/2,dOf('s'),wOf('s'));
   if(!skipW.w)wallRun('z',0,cx-W/2,cz-D/2,cz+D/2,dOf('w'),wOf('w'));
   if(!skipW.e)wallRun('z',1,cx+W/2,cz-D/2,cz+D/2,dOf('e'),wOf('e'));
+  mergeStatic(roomG); // 墙体/地面/天花/门框按材质合并，降低 Draw Calls
+  roomG.name="房间 "+(opt.tag?opt.tag+"·":"")+cx+","+cz;
+  regAdd(roomG.name,roomG);
   if(colliders)colliders.push({type:'bounds',minX:cx-W/2,maxX:cx+W/2,minZ:cz-D/2,maxZ:cz+D/2,H,
     gaps:doors.map(d=>({s:d.s,a:d.a,b:d.b}))});
 }
@@ -732,21 +848,24 @@ function buildSky(){
   for(let i=0;i<40;i++){const bw=8+Math.random()*16,bh=10+Math.random()*40;x.fillRect(i*13+Math.random()*6,196-bh,bw,bh+4);}
   x.fillStyle="rgba(232,192,42,0.55)";for(let i=0;i<90;i++)x.fillRect(Math.random()*512|0,196-Math.random()*40|0,1,1);
   const t=new THREE.CanvasTexture(c);t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearFilter;
+  const skyG=new THREE.Group();skyG.name="天空与远景";
   const dome=new THREE.Mesh(new THREE.SphereGeometry(190,32,20),new THREE.MeshBasicMaterial({map:t,side:THREE.BackSide,fog:false}));
-  dome.position.set(0,0,-60);scene.add(dome);
+  dome.position.set(0,0,-60);skyG.add(dome);
   /* 室外大地 */
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(420,420),new THREE.MeshBasicMaterial({color:0x0a0e14,fog:false}));
-  ground.rotation.x=-Math.PI/2;ground.position.set(0,-0.06,-60);scene.add(ground);
+  ground.rotation.x=-Math.PI/2;ground.position.set(0,-0.06,-60);skyG.add(ground);
   /* 远景楼群（真实几何剪影） */
   const cityM=new THREE.MeshBasicMaterial({color:0x070b12,fog:false});
   const winM=new THREE.MeshBasicMaterial({color:0x2a3a52,fog:false});
   for(let i=0;i<26;i++){const a=i/26*Math.PI*2;const r=120+Math.random()*30;
     const bw=8+Math.random()*14,bh=14+Math.random()*40;
     const b=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bw),cityM);
-    b.position.set(Math.cos(a)*r,bh/2-0.5,-60+Math.sin(a)*r);scene.add(b);
+    b.position.set(Math.cos(a)*r,bh/2-0.5,-60+Math.sin(a)*r);skyG.add(b);
     for(let k=0;k<5;k++){const w=new THREE.Mesh(new THREE.PlaneGeometry(1,1.4),winM);
-      w.position.set(b.position.x+(Math.random()-0.5)*bw*0.7,2+Math.random()*(bh-4),b.position.z+bw/2+0.05);scene.add(w);}
+      w.position.set(b.position.x+(Math.random()-0.5)*bw*0.7,2+Math.random()*(bh-4),b.position.z+bw/2+0.05);skyG.add(w);}
   }
+  mergeStatic(skyG);
+  scene.add(skyG);
 }
 /* 护栏：视觉立柱+扶手（baseY=所在平台面高度）；railCol 只挡上层（yMin）的人 */
 function railRun(g,add,x0,z0,x1,z1,baseY,mat){
@@ -1277,8 +1396,8 @@ function buildWake(){
     const stool=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.32,0.42,8),M.dark);stool.position.y=0.21;grp.add(stool);
     const pivot=new THREE.Group();pivot.position.set(0,0.12,0);grp.add(pivot);
     add("流水线奶蛙",grp);
-    colliders.push({type:'cyl',x,z,r:0.5,h:1.7});
-    lineFrogs.push({grp,pivot,x,z,working:false,workT:0,cd:0,actor:null,poseDt:0});
+    colliders.push({type:'cyl',x,z,r:0.7,h:1.7}); // 员工碰撞半径加大：贴近时镜头不进模型
+    lineFrogs.push({grp,pivot,x,z,working:false,workT:0,cd:0,actor:null,poseDt:0,headYaw:0});
   }
   function lineClutter(x,z){
     const pile=add("落地奶箱杂物",new THREE.Group());pile.position.set(x,0,z);
@@ -1314,6 +1433,16 @@ function buildWake(){
       f.poseDt+=dt;
       const near=S.scene===0&&Math.hypot(camera.position.x-f.x,camera.position.z-f.z)<18;
       if(near||f.poseDt>=0.16){f.actor.update(f.poseDt,f.working?"work":"sit",1);f.poseDt=0;}
+      /* 头部在有限角度内追踪玩家（与方向青蛙同约定），工作时不转头 */
+      if(near&&!f.working){
+        const dx=camera.position.x-f.x,dz=camera.position.z-f.z,d=Math.hypot(dx,dz);
+        if(d<6&&d>0.5){
+          const target=Math.atan2(-dx,-dz);
+          let hd=target-f.headYaw;hd=((hd+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+          f.headYaw+=hd*Math.min(1,dt*3);
+          f.actor.lookHead(Math.max(-1.4,Math.min(1.4,f.headYaw)),0);
+        }
+      }
     });
   });
   [-1.95,1.95].forEach((x,i)=>{const pipe=add("滴奶管道 "+(i+1),new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,42,7,16),M.pipe));
@@ -2114,7 +2243,7 @@ function buildFerment(){
   function makeStandFrog(x,z,ry){
     const grp=new THREE.Group();grp.position.set(x,0,z);grp.rotation.y=ry;
     const pivot=new THREE.Group();grp.add(pivot);
-    add("摸鱼奶蛙",grp);colliders.push({type:'cyl',x,z,r:0.5,h:1.7});
+    add("摸鱼奶蛙",grp);colliders.push({type:'cyl',x,z,r:0.6,h:1.7});
     breakFrogPivots.push({pivot});
     return grp;
   }
@@ -2220,7 +2349,8 @@ function buildFerment(){
 
   return {group:g,objects,updates,lights,colliders,lamps,pickups,
     props:{pigeon,key,valveWheels,valveGauges,breakFrogPivots,ventGrille,interactive:{curtain:a2Curtain,cart:a2Cart,safeDoor}},
-    home:new THREE.Vector3(0,1.5,-3),fog:[168,0.040],amb:0.50};
+    /* 出生点：主厅中央通道（世界 z=-58），面朝南侧罐体阵列与阀门站；原 (0,-3) 在更衣室北墙前 1 米处，开局即贴墙。 */
+    home:new THREE.Vector3(0,1.35,-8),fog:[168,0.040],amb:0.50};
 }
 
 /* ---------- 第三幕：主奶泵室（R16 + 西侧祭坛） ---------- */
@@ -2249,6 +2379,7 @@ function buildPump(){
     panel.rotation.y=phi+Math.PI;
     ringGrp.add(panel);
   }
+  mergeStatic(ringGrp); // 60 段环墙面板合为 1 个网格
   add("环形墙",ringGrp);
   const lintel=add("环厅门楣",new THREE.Mesh(new THREE.BoxGeometry(3.6,H-2.9,0.45),rwMat));
   lintel.position.set(0,(2.9+H)/2,CZ+R-0.18);
@@ -2340,6 +2471,7 @@ function buildPump(){
     pivot.rotation.y=Math.atan2(-Math.cos(a),-Math.sin(a));
     pivot.userData.baseY=pivot.rotation.y;
     clones.add(pivot);ringFrogPivots.push({pivot});
+    colliders.push({type:'cyl',x:pivot.position.x,z:pivot.position.z,r:0.5,h:1.6}); // 克隆环不穿模
     const tn=tex(48,32,(cx,w,h)=>{cx.fillStyle="#e6e2cf";cx.fillRect(0,0,w,h);
       cx.fillStyle="#8c3b2e";cx.font="bold 15px monospace";cx.textAlign="center";cx.fillText("NO."+("0"+(i+1)).slice(-2),w/2,21);});
     const plate=new THREE.Mesh(new THREE.PlaneGeometry(0.28,0.18),psMat({map:tn,side:THREE.DoubleSide,lit:false}));
@@ -2432,6 +2564,42 @@ const tag=new THREE.Mesh(new THREE.PlaneGeometry(0.3,0.45),psMat({map:tagTex,sid
 const string=new THREE.Mesh(new THREE.CylinderGeometry(0.004,0.004,0.5,4),psMat({color:0x1c1d24,lit:false}));string.position.y=0.36;tagHolder.add(string);
 actObjects.push({name:"第13号试饮员吊牌",obj:tagHolder});
 
+/* ===== 第一人称身体：奶蛙前臂、手掌、指节与奶瓶手电 =====
+   低模保留 PS1 的块面感，但轮廓必须清楚；所有部件程序动画，不遮挡主视线。 */
+const fpRig=new THREE.Group();fpRig.name="第一人称身体";camera.add(fpRig);
+const handMat=psMat({color:0xb77a32,flatShading:true});
+const handEdgeMat=psMat({color:0x80532b,flatShading:true});
+const sleeveMat=psMat({color:0x39463f,flatShading:true});
+const cuffMat=psMat({color:0x596451,flatShading:true});
+function buildFrogArm(side){
+  const g=new THREE.Group();
+  const fore=new THREE.Mesh(new THREE.CylinderGeometry(0.052,0.072,0.34,6),sleeveMat);
+  fore.rotation.x=Math.PI/2;fore.position.set(0,0.018,0.17);g.add(fore);
+  const cuff=new THREE.Mesh(new THREE.CylinderGeometry(0.063,0.063,0.055,6),cuffMat);
+  cuff.rotation.x=Math.PI/2;cuff.position.set(0,0.008,0.015);g.add(cuff);
+  const palm=new THREE.Mesh(new THREE.SphereGeometry(0.06,7,5),handMat);
+  palm.scale.set(1.08,0.74,1.42);palm.position.set(0,0,-0.072);g.add(palm);
+  const thumb=new THREE.Mesh(new THREE.BoxGeometry(0.026,0.024,0.072),handEdgeMat);
+  thumb.position.set(side*0.057,-0.004,-0.105);thumb.rotation.y=side*0.28;g.add(thumb);
+  [-0.024,0,0.024].forEach((x,i)=>{
+    const finger=new THREE.Mesh(new THREE.BoxGeometry(0.019,0.019,0.055-i*0.004),handMat);
+    finger.position.set(x,-0.018,-0.16);finger.rotation.x=-0.08;g.add(finger);
+  });
+  return g;
+}
+const handL=buildFrogArm(-1);handL.position.set(-0.29,-0.33,-0.64);fpRig.add(handL);
+const flashRig=buildFrogArm(1);flashRig.position.set(0.29,-0.33,-0.64);fpRig.add(flashRig);
+const fpBottle=new THREE.Mesh(new THREE.CylinderGeometry(0.040,0.050,0.30,7),psMat({color:0xd9d6c8,flatShading:true}));
+fpBottle.rotation.x=Math.PI/2;fpBottle.position.set(0.005,0.03,-0.17);flashRig.add(fpBottle);
+const fpCap=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.038,0.045,6),psMat({color:0x79372d,flatShading:true}));
+fpCap.rotation.x=Math.PI/2;fpCap.position.set(0.005,0.03,-0.01);flashRig.add(fpCap);
+const fpLensM=new THREE.MeshBasicMaterial({color:0xb9a878});
+const fpLens=new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.028,0.018,7),fpLensM);
+fpLens.rotation.x=Math.PI/2;fpLens.position.set(0.005,0.03,-0.325);flashRig.add(fpLens);
+const fpGlow=new THREE.Mesh(new THREE.ConeGeometry(0.13,0.35,9,1,true),new THREE.MeshBasicMaterial({color:0xffe9a8,transparent:true,opacity:0.13,blending:THREE.AdditiveBlending,depthWrite:false}));
+fpGlow.rotation.x=Math.PI/2;fpGlow.position.set(0.005,0.03,-0.51);flashRig.add(fpGlow);
+const fpFlashParts=[fpBottle,fpCap,fpLens,fpGlow];
+
 /* ===== 世界：三幕沿 -z 排列，之间用短廊相连，人可以一路走到底 ===== */
 /* 幕1 z 12..-46 | 廊A -46..-50 | 幕2 -50..-102 | 廊B -102..-106 | 幕3 圆厅 -106..-138 */
 const ZONE_Z=[0,-50,-106];
@@ -2466,16 +2634,17 @@ let worldReady=false;
 /* 短廊：两厅之间 3 米通道，四周封死、两端对齐门洞，顶上一盏小灯 */
 function buildCorridor(z0,z1,xc,w,h,tag){
   const g=new THREE.Group();
+  const mergeG=new THREE.Group();
   const wm=psMat({map:wallFerment,color:0x8e949b,side:THREE.DoubleSide});
   const cm=psMat({map:ceilTex,color:0x7c8175,side:THREE.DoubleSide});
   const fm=psMat({map:floorTexB,color:0xb3b0a0});
   const L=z1-z0,mid=(z0+z1)/2;
-  const addC=(n,o)=>{o.name=n;g.add(o);actObjects.push({name:tag+"·"+n,obj:o});return o;};
+  const addC=(n,o)=>{o.name=n;mergeG.add(o);return o;};
   const fl=addC("地面",new THREE.Mesh(new THREE.PlaneGeometry(w,L,2,2),fm));
   fl.rotation.x=-Math.PI/2;fl.position.set(xc,0.001,mid);
   const ce=addC("顶",new THREE.Mesh(new THREE.PlaneGeometry(w,L,2,3),cm));
   ce.rotation.x=Math.PI/2;ce.position.set(xc,h,mid);
-  FK.ductRun(g,addC,xc,z0+0.3,xc,z1-0.3,h-0.35,h,0.24);
+  FK.ductRun(mergeG,addC,xc,z0+0.3,xc,z1-0.3,h-0.35,h,0.24);
   [-1,1].forEach(s=>{
     const geo=new THREE.PlaneGeometry(L,h,3,2);scaleUV(geo,L/7,h/3.4);
     const m=addC("侧墙",new THREE.Mesh(geo,wm));
@@ -2491,6 +2660,9 @@ function buildCorridor(z0,z1,xc,w,h,tag){
     const th=new THREE.Mesh(new THREE.BoxGeometry(w+0.4,0.05,0.6),psMat({color:0x3d4443}));
     th.position.set(xc,0.025,zz);addC("门槛",th);
   });
+  mergeStatic(mergeG);
+  mergeG.name="廊 "+(tag||"");
+  g.add(mergeG);actObjects.push({name:mergeG.name,obj:mergeG});
   makeHangingLamp(g,(n,o)=>{o.name=n;g.add(o);actObjects.push({name:tag+"·"+n,obj:o});return o;},
     xc,h-0.25,mid,actLamps,{color:0xffb877,power:0.75,beamH:Math.min(h,2.6)});
   scene.add(g);
@@ -2774,6 +2946,7 @@ function loadAct(idx){
   ["s0","s1","s2"].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.classList.toggle("active",i===idx);});
   document.querySelectorAll("#sceneBar button").forEach((el,i)=>el.classList.toggle("active",i===idx));
   stopRecPlay();standUp();clearKeys();if(nightShift)nightShift.resetPose();
+  if(nightShift)nightShift.setupScene(idx,!S.started); // 统一幕初始化：HUD 目标/NPC 区域状态/剧情旗标与当前幕同步
   camera.position.copy(b.home);yaw=0;pitch=0;camera.rotation.set(0,0,0);curHome=b.home.clone();
   rebuildObjList();
   playBroadcast();
@@ -2859,7 +3032,7 @@ const postMat=new THREE.ShaderMaterial({
       vec3 streak=(texture2D(tDiffuse,uv-drag).rgb+texture2D(tDiffuse,uv-drag*2.0).rgb)*0.5;
       c=mix(c,streak,edge*0.28);
       // 4×4 Bayer 抖动 + 只量化亮度：低色阶下渐变不出大色带，也不出青/品红彩边
-      float dn=(b4(uv*uResolution)-0.5)/uLevels;
+      float dn=(b4(uv*uResolution)-0.5)/uLevels*0.48;
       float lum=dot(c,vec3(0.299,0.587,0.114));
       float lq=clamp(floor(lum*uLevels+dn+0.5)/uLevels,0.0,1.0);
       c=c*(lq/max(lum,0.0001));
@@ -2875,15 +3048,18 @@ const postMat=new THREE.ShaderMaterial({
   depthTest:false,depthWrite:false});
 postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),postMat));
 function setRes(w,h){POST_W=w;POST_H=h;if(rt)rt.dispose();
-  rt=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:true});
+  /* 降采样时线性取样，避免细线在高倍率像素画布上闪烁；最终放大仍是 Nearest。 */
+  rt=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.NearestFilter,depthBuffer:true});
   postMat.uniforms.uResolution.value.set(w,h);document.getElementById("s_res").textContent=w+"×"+h;}
-setRes(480,360);
+setRes(640,360);
 
 /* ===== 输入 ===== */
 const keys={};
+const bagOpen=()=>document.body.classList.contains('inventory-open');
 function cinematicActive(){return !!(nightShift&&nightShift.cinematicActive());}
 function inputBlocked(){return !S.started||S.pause||document.hidden||recPlay||cinematicActive()||
   document.getElementById('mf-ending').classList.contains('on')||MF.dialogOpen()||MF.confirmOpen()||MF.dancing()||
+  bagOpen()||
   !!(nightShift&&(nightShift.blocksInput()||nightShift.isHidden()));}
 function clearKeys(){Object.keys(keys).forEach(k=>keys[k]=false);dragging=false;touchLook=null;
   document.querySelectorAll('#dpad .hold,#actBtns .hold').forEach(b=>b.classList.remove('hold'));resetMotion();}
@@ -2892,12 +3068,12 @@ function toggleFlash(){
   const s=MF.state;
   if(!s.inv.flashlight){showToast("还没有手电。它在传送带起点旁的地上。");return;}
   if(s.milk<=0){showToast("手电没奶了。紧张会产奶——但装死会扣乳糖。");return;}
-  s.flashOn=!s.flashOn;AudioSys.play("sfx_flashlight",0.5);MF.refreshPanel();
+  s.flashOn=!s.flashOn;flashKick=1;AudioSys.play("sfx_flashlight",0.5);MF.refreshPanel();
 }
 let crouchReturn=null,crouchFoot=null;
 const walkMotion={phase:0,sway:0,bob:0,roll:0,sprint:0};
 function resetMotion(){walkMotion.phase=walkMotion.sway=walkMotion.bob=walkMotion.roll=walkMotion.sprint=0;
-  postMat.uniforms.uSprint.value=0;}
+  postMat.uniforms.uSprint.value=0;lastStep=-1;}
 function stanceFoot(p){return p===camera.position&&crouchFoot!==null?crouchFoot:p.y-EYE;}
 function resetStance(){if(crouchReturn!==null)camera.position.y=crouchReturn;
   MF.state.dead=false;crouchReturn=crouchFoot=null;resetMotion();}
@@ -2972,9 +3148,10 @@ function setDead(v){
 window.addEventListener("keydown",e=>{if(e.key==="~"||e.key==="`"||e.code==="Backquote"){toggleDev();return;}
   if(e.code==="KeyM"&&!e.repeat){AudioSys.toggleMute();return;}
   if(S.pause||document.hidden||cinematicActive())return;
-  if(recPlay&&["KeyW","KeyA","KeyS","KeyD","KeyR","KeyQ","KeyK","Escape"].includes(e.code))stopRecPlay();
+  if(recPlay&&["KeyW","KeyA","KeyS","KeyD","KeyR","KeyQ","KeyK","Escape","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code))stopRecPlay();
   if(inputBlocked())return;
   keys[e.code]=true;
+  if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code))e.preventDefault();
   if(e.code==="KeyK"&&!e.repeat&&recMode)addShot();
   if(e.code==="KeyF"&&!e.repeat)toggleFlash();
   if(e.code==="Space"){e.preventDefault();if(!e.repeat)setDead(true);}});
@@ -2994,10 +3171,11 @@ document.getElementById("btnF").addEventListener("click",toggleFlash);
   b.addEventListener("mousedown",on);b.addEventListener("touchstart",on,{passive:false});
   ["mouseup","mouseleave","touchend","touchcancel"].forEach(ev=>b.addEventListener(ev,off));})();
 document.getElementById("muteBtn").onclick=()=>AudioSys.toggleMute();
+/* 正常玩家优先使用 Pointer Lock；浏览器拒绝锁定时自动回退为按住左键拖动环视 */
 let dragging=false,lastX=0,lastY=0;const view=document.getElementById("view");
-view.addEventListener("mousedown",e=>{if(S.fly&&!inputBlocked()){dragging=true;lastX=e.clientX;lastY=e.clientY;}});
+view.addEventListener("mousedown",e=>{if(e.button!==0)return;if(S.fly&&!inputBlocked()&&(document.body.classList.contains("dev-open")||pointerFallback)){dragging=true;lastX=e.clientX;lastY=e.clientY;}});
 window.addEventListener("mouseup",()=>dragging=false);
-window.addEventListener("mousemove",e=>{if(!S.fly||inputBlocked()){dragging=false;return;}if(!dragging)return;
+window.addEventListener("mousemove",e=>{if(!S.fly||inputBlocked()||(!document.body.classList.contains("dev-open")&&!pointerFallback)){dragging=false;return;}if(!dragging)return;
   yaw-=(e.clientX-lastX)*0.004;pitch-=(e.clientY-lastY)*0.004;pitch=Math.max(-1.2,Math.min(1.2,pitch));lastX=e.clientX;lastY=e.clientY;});
 let touchLook=null;
 view.addEventListener("touchstart",e=>{if(S.fly&&!inputBlocked()&&e.touches.length===1)
@@ -3008,6 +3186,111 @@ view.addEventListener("touchmove",e=>{if(!S.fly||inputBlocked()){touchLook=null;
     touchLook={x:t.clientX,y:t.clientY};}},{passive:true});
 view.addEventListener("touchend",()=>touchLook=null);
 view.addEventListener("touchcancel",()=>touchLook=null);
+
+/* ===== P2: Pointer Lock 鼠标环视 · 统一输入层（键鼠触屏共用 keys/输入锁） ===== */
+const inputSettings={sens:1,invY:false,invX:false,bob:1};
+(function(){try{Object.assign(inputSettings,JSON.parse(localStorage.getItem("mf_input_v1"))||{});}catch(e){}
+  inputSettings.sens=Math.max(0.25,Math.min(2.5,+inputSettings.sens||1));
+  inputSettings.bob=[0,0.5,1].includes(+inputSettings.bob)?+inputSettings.bob:1;
+})();
+function saveInputSettings(){try{localStorage.setItem("mf_input_v1",JSON.stringify(inputSettings));}catch(e){}}
+const MOUSE_BASE=0.0020; // 每像素弧度（灵敏度 1×）
+const PITCH_MAX=75*Math.PI/180;
+const finePointer=window.matchMedia&&matchMedia("(pointer:fine)").matches;
+let plActive=false,pointerFallback=false,bodyYaw=yaw,flashKick=0,pokeT=0,fpVelF=0,fpVelR=0,lastStep=-1;
+const plHint=document.getElementById("plHint");
+const pauseMenu=document.getElementById("pauseMenu");
+function pauseOpen(){return pauseMenu.classList.contains("on");}
+function plainPlay(){return S.started&&!inputBlocked()&&!recPlay;} // 纯游玩状态：唯一允许锁定鼠标的状态
+function updatePlHint(){
+  const show=plainPlay()&&finePointer&&!plActive&&!pointerFallback&&!MF.state.dead&&!document.body.classList.contains("dev-open");
+  plHint.classList.toggle("on",!!show);
+}
+function enableMouseDragFallback(){
+  pointerFallback=true;plActive=false;plHint.classList.remove("on");
+  showToast("鼠标锁定不可用：按住左键拖动即可环视。",3200);
+}
+function requestLock(){
+  if(!S.started||!finePointer||plActive||pointerFallback)return;
+  if(!plainPlay())return;
+  const plain=()=>{
+    try{
+      const r=view.requestPointerLock();
+      if(r&&typeof r.catch==="function")r.catch(enableMouseDragFallback);
+    }catch(e){enableMouseDragFallback();}
+  };
+  try{
+    const r=view.requestPointerLock({unadjustedMovement:true});
+    if(r&&typeof r.catch==="function")r.catch(err=>{
+      if(err&&err.name==="NotSupportedError")plain();else enableMouseDragFallback();
+    });
+  }catch(err){plain();}
+}
+function exitLock(){if(document.pointerLockElement===view){try{document.exitPointerLock();}catch(e){}}}
+document.addEventListener("pointerlockchange",()=>{
+  plActive=document.pointerLockElement===view;
+  clearKeys();
+  updatePlHint();
+});
+document.addEventListener("pointerlockerror",enableMouseDragFallback);
+plHint.addEventListener("click",e=>{if(e.target.closest(".pill"))requestLock();});
+view.addEventListener("click",()=>{if(!plActive&&!pauseOpen()&&!bagOpen()&&finePointer)requestLock();});
+view.addEventListener("mousedown",e=>{
+  if(e.button===2)return;
+  if(plActive&&plainPlay()&&!MF.dialogOpen()){e.preventDefault();MF.interact(e);} // 准星点击=交互
+});
+window.addEventListener("mousemove",e=>{
+  if(!plActive||inputBlocked())return;
+  const s=MOUSE_BASE*inputSettings.sens;
+  yaw-=e.movementX*s*(inputSettings.invX?-1:1);
+  pitch-=e.movementY*s*(inputSettings.invY?-1:1);
+  pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch)); // 垂直 ±75°，禁止翻转
+});
+/* 暂停菜单：Esc 打开/关闭，P 切换 */
+function openPause(){
+  if(pauseOpen()||!S.started||cinematicActive())return;
+  if(nightShift&&nightShift.blocksInput())return; // 工位/躲藏/被抓时不叠加暂停菜单
+  pauseMenu.classList.add("on");S.pause=true;exitLock();clearKeys();setDead(false);
+}
+function closePause(){
+  pauseMenu.classList.remove("on");S.pause=false;clearKeys();updatePlHint();
+}
+window.addEventListener("keydown",e=>{
+  if(e.code==="Escape"&&!e.repeat){
+    if(pauseOpen()){closePause();e.preventDefault();e.stopImmediatePropagation();return;}
+    if(bagOpen()){document.body.classList.remove("inventory-open");clearKeys();e.preventDefault();e.stopImmediatePropagation();return;}
+    if(S.pause||document.hidden||cinematicActive())return;   // 电影/街机的 Esc 由各自处理器接管
+    if(nightShift&&nightShift.workOpen())return;             // 工位小游戏自己关
+    if(inputBlocked())return;                                // 对话/结局等
+    openPause();e.preventDefault();e.stopImmediatePropagation();return;
+  }
+  if(e.code==="KeyP"&&!e.repeat&&!e.target.isContentEditable&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)){
+    if(pauseOpen()){closePause();}
+    else if(!inputBlocked()&&!cinematicActive()){openPause();}
+    e.preventDefault();return;
+  }
+},true);
+/* 设置控件（灵敏度 0.25×~2.5× · 反转 Y/X · 头部摆动 0/50/100%，localStorage 持久化） */
+(function(){
+  const sensEl=document.getElementById("set_sens"),sensV=document.getElementById("set_sens_v");
+  sensEl.value=Math.round(inputSettings.sens*100);
+  const fmt=v=>v.toFixed(2)+"×";
+  sensV.textContent=fmt(inputSettings.sens);
+  sensEl.oninput=()=>{inputSettings.sens=+sensEl.value/100;sensV.textContent=fmt(inputSettings.sens);saveInputSettings();};
+  const invY=document.getElementById("set_invY"),invX=document.getElementById("set_invX"),bob=document.getElementById("set_bob");
+  invY.checked=!!inputSettings.invY;invX.checked=!!inputSettings.invX;bob.value=String(inputSettings.bob);
+  invY.onchange=()=>{inputSettings.invY=invY.checked;saveInputSettings();};
+  invX.onchange=()=>{inputSettings.invX=invX.checked;saveInputSettings();};
+  bob.onchange=()=>{inputSettings.bob=+bob.value;saveInputSettings();};
+  document.getElementById("pm_resume").onclick=closePause;
+  document.getElementById("pm_reload").onclick=()=>location.reload();
+})();
+MF.setInteractHook(()=>{pokeT=1;});
+MF.setAimTest(p=>{
+  const dx=p.pos.x-camera.position.x,dz=p.pos.z-camera.position.z,d=Math.hypot(dx,dz)||1;
+  const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+  return (dx/d*fx+dz/d*fz)>Math.cos(0.2); // 准星指向目标（约 ±11.5°）才显示 [E]
+});
 window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight,false);});
 
 /* ===== 碰撞解析：玩家半径 0.35 的圆柱，对房间边界与障碍物做分轴推出 ===== */
@@ -3086,7 +3369,6 @@ function resolveCollisions(p){
   });
   p.y=Math.max(0.45,Math.min(7.8,p.y)); // 不钻地不穿顶（幕1 天花 5.2 / 夹层 2.6 可上去）
 }
-
 /* 跨区：走进下一个大厅时，雾色/环境光缓动过去，HUD 换幕 */
 function syncZone(dt){
   const zi=zoneOf(camera.position.z);
@@ -3111,9 +3393,10 @@ function renderWorld(effects=true){
   const position=camera.position.clone(),rotation=camera.rotation.clone();
   try{
     if(effects&&!cinematicActive()&&!recPlay){
-      camera.position.x+=Math.cos(yaw)*walkMotion.sway;
-      camera.position.z-=Math.sin(yaw)*walkMotion.sway;
-      camera.position.y+=walkMotion.bob;camera.rotation.z+=walkMotion.roll;
+      const bs=inputSettings.bob; // 头部摆动 0/50/100%
+      camera.position.x+=Math.cos(yaw)*walkMotion.sway*bs;
+      camera.position.z-=Math.sin(yaw)*walkMotion.sway*bs;
+      camera.position.y+=walkMotion.bob*bs;camera.rotation.z+=walkMotion.roll*bs;
       if(MF.state.dead)camera.rotation.z+=0.12;
       if(laughing&&!inputBlocked()){
         const k=0.025*Math.max(0.2,1-holdE/1.4);
@@ -3132,14 +3415,15 @@ function renderWorld(effects=true){
 let frames=0,acc=0,panelAcc=0;
 function stepFrame(dt){
   const frozen=S.pause||!S.started||document.hidden||document.getElementById('mf-ending').classList.contains('on');
+  if(plActive&&!plainPlay())exitLock(); // 背包/对话/工位/暂停/结局打开时统一退出鼠标锁定
   NightMusic.suspend(frozen);AudioSys.playing.forEach(a=>a.muted=AudioSys.muted||frozen);
   if(frozen)dt=0;
   simTime+=dt;const t=simTime;
   if(act&&dt>0)actUpdates.forEach(fn=>fn(t,dt));
   if(recPlay&&cinematicActive())stopRecPlay();
-  // 吊牌摆动
+  // 吊牌摆动（挂在镜头左下方，让出右下手持物区域）
   tagHolder.visible=!cinematicActive();
-  tagHolder.scale.setScalar(0.65);tagHolder.position.set(0.68,-0.42,-1.6);
+  tagHolder.scale.setScalar(0.65);tagHolder.position.set(-0.58,-0.40,-1.5);
   tagHolder.rotation.z=Math.sin(t*1.6)*0.13;tagHolder.rotation.y=-0.2+Math.sin(t*0.9)*0.08;
   // 相机坐标只保存碰撞基准；步行偏移仅在渲染时叠加。
   let travelled=0,running=false;
@@ -3151,7 +3435,10 @@ function stepFrame(dt){
     running=!!(keys.ShiftLeft||keys.ShiftRight);
     const speed=(running?4.8:2.4)*(S.noclip?3:1)*dt;
     const cp=S.noclip?Math.cos(pitch):1,fy=S.noclip?Math.sin(pitch):0;
-    let forward=(keys.KeyW?1:0)-(keys.KeyS?1:0),side=(keys.KeyD?1:0)-(keys.KeyA?1:0);
+    /* 统一输入：方向键与 WASD 等价（ArrowUp/Down=前进/后退，ArrowLeft/Right=左/右平移） */
+    const keyW=keys.KeyW||keys.ArrowUp,keyS=keys.KeyS||keys.ArrowDown,
+          keyA=keys.KeyA||keys.ArrowLeft,keyD=keys.KeyD||keys.ArrowRight;
+    let forward=(keyW?1:0)-(keyS?1:0),side=(keyD?1:0)-(keyA?1:0);
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len;}
     if(seated){
       if(len||keys.KeyR||keys.KeyQ)standUp();
@@ -3169,6 +3456,14 @@ function stepFrame(dt){
     }
     if(keys.TurnL)yaw+=speed*0.8;if(keys.TurnR)yaw-=speed*0.8;
     resolveCollisions(p);
+    /* 第一人称速度采样：世界位移 → 相机空间速度（前/侧），驱动手部与身体摆动 */
+    const wdx=(p.x-px)/Math.max(dt,0.001),wdz=(p.z-pz)/Math.max(dt,0.001);
+    const vF=-(wdx*Math.sin(yaw)+wdz*Math.cos(yaw)),vR=wdx*Math.cos(yaw)-wdz*Math.sin(yaw);
+    fpVelF+=(vF-fpVelF)*Math.min(1,dt*9);
+    fpVelR+=(vR-fpVelR)*Math.min(1,dt*9);
+    /* 身体朝向以有限角速度跟随头部（头转先、身跟上） */
+    let bd=yaw-bodyYaw;bd=((bd+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+    bodyYaw+=Math.max(-6*dt,Math.min(6*dt,bd));
     const actual=Math.hypot(p.x-px,p.z-pz),wanted=Math.hypot(dx,dz);
     if(len&&!ms.dead&&!seated&&!S.noclip&&wanted>0)
       travelled=Math.max(0,Math.min(actual,((p.x-px)*dx+(p.z-pz)*dz)/wanted));
@@ -3185,14 +3480,41 @@ function stepFrame(dt){
   }else if(!S.fly&&!uiLock&&dt>0){
     camera.rotation.set(Math.sin(t*0.3)*0.015,Math.sin(t*0.22)*0.035,0);
   }
-  if(travelled>0.0001&&!MF.state.dead&&crouchReturn===null){
+  /* 贴墙时碰撞求解会留下毫米级位移；小于 2mm 不驱动步态，避免镜头持续发抖。 */
+  if(travelled>0.002&&!MF.state.dead&&crouchReturn===null){
     const strength=Math.min(1,travelled/(dt*(running?4.8:2.4)));
     walkMotion.phase=(walkMotion.phase+travelled*3.6)%(Math.PI*2);
     walkMotion.sway=Math.sin(walkMotion.phase)*(running?0.025:0.014)*strength;
     walkMotion.bob=Math.sin(walkMotion.phase*2)*(running?0.009:0.004)*strength;
     walkMotion.roll=Math.sin(walkMotion.phase)*(running?0.006:0.003)*strength;
     walkMotion.sprint=running?strength:0;
+    /* 脚步声与落脚相位同步（每半周期一步，音量随奔跑提高） */
+    const stepIdx=Math.floor(walkMotion.phase/Math.PI);
+    if(stepIdx!==lastStep){lastStep=stepIdx;
+      const fs=AudioSys.play("sfx_sticky_step",running?0.12:0.09);
+      if(fs){fs.playbackRate=0.9+Math.random()*0.2;}}
   }else resetMotion();
+  /* 第一人称手部动画：由真实速度/步态驱动；静止只有呼吸 */
+  flashKick=Math.max(0,flashKick-dt*5);pokeT=Math.max(0,pokeT-dt*4);
+  {
+    const bs=inputSettings.bob;
+    const fpLag=((yaw-bodyYaw+Math.PI*3)%(Math.PI*2))-Math.PI;
+    const breath=Math.sin(simTime*1.7)*0.0018;
+    handL.position.set(-0.29-walkMotion.sway*1.2*bs-fpVelR*0.012,
+      -0.33+walkMotion.bob*2.0*bs+Math.abs(fpVelR)*0.018+breath,
+      -0.64-fpVelF*0.005);
+    handL.rotation.set(-0.16+walkMotion.bob*1.3*bs,0,walkMotion.roll*2.1*bs+fpVelR*0.035);
+    flashRig.position.set(0.29+walkMotion.sway*1.2*bs+fpVelR*0.012,
+      -0.33+walkMotion.bob*2.0*bs+Math.abs(fpVelR)*0.018+walkMotion.sprint*0.045+breath,
+      -0.64-fpVelF*0.005+pokeT*0.06);
+    flashRig.rotation.set(-0.14+walkMotion.bob*1.5*bs+walkMotion.sprint*0.18+fpVelF*0.01-flashKick*0.25-pokeT*0.28,
+      fpLag*0.45+fpVelR*0.02,
+      walkMotion.roll*1.9*bs+fpVelR*0.03);
+    for(const part of fpFlashParts)part.visible=!!MF.state.inv.flashlight;
+    fpGlow.visible=!!MF.state.flashOn&&!!MF.state.inv.flashlight;
+    fpLensM.color.setHex(MF.state.flashOn?0xfff3c4:0xb9a878);
+    fpRig.visible=!!S.started&&!MF.state.dead&&!MF.dialogOpen()&&!cinematicActive()&&!bagOpen()&&!pauseOpen();
+  }
   if(recMode){recAcc+=dt;if(recAcc>=0.1){recAcc=0;updateRecHud();}}
   syncZone(dt);
   if(!recPlay){
@@ -3207,13 +3529,15 @@ function stepFrame(dt){
   lampU.uFlashOn.value=ms.flashOn?1:0;
   lampU.uFlashPos.value.copy(camera.position);
   camera.getWorldDirection(lampU.uFlashDir.value);
-  // 交互检测 + 标记环
+  // 交互检测 + 标记环 + 准星
   if(S.started&&!recPlay&&!cinematicActive()&&!frozen){
     MF.update(camera.position.x,camera.position.z);
     const ap=MF.getActive();
+    document.getElementById('cross').classList.toggle('on',!!ap&&!uiLock&&!MF.state.dead);
     if(ring){ring.visible=!!ap;
       if(ap){ring.position.set(ap.pos.x,0.04,ap.pos.z);const k=1+Math.sin(t*5)*0.08;ring.scale.set(k,k,1);}}
   }else if(ring)ring.visible=false;
+  updatePlHint();
   if(danceAudio&&!MF.dancing()){AudioSys.fadeOut(danceAudio);danceAudio=null;}
   panelAcc+=dt;if(panelAcc>0.3){panelAcc=0;MF.refreshPanel();}
   // 吊灯闪烁：动态更新 shader uniform（暖黄灯在灯下亮、远处黑）
@@ -3246,7 +3570,7 @@ animate();
 
 /* ===== 开发者面板 ===== */
 const dev=document.getElementById("dev"),devToggle=document.getElementById("devToggle");
-function toggleDev(){const on=dev.classList.toggle("open");devToggle.classList.toggle("active",on);document.body.classList.toggle("dev-open",on);}
+function toggleDev(){const on=dev.classList.toggle("open");devToggle.classList.toggle("active",on);document.body.classList.toggle("dev-open",on);if(on)exitLock();updatePlHint();}
 function startScene(devMode){if(S.started)return;S.started=true;
   MF.state.startAt=performance.now();
   AudioSys.init();if(nightShift)nightShift.start(devMode||S.scene!==0);
@@ -3254,9 +3578,11 @@ function startScene(devMode){if(S.started)return;S.started=true;
   document.getElementById("hud").classList.add("on");
   document.getElementById("dpad").classList.add("on");
   document.getElementById("sceneBar").classList.add("on");
-  showToast("WASD 移动 · 拖拽环视 · E 交互 · F 手电 · 按住空格装死 · ~ 开发者模式",7000);
+  showToast("点击画面锁定鼠标 · WASD/方向键移动 · E 交互 · F 手电 · 按住空格装死 · Esc 释放鼠标",7000);
+  updatePlHint();
   if(devMode){dev.classList.add("open");devToggle.classList.add("active");document.body.classList.add("dev-open");}}
 document.getElementById("btnEnter").onclick=()=>startScene(false);
+document.getElementById("btnDriveDemo").onclick=()=>{NightMusic.handoff();location.href="outdoor.html";};
 document.getElementById("btnDevEnter").onclick=()=>startScene(true);
 devToggle.onclick=toggleDev;
 document.querySelectorAll(".scene-card").forEach(c=>c.onclick=()=>{
@@ -3769,7 +4095,7 @@ function setupProps(){
     enabled:()=>!seated,
     label:()=>"坐下（操作传送带奶瓶）",
     action(){resetStance();seated=true;chairCol.off=true;AudioSys.play("sfx_jelly_drop",0.25);
-      MF.toast("你坐下了。奶瓶经过时按 E：先拧瓶盖，再偷吃。WASD 起身。",4200);}});
+      MF.toast("你坐下了。奶瓶经过时按 E：先拧瓶盖，再偷吃。WASD / 方向键起身。",4200);}});
   MF.register({id:"seated",pos:{x:1.71,z:-16.96},radius:2.2,
     enabled:()=>seated,
     label:()=>{const b=nearestBottle();
@@ -4103,7 +4429,7 @@ nightShift=createNightShift({scene,camera,state:S,game:GAME,colliders:actCollide
   clearKeys:()=>{stopRecPlay();clearKeys();},
   freeChair(){chairCol.off=true;},
   hideSlime(){if(chaseRef)chaseRef.mesh.visible=false;}});
-MF.setInputGuard(()=>S.started&&!S.pause&&!document.hidden&&!recPlay&&!cinematicActive()&&!nightShift.workOpen());
+MF.setInputGuard(()=>S.started&&!S.pause&&!document.hidden&&!recPlay&&!cinematicActive()&&!nightShift.workOpen()&&!bagOpen());
 MF.setVisibilityTest(p=>nightShift.canInteract(p));
 window.__game.night=nightShift;
 window.__game.music=()=>NightMusic.status();
