@@ -532,6 +532,8 @@ ground.rotation.x=-Math.PI/2;ground.position.set(0,-4.2,-150);scene.add(ground);
 /* ---------- 公路中心线：一条真的会拐弯的路 ---------- */
 /* 桩号上的曲率、走向、中心点提前积好；世上每样东西都按桩号摆，
    弯道就不是“贴图往后滑”，而是车真的在一条弯路上开 */
+const FORK_S=880, SUN_ROAD_S=934;
+let driveRoute='main';
 const ROAD_S0=-120,ROAD_S1=2600,ROAD_N=ROAD_S1-ROAD_S0+1;
 const roadTh=new Float32Array(ROAD_N),roadX=new Float32Array(ROAD_N),
       roadZ=new Float32Array(ROAD_N),roadK=new Float32Array(ROAD_N);
@@ -551,15 +553,22 @@ const roadTh=new Float32Array(ROAD_N),roadX=new Float32Array(ROAD_N),
        保留一段约 275 m 的平直喘息段：超车/会车/回正都靠它，
        其余路段依旧连续弯道，不会变成高速直线。 */
     const straight=ss(610,665,s)*(1-ss(940,995,s));
-    const k=(0.0046*Math.sin(s/96+0.4)+0.0029*Math.sin(s/38+2.1)
+    const baseK=(0.0046*Math.sin(s/96+0.4)+0.0029*Math.sin(s/38+2.1)
            +0.0017*Math.sin(s/17+4.2))*ramp*0.85*(1-straight);
+    const k=s<820?baseK:s<FORK_S?0:s<1030?
+      0.0075*ss(FORK_S,FORK_S+24,s)*(1-ss(1000,1030,s)):
+      baseK*ss(1060,1120,s);
     roadK[i]=k;roadTh[i]=a;roadX[i]=x;roadZ[i]=z;
     x+=Math.sin(a);z-=Math.cos(a);a+=k;
   }
 }
 /* 纵断面：缓上缓下的坡，过了坡顶视线会掉一下，跟真高速一样 */
-function elevOf(s){return 1.5*Math.sin(s/205+0.9)+0.8*Math.sin(s/93+3.1);}
-function roadAt(s){
+function elevOf(s){
+  const flat=s>=820&&s<=1100?0:Math.max(0,Math.min(1,s<820?(820-s)/90:(s-1100)/90));
+  const y=v=>1.5*Math.sin(v/205+0.9)+0.8*Math.sin(v/93+3.1);
+  return y(880)+(y(s)-y(880))*flat*flat*(3-2*flat);
+}
+function mainRoadAt(s){
   const i=Math.max(0,Math.min(ROAD_N-1.001,s-ROAD_S0));
   const i0=i|0,f=i-i0,j=Math.min(i0+1,ROAD_N-1);
   return {th:roadTh[i0]+(roadTh[j]-roadTh[i0])*f,
@@ -567,6 +576,26 @@ function roadAt(s){
           z:roadZ[i0]+(roadZ[j]-roadZ[i0])*f,
           k:roadK[i0]+(roadK[j]-roadK[i0])*f,
           y:elevOf(s)};
+}
+const forestRoad=[];
+{
+  const fork=mainRoadAt(FORK_S);
+  let a=fork.th,x=fork.x+Math.cos(a)*2.2,z=fork.z+Math.sin(a)*2.2;
+  for(let s=FORK_S;s<=ROAD_S1;s++){
+    const k=s<FORK_S+125?0:0.0023*Math.sin((s-FORK_S-125)/90);
+    forestRoad.push({x,z,th:a,k});x+=Math.sin(a);z-=Math.cos(a);a+=k;
+  }
+}
+function roadAt(s,route=driveRoute){
+  if(route==='main'||s<FORK_S)return mainRoadAt(s);
+  if(route==='junction'){
+    const p=mainRoadAt(FORK_S),d=s-FORK_S;
+    return {x:p.x+Math.sin(p.th)*d,z:p.z-Math.cos(p.th)*d,th:p.th,k:0,y:elevOf(s)};
+  }
+  const i=Math.max(0,Math.min(forestRoad.length-1.001,s-FORK_S));
+  const a=forestRoad[i|0],b=forestRoad[(i|0)+1],f=i%1;
+  return {x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f,th:a.th+(b.th-a.th)*f,
+    k:a.k+(b.k-a.k)*f,y:elevOf(s)};
 }
 /* 车道：咱们走右边那条，lateral=0 就是右车道正中间，不再骑着中线开。
    右车道 = 黄色中线(0) 到右侧白线内缘(≈3.60)，中心 = 1.80 m。 */
@@ -600,13 +629,13 @@ function poseUpdate(){
   pose.z=c.z+Math.sin(c.th)*lat;
   pose.y=c.y;
 }
-function roadPoint(s,lat){
-  const r=roadAt(s);
+function roadPoint(s,lat,route){
+  const r=roadAt(s,route);
   return {r,th:r.th,y:r.y,x:r.x+Math.cos(r.th)*lat,z:r.z+Math.sin(r.th)*lat};
 }
 /* 把“沿路第 s 米、偏出中心线 lat 米”的物件摆到车周围 */
-function placeRoad(obj,s,lat,yawOff){
-  const p=roadPoint(s,lat);
+function placeRoad(obj,s,lat,yawOff,route){
+  const p=roadPoint(s,lat,route);
   const dx=p.x-pose.x,dz=p.z-pose.z,c=Math.cos(pose.phi),sn=Math.sin(pose.phi);
   obj.position.x=dx*c+dz*sn;
   obj.position.y=p.y-pose.y+(obj.userData.yb||0);
@@ -937,8 +966,8 @@ function updateRibbon(rb){
   const step=(RIB_BEHIND+RIB_AHEAD)/N;
   const c=Math.cos(pose.phi),sn=Math.sin(pose.phi);
   for(let j=0;j<=N;j++){
-    const arc=S.dist-RIB_BEHIND+j*step;
-    const r=roadAt(arc);
+    const arc=Math.max(rb.start==null?ROAD_S0:rb.start,S.dist-RIB_BEHIND+j*step);
+    const r=roadAt(arc,rb.route||'main');
     const ca=Math.cos(r.th),sa=Math.sin(r.th);
     for(let e=0;e<2;e++){
       const lat=ribVal(e?rb.latB:rb.latA,arc),y=ribVal(e?rb.yB:rb.yA,arc);
@@ -2876,7 +2905,8 @@ window.__outdoor={chaser:{
 window.__outdoor.state=()=>({
   dist:+S.dist.toFixed(2),speed:+S.speed.toFixed(2),lateral:+S.lateral.toFixed(2),
   psi:+S.psi.toFixed(3),scrapeN:S.scrapeN,autoT:+S.autoT.toFixed(2),
-  chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),pan:+S.pan.toFixed(2),
+  chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserSpeed:+S.chaserSpeed.toFixed(2),
+  lookLocked,lookFallback,pan:+S.pan.toFixed(2),
   panT:+S.panT.toFixed(2),panCd:+S.panCd.toFixed(1),
   camMode:S.camMode,introActive:S.intro.active,introPhase:S.intro.phase,
   gateZ:+gateNarrow.position.z.toFixed(2),gateVisible:gateNarrow.visible});
@@ -4704,6 +4734,8 @@ const PARK_LAT=1.0;    /* 米，向右离开车道中心。原来 1.5 太深，�
 const keys={};
 addEventListener('keydown',e=>{
   keys[e.key.toLowerCase()]=true;
+  if(S.started&&!S.ended)initAudio();
+  if(driveStory.capture){e.preventDefault();return;}
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
   if(!S.started||S.ended)return;
   /* 困倦黑屏：Space / 回车 / 任意键唤醒。黑屏期间屏蔽其它操作，避免误触。 */
@@ -4774,7 +4806,7 @@ const look={yaw:0,pitch:0,ty:0,tp:0,drag:false,px:0,py:0,released:false,releaseT
 let lookLocked=false,lookFallback=false,lookIdleTimer=0,lookLastInput=0,lookLockTimer=0;
 const lookHintEl=document.getElementById('lookHint');
 function canUseMouseLook(){
-  return S.started&&!S.ended&&!S.intro.active&&!S.dozing&&!q.has('shot');
+  return S.started&&!S.ended&&!S.intro.active&&!S.dozing&&!driveStory.capture&&!q.has('shot');
 }
 function updateLookHint(){
   const show=!isTouch&&canUseMouseLook()&&!lookLocked&&!lookFallback;
@@ -4994,6 +5026,7 @@ function initAudio(){
 function stopAllAudio(){
   /* 结局页彻底静音：引擎、雨声、胎噪、风声、路噪和底噪都是循环节点，
      旧实现不会随结算页停止；同时关掉仍在播放的孙笑川 HTMLAudio。 */
+  try{stopSunAudio();}catch(e){}
   if(sunVoiceAudio){try{sunVoiceAudio.pause();sunVoiceAudio.currentTime=0;}catch(e){}sunVoiceAudio=null;}
   const dying=actx;
   [noiseGain,engGain,rainGain,tireGain,windGain,rumbleGain].forEach(g=>{
@@ -5164,18 +5197,19 @@ function updateRallyHud(dt){
   /* 发车后 6 秒宽限：静止开场第一帧不该一上来就红屏报警 */
   const runT=S.started?(performance.now()-S.startTime)/1000:0;
   const graceOK=runT>6||q.has('danger');
-  const finishCruise=S.dist>FINISH_S-170;     /* 终点收尾段：不再触发低速危险 */
+  const finishCruise=S.dist>FINISH_S-170||driveStory.phase!=='rear'; /* 终点/森林段不再触发低速危险 */
   if(S.started&&!S.ended&&!S.intro.active&&graceOK&&!finishCruise){
     if(S.speed*3.6<30)lowSpeedT+=dt;else lowSpeedT=Math.max(0,lowSpeedT-dt*1.8);
   }else lowSpeedT=0;
-  const danger=lowSpeedT>2.0;
+  const proximityDanger=S.chaserOn&&!finishCruise&&S.chaserGap<26;
+  const danger=lowSpeedT>2.0||proximityDanger;
   rDangerEl.classList.toggle('on',danger);
   rWarnEl.textContent=finishCruise?'终 点':'不要停';
   rWarnEl.classList.toggle('on',danger);
   if(danger&&!dangerWarned){
     dangerWarned=true;
-    toast('别停！它追上来了',1.6);
-    radioSay('速度掉下来了——后面那东西在靠近。走！');
+    toast(proximityDanger?'它贴到车尾了——冲出去！':'别停！它追上来了',1.6);
+    radioSay(proximityDanger?'后视镜里全是它——别松油门！':'速度掉下来了——后面那东西在靠近。走！');
     if(actx){const n=actx.currentTime;
       if(engLp)engLp.frequency.setValueAtTime(90,n);}
   }
@@ -5308,6 +5342,7 @@ function dozeOff(){
   if(S.wakeCount>1&&DIFF!=='easy'){finish('睡着了');return;}
   /* 黑屏期间 update() 直接返回：物理、计时、里程全停，只等唤醒输入 */
   S.dozing=true;S.dozeT=0.55;S.dozeStart=performance.now();S.dozeWoke=0;
+  updateSunAudio(0);
   /* 车滑到路肩：右车道内偏右一点点，顺路、静止。黑屏遮住这一下"靠边" */
   S.speed=0;S.recoilV=0;S.slipV=0;S.pendingImpulse=0;S.brk=0;
   S.psi=0;S.lateral=0.30;
@@ -5353,6 +5388,7 @@ function loop(now){
   if(chaserMixer)chaserMixer.update(dt);   /* 追逐者 GLB 动画驱动 */
   updateSunChaser(dt,now*0.001);
   updateCarDamage(dt);
+  updateLookHint();
   hideCity();           /* 压掉按里程复活的楼群/厂区/收费站，荒野路段才算真的换了 */
   render(dt);
 }
@@ -5390,6 +5426,9 @@ function syncDynamicColliders(dt){
   const hs=S.dist;
   /* 低速 / 停车时不放行任何前方事件：孤独和压迫感来自黑夜与后视镜黑影，
      不是"停着不动还一辆接一辆刷车"。已在路上的事件照常驶过并彻底回收。 */
+  if(driveRoute!=='main'||(hs>FORK_S-130&&hs<SUN_ROAD_S+100)){
+    S.trafficActive=false;S.oncomingActive=false;S.openPhase=3;return;
+  }
   const roaming=S.speed>=4.5&&lowSpeedT<1.2;
   if(S.dist>=300&&roaming){
     /* 开局前车：一次性剧情，驶离后 openPhase=3，永不重新生成 */
@@ -5493,8 +5532,8 @@ function update(dt){
   if(S.slipT>0)S.slipT=Math.max(0,S.slipT-dt);
   if(S.ctrlLagT>0)S.ctrlLagT=Math.max(0,S.ctrlLagT-dt);
   updateSparks(dt);
-  const asleep=!!S.dozing;
-  const up=!asleep&&(keys['w']||keys['arrowup']),down=!asleep&&(keys['s']||keys['arrowdown']);
+  const asleep=!!S.dozing||driveStory.capture;
+  const up=!asleep&&(keys['w']||keys['arrowup']),down=driveStory.capture||(!asleep&&(keys['s']||keys['arrowdown']));
   const left=!asleep&&(keys['a']||keys['arrowleft']),right=!asleep&&(keys['d']||keys['arrowright']);
   const brake=down,prevSpeed=S.speed;
   S.distPrev=S.dist;
@@ -5536,7 +5575,7 @@ function update(dt){
   S.speed-=S.speed*0.035*dt;
   S.speed=Math.max(0,Math.min(27,S.speed));
   /* 停车区里车停住了，按住 S 可以慢慢倒 */
-  const nearBay=!S.parked&&S.dist>1539.9&&S.dist<=1676.01;
+  const nearBay=!driveStory.capture&&!S.parked&&S.dist>1539.9&&S.dist<=1676.01;
   S.reverse=!!(brake&&nearBay&&S.speed<0.5);
   /* 方向盘给的是偏航率，不是横向位置：车往哪走，是偏航一点点积出来的 */
   const steerDir=(right?1:0)-(left?1:0);
@@ -5582,11 +5621,13 @@ function update(dt){
   if(S.contactCd>0)S.contactCd-=dt;
   if(S.contactCooldown>0)S.contactCooldown-=dt;
   if(S.dmgT>0)S.dmgT-=dt;
+  updateRouteChoice();
   syncDynamicColliders(dt);
   {
     const hs=S.dist,hlat=S.lateral+LANE_LAT;
     let hit=null;
     const consider=(b)=>{
+      if(driveRoute!=='main'||(S.dist>FORK_S-30&&S.dist<SUN_ROAD_S+65))return;
       /* 静态盒也按材质分质量：木桩/立柱/奶箱是轻障碍，护栏与水泥是重障碍 */
       if(b.mass==null){
         const lightBox=/路锥|木桩|立柱|占位奶箱/.test(b.tag);
@@ -5671,11 +5712,13 @@ function update(dt){
     look.ty+=(0-look.ty)*back;
     look.tp+=(0-look.tp)*back;
   }
-  look.yaw+=(look.ty-look.yaw)*Math.min(1,dt*(look.drag?14:4));
-  look.pitch+=(look.tp-look.pitch)*Math.min(1,dt*(look.drag?14:4));
+  const mouseMoving=lookLocked&&(performance.now()-lookLastInput<260);
+  const lookFollow=look.drag||mouseMoving?18:4;
+  look.yaw+=(look.ty-look.yaw)*Math.min(1,dt*lookFollow);
+  look.pitch+=(look.tp-look.pitch)*Math.min(1,dt*lookFollow);
   /* 玩家接管镜头时（拖动中 / 松手保留期 / 目标角未归零），自动回头与困意点头
      一律让权：autoK→0，追逐回头镜头和困意镜头都不得抢夺控制权。 */
-  const lookHold=look.drag||holdLeft>0||Math.abs(look.ty)>0.05||Math.abs(look.tp)>0.05;
+  const lookHold=look.drag||mouseMoving||holdLeft>0||Math.abs(look.ty)>0.05||Math.abs(look.tp)>0.05;
   autoK+=((lookHold?0:1)-autoK)*Math.min(1,dt*5);
   /* 侧视遮挡淡出：向右看(yaw<0)淡出右侧门板/A柱/后视镜壳，向左看(yaw>0)淡出左侧。
      以各件原始透明度为基准淡到 0.10，且透明件不写深度——彻底露出窗外停车场，
@@ -5898,97 +5941,7 @@ function update(dt){
   }
   carLightRefs.forEach(r=>{r.mat.opacity=r.base*(0.55+1.5*S.wet)*trafficVis;});
   follower.visible=false;        /* MAX_CHASERS=1：常驻跟随车永久下线 */
-  /* 被追：按里程节奏，900–1200 m 后视镜里第一次出现黑影。
-     低速停留过久会把它提前引来——压力来自后方黑影，不是多刷几辆前方车。
-     MAX_CHASERS=1：全场只有这一个追逐者，没有第二辆追击车。 */
-  if(!NOCHASER&&!S.ended){
-    /* 终点收尾段不再放追逐者：最后 160 m 只留终点门、雨声和引擎怠速 */
-    if(!S.chaserOn&&S.dist<FINISH_S-160&&(S.dist>900||lowSpeedT>2.5)){
-      S.chaserOn=true;S.chaserGap=34;S.chaserLowT=0;S.chaserHitT=0;S.chaserEye=0;
-      S.chaserSpeed=DIFF==='easy'?18.5:21.5;
-      S.chaserStage=1;S.panT=0;S.panCd=12;
-      playChaser('run');playSunVoice('start');
-      toast('别停');
-    }
-    /* 后续回头：只在它已经贴近时给一眼，不打断正常驾驶 */
-    if(S.chaserOn&&S.panCd>0)S.panCd-=dt;
-    if(S.chaserOn&&S.panT<=0&&S.panCd<=0&&S.chaserGap<38&&S.pan<0.05){
-      S.panT=1.7;S.panCd=18;
-    }
-    if(S.chaserOn){
-      const chaseT=Math.max(0,Math.min(1,(S.dist-900)/(FINISH_S-900)));
-      const chaseTarget=DIFF==='easy'
-        ?20.6+2.0*chaseT
-        :23.6+2.6*chaseT;
-      S.chaserSpeed+=(chaseTarget-S.chaserSpeed)*Math.min(1,dt*(DIFF==='easy'?.55:.82));
-      /* 终点段：悄悄拉开距离，别在冲线前抢戏 */
-      if(S.dist>FINISH_S-150){
-        S.chaserGap=Math.min(90,S.chaserGap+8*dt);
-        S.chaserEye=Math.max(0,S.chaserEye-dt*2.0);
-      }else{
-        /* 追逐距离由双方真实速度差决定：85 km/h 左右会被持续追近，
-           只有接近顶速才能把距离慢慢拉开。 */
-        S.chaserGap=Math.max(6,Math.min(90,
-          S.chaserGap+(S.speed-S.chaserSpeed)*dt*(DIFF==='easy'?.58:.84)));
-        if(lowSpeedT>2.0)S.chaserGap=Math.max(6,S.chaserGap-1.8*dt);
-      }
-      const close=S.chaserGap<20;
-      S.chaserEye=close?Math.min(1,S.chaserEye+dt*2.2):Math.max(0,S.chaserEye-dt*1.6);
-      /* 低速危险：压力来自后视镜里的黑影变亮、变近，而不是前方多刷几辆车 */
-      const dangerK=lowSpeedT>1.2?Math.min(1,(lowSpeedT-1.2)/1.5):0;
-      S.chaserEye=Math.max(S.chaserEye,dangerK);
-      heartbeatTick(dt,close||dangerK>0.4);
-      /* 四阶段：远处露出 → 侧后肩视角辨认 → 贴车施压 → 抓碰 */
-      if(S.chaserStage===1&&(S.chaserGap<29||S.dist>420)){
-        S.chaserStage=2;S.panT=1.25;S.panCd=10;
-        radioSay('不是看错，后面那个人就是孙笑川。');
-        tone(180,0.3,'sine',0.05);
-      }
-      if(S.chaserStage===2&&(S.chaserGap<18||S.dist>760)){
-        S.chaserStage=3;S.panT=0.7;S.panCd=10;
-        radioSay('孙笑川贴上来了。别停车，别回头。');
-        tone(140,0.4,'sine',0.07);
-      }
-      if(S.chaserGap<6.45&&S.chaserHitT<=0){
-        /* 真正贴尾时给一次短促撞击和甩脱窗口；不会每帧连续震屏。 */
-        S.chaserStage=4;S.chaserHitT=1.25;
-        S.chaserGap=18;S.chaserSpeed=Math.max(9,S.speed-0.4);
-        S.speed=Math.max(0,S.speed-2.8);
-        S.headShakeT=0.38;S.rollImpact=0.028;S.hudJitterT=0.42;
-        playChaser('stumble');playSunVoice('hit');
-        toast('别停');
-      }
-      if(S.chaserHitT>0){
-        S.chaserHitT-=dt;
-        if(S.chaserHitT<=0&&S.chaserStage===4){S.chaserStage=2;playChaser('run');}
-      }
-      /* 验收/截图用：把追逐者钉在后视镜能看清的距离，不让它被"抓碰"逻辑弹回 58 m */
-      if(S.chaserPin){S.chaserGap=13;S.chaserEye=1;}
-      /* 从右侧路肩追赶，侧后方镜头里能同时看见己方车尾和追兵。 */
-      const chaseLat=3.18-Math.min(0.55,Math.max(0,S.chaserStage-1)*0.18);
-      placeRoad(chaser,S.dist-S.chaserGap,chaseLat+Math.sin(tnow*0.37)*0.05,0);
-      chaserRoot.position.copy(chaser.position);
-      chaserRoot.quaternion.copy(chaser.quaternion);
-      /* 距离越近，镜里车灯越大越亮、眼睛越清楚；低速危险再顶一档 */
-      const nearK=Math.max(Math.min(1,(90-S.chaserGap)/80),dangerK*0.85);
-      chaser.userData.eyes.forEach(e=>{
-        e.material.opacity=0.03+0.97*S.chaserEye;
-        const k=0.7+0.9*nearK+0.5*S.chaserEye;e.scale.set(k,k,1);
-      });
-      chaser.userData.glows.forEach(g=>{
-        g.material.opacity=0.25+0.55*nearK;
-        const gs=0.55+0.9*nearK;g.scale.set(gs,gs,1);
-      });
-      /* 地面倒影铺垫：阶段≥2 才出现，越近越亮；颜色从钠黄逐渐转成病态冷绿 */
-      const reflK=Math.max(0,Math.min(1,(70-S.chaserGap)/55))*(S.chaserStage>=2?1:0);
-      placeRoad(chaserRefl,S.dist-16,2.2,0);
-      chaserRefl.visible=reflK>0.02&&S.wet>0.05;
-      chaserRefl.material.opacity=reflK*0.30*Math.max(0.35,S.wet);
-      chaserRefl.material.color.setHex(S.chaserStage>=3?0x8fe0a8:0xd8c08a);
-      /* 车灯色温随阶段变冷：也跟着改追逐者自己的灯晕 */
-      if(S.chaserStage>=3)chaser.userData.glows.forEach(g=>g.material.color.setHex(0xbfe8c8));
-    }
-  }else heartbeatTick(dt,false);
+  updateDriveStory(dt,tnow);
   /* 回望镜头：0.38 s 进去、0.30 s 回来。只在需要看后面时用，不常驻，
      否则第三人称一直在回头、没法开车。 */
   if(S.panT>0){S.panT-=dt;S.pan=Math.min(1,S.pan+dt*2.2);}
@@ -6120,7 +6073,7 @@ function update(dt){
     radioSay('下个加油站要不要进去缓一口？');}
   /* 猫：看得见、躲得开、也撞得到——三种结果各有动作和声音，不只靠文字。
      车头灯扫到它先照亮（发现），玩家刹车/变道算“躲”，撞上算“撞”。 */
-  if(!S.catDone){
+  if(!S.catDone&&driveStory.route==='home'&&S.dist>SUN_ROAD_S+35){
     if(!S.catOn&&S.dist>975&&S.dist<1012){S.catOn=true;S.catT=0;S.catReact='';}
     if(S.catOn){
       S.catT+=dt;
@@ -6362,18 +6315,17 @@ function update(dt){
   if(!S.ended&&!S.intro.active){
     if(!S.finishTold150&&S.dist>FINISH_S-150){
       S.finishTold150=true;
-      toast('CHECKPOINT · 前方终点 150 m',2.2);
-      radioSay('终点门到了，稳住方向，冲过去。');
+      toast(driveStory.route==='forest'?'林间旧楼':'前方住宅区',2.2);
     }
     if(!S.finishTold60&&S.dist>FINISH_S-60){
       S.finishTold60=true;
-      toast('前方终点 · 直接冲线',2.0);
+      toast(driveStory.route==='forest'?'这不是回家的路':'快到家了',2.0);
     }
     /* 冲线：一次性触发；哪怕 100 km/h 冲过去也立即结算，不再有隐藏墙 */
-    if(!S.finishTriggered&&S.dist>=FINISH_S){
+    if(!S.finishTriggered&&S.dist>=FINISH_S&&(driveStory.route!=='forest'||NOCHASER)){
       S.finishTriggered=true;
       S.finishCrossKmh=Math.max(0,Math.round((S.speed+S.recoilV)*3.6));
-      finish('冲线');
+      finish(driveStory.route==='forest'?'森林':'到家');
       return;
     }
   }
@@ -6452,6 +6404,7 @@ function update(dt){
   S.windRush+=(windWant-S.windRush)*Math.min(1,dt*2.4);
   if(windGain)windGain.gain.value=S.windRush;
   if(rumbleGain)rumbleGain.gain.value+=((0.006+(S.speed/27)*0.014*(S.windy?1.9:1))-rumbleGain.gain.value)*Math.min(1,dt*2);
+  updateForestEnding(dt);
 }
 /* 内后视镜单独走一遍 RT：~30 Hz，中间帧直接复用上一张倒影 */
 let mirrorT=-1e9;
@@ -6459,17 +6412,17 @@ function renderMirror(){
   mirrorMesh.visible=false;
   /* 座舱视角里，低速危险或追得很近时黑影才在镜中显形；正常行驶只有雾和路 */
   const gk=(S.chaserOn&&!S.ended&&S.camMode==='cockpit')
-    ?Math.max(S.chaserEye,Math.max(0,Math.min(1,(34-S.chaserGap)/24))*0.85):0;
+    ?Math.max(S.chaserEye,Math.max(0,Math.min(1,(45-S.chaserGap)/34))*0.92):0;
   mirrorGhostMat.opacity=gk*0.94;
   mirrorGhostLamps.forEach(m=>{m.material.opacity=gk*0.9;});
   mirrorGhostGrp.visible=gk>0.02;
   /* 追逐者以前只活在后视镜那一遍里：主渲染和辉光永远看不到它。
      但第三人称默认镜头根本看不到后视镜——玩家会被"后面有人"的台词搞得莫名其妙。
      现在主画面也一起渲染：正常跟车时它在车后视野外，一回头就真的能看见。 */
-  const chOn=(S.chaserOn&&!S.ended)||chaserDebugOn;
+  const chOn=singleSunVisible()||chaserDebugOn;
   const chReady=chaserVisualReady();
   /* 荒野版：黑影本体始终在场，雾里先看到两点车灯，再看到巨大轮廓 */
-  chaser.visible=chOn;
+  chaser.visible=false;
   chaserRoot.visible=chOn&&chReady;
   sunChaser.visible=chOn&&sunSpriteOK&&!chaserGlbOK;
   const rearWasVisible=chaseRearFrame.visible;
@@ -6481,7 +6434,7 @@ function renderMirror(){
   renderer.setRenderTarget(null);
   chaseRearFrame.visible=rearWasVisible;
   mirrorGhostGrp.visible=ghostWasVisible;
-  chaser.visible=chOn;
+  chaser.visible=false;
   chaserRoot.visible=chOn&&chReady;
   sunChaser.visible=chOn&&sunSpriteOK&&!chaserGlbOK;
   mirrorMesh.visible=true;
@@ -6585,7 +6538,8 @@ function postPass(mat,target){
 }
 function render(dt){
   const now=performance.now();
-  hideCity();           /* 任何入口（主循环 / 截图预热 / 调试 shot）都在这里兜底 */
+  hideCity();
+  updateStoryScene();
   compMat.uniforms.uGlitch.value=Math.min(1,(S.glitchT||0)*2.4);
   if(now-mirrorT>=33){mirrorT=now;renderMirror();}
   renderer.setRenderTarget(rtScene);
@@ -6880,6 +6834,7 @@ function finish(kind){
     '烤串　<b>'+(S.bbq?'吃了两串':'没停')+'</b>'+
     (S.fines?'<br>超速　<b>被拍 '+S.fines+' 次</b>':'')+
     '<br>评价　<b>'+rating+'</b>';
+  ticketEl.innerHTML+='<br>路线　<b>'+(driveStory.route==='forest'?'直行 · 森林小路':'右弯 · 正常道路')+'</b><br>路口　<b>'+(driveStory.hit?'撞过了孙笑川':driveStory.route==='forest'?'避开了孙笑川':'驶过右弯')+'</b>';
   const endSub=document.getElementById('endSub');
   if(kind==='睡着了'){
     document.getElementById('end').querySelector('h2').textContent='在路边睡着了';
@@ -6887,13 +6842,19 @@ function finish(kind){
   }else if(kind==='冲线'){
     document.getElementById('end').querySelector('h2').textContent='冲线完成';
     endSub.textContent='你穿过了终点线，这一趟夜班结束了。';
+  }else if(kind==='同乘'){
+    document.getElementById('end').querySelector('h2').textContent='副驾驶有人';
+    endSub.textContent='你不是一个人回家。';ticketEl.style.display='none';
+  }else if(kind==='森林'){
+    document.getElementById('end').querySelector('h2').textContent='这不是回家的路';
+    endSub.textContent='你没有右转。避开那个人以后，沥青变成了泥土。森林尽头，只有一栋熄灯的旧楼。';
   }else{
     document.getElementById('end').querySelector('h2').textContent='到家了';
-    endSub.textContent='';
+    endSub.textContent=driveStory.hit?'你沿右弯撞过了孙笑川，继续顺着正常道路回家。后视镜里再也没有人。':'你沿着右弯的正常道路，回到了家。';
   }
   /* 重新开始 / 返回停车场：两个按钮都可见（结束界面不再只有一个按钮） */
   const back=document.getElementById('btnBack');
-  if(back){back.style.display='';back.textContent='返回停车场';}
+  if(back){back.style.display='';back.textContent='返回游戏首页';}
   /* 结束时把终点/追逐相关的 HUD 视觉全部收掉，避免"已完成"还挂着"不要停" */
   rDangerEl.classList.remove('on');rWarnEl.classList.remove('on');
   if(elGuide)elGuide.style.display='none';
@@ -7028,6 +6989,9 @@ window.__game={
     renderer.getContext().finish();
     return +((performance.now()-t0)/n).toFixed(2);}
 };
+</script>
+<script src="assets/outdoor-story.js"></script>
+<script>
 if(q.has('shot')){
   startGame();
   S.speed=15;S.dist=Math.max(S.dist,+q.get('dist')||260);S.drowsy=+(q.get('drow')||12);
@@ -7082,6 +7046,13 @@ if(q.has('shot')){
       S.lateral=-4.55-LANE_LAT;S.psi=-0.06;
     }
   }
+}
+/* 验收用：直接切到森林支路，验证场景、追逐人群与同乘结局。 */
+if(q.has('foresttest')){
+  driveStory.route='forest';
+  changeRoadReference('forest');
+  driveStory.forestPhase='chase';
+  driveStory.crowdGap=72;
 }
 const btnBackEl=document.getElementById('btnBack');
 btnBackEl.onclick=()=>{location.href='index.html';};
