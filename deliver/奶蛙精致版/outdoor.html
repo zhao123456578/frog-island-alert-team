@@ -16,6 +16,7 @@
     image-rendering:pixelated;image-rendering:crisp-edges;
     touch-action:none;cursor:grab;}
   #view.grabbing{cursor:grabbing;}
+  #view.pointer-locked{cursor:none;}
   #scan{position:fixed;inset:0;pointer-events:none;
     background:repeating-linear-gradient(0deg,rgba(0,0,0,.06) 0 1px,transparent 1px 3px);
     mix-blend-mode:multiply;opacity:.5;}
@@ -149,6 +150,12 @@
   #introSkip{position:fixed;right:16px;top:14px;z-index:6;font-size:11px;letter-spacing:.1em;
     color:rgba(207,210,192,.5);opacity:0;visibility:hidden;transition:opacity .5s,visibility .5s;pointer-events:none;}
   #introSkip.on{opacity:1;visibility:visible;}
+  #lookHint{position:fixed;left:50%;bottom:12%;transform:translateX(-50%);z-index:7;
+    display:none;padding:9px 17px;text-align:center;pointer-events:auto;cursor:pointer;
+    color:#e8e3cf;background:rgba(7,9,8,.84);border:1px solid rgba(255,170,74,.65);
+    box-shadow:0 5px 22px rgba(0,0,0,.55);font-size:12px;line-height:1.7;letter-spacing:.08em;}
+  #lookHint.on{display:block;}
+  #lookHint b{color:#ffbd62;font-weight:700;}
   /* 横屏矮屏（手机横放）：困意条挪到左列堆叠，别压住车尾；后视监控收小 */
   @media (max-height:450px){
     #touch.on ~ #hud #hDrow{left:14px;top:84px;bottom:auto;width:170px;}
@@ -220,9 +227,9 @@
 <div id="hud">
   <div class="pill" id="hDist">距小区 1.59 km / 1.59 km</div>
   <div class="pill" id="hSpeed">0 km/h</div>
-  <div class="pill" id="hRadio">电台 <b>深夜交通台</b><br><span id="hRadioLine"></span></div>
+  <div class="pill" id="hRadio">电台 <b id="hRadioName">深夜交通台</b><br><span id="hRadioLine"></span></div>
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
-  <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · 滚轮 / [ ] 调镜头高度 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · C 切换镜头 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
+  <div class="pill" id="hKeys"><span class="kbdHelp">鼠标环视 · 滚轮 / [ ] 调镜头高度 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · C 切换镜头 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
   <div id="hGuide"></div>
   <div id="rHud" aria-hidden="true">
     <div id="rArrow">↑</div>
@@ -237,14 +244,15 @@
 </div>
 <div id="rearCamHud" aria-hidden="true"><canvas id="rearCamCanvas" width="472" height="164"></canvas></div>
 <div id="toast"></div>
+<div id="lookHint"><b>点击画面锁定鼠标</b><br>鼠标环视 · Esc 释放</div>
 <div id="introHint"><span class="k" id="introKey">E</span><span id="introHintText">拉开车门</span></div>
 <div id="introSkip">点击 / 任意键 跳过</div>
 <div id="title">
   <div class="shotline">NIGHT RALLY · 不要停</div>
   <h1>不要停</h1>
   <div class="sub">奶蛙 · 午夜荒野拉力赛</div>
-  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 转向 · C 切换驾驶舱/追车<br>低于 30 KM/H 持续数秒 · 它会追上来<br><span style="opacity:.72">跟着橙色箭头走，别停。</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 转向<br>跟着橙色箭头走，别停。</span></div>
-  <div id="diffPick" style="display:none">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
+  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 转向 · 鼠标环视 · C 切换驾驶舱/追车<br>低于约 80 KM/H 它会持续逼近 · 保持速度才能甩开<br><span style="opacity:.72">点击画面锁定鼠标 · Esc 释放 · 跟着橙色箭头走，别停。</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 转向<br>触摸拖动环视 · 跟着橙色箭头走，别停。</span></div>
+  <div id="diffPick">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
   <button id="btnStart">发动引擎 →</button>
 </div>
 <div id="end">
@@ -284,8 +292,8 @@ if(new URLSearchParams(location.search).has('dbgerr')){
 const q=new URLSearchParams(location.search);
 /* 夜班时间线与工厂共用（assets/shift.js）；from=factory 时带上工厂带过来的本班成绩 */
 const SHIFT=window.MF_SHIFT||{end:'02:47'};
-/* 难度：默认 easy（给评委，能走到结局）；normal 为设计强度。标题页可切。 */
-let DIFF=q.get('diff')==='normal'?'normal':'easy';
+/* 难度：默认 normal；easy 可在标题页或 ?diff=easy 选择。 */
+let DIFF=q.get('diff')==='easy'?'easy':'normal';
 /* ?nochaser：关掉“被追”压力机制，用于调试和对比截图 */
 const NOCHASER=q.has('nochaser');
 const FROM_FACTORY=q.get('from')==='factory';
@@ -396,7 +404,12 @@ const roadTex=mkTex(512,2048,(x,w,h)=>{
   }
 });
 roadTex.repeat.set(1,1);
-roadTex.anisotropy=16;
+/* 近处仍用 Nearest 保留 PS1 硬边；远处改走 mipmap，避免高密度沥青颗粒在
+   缩小采样时一格一格跳成黑块。层间用线性过渡，纹素本身仍保持像素风。 */
+roadTex.generateMipmaps=true;
+roadTex.minFilter=THREE.NearestMipmapLinearFilter;
+roadTex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+roadTex.needsUpdate=true;
 const groundTex=mkTex(256,256,(x,w,h)=>{
   x.fillStyle='#16180f';x.fillRect(0,0,w,h);
   for(let i=0;i<5200;i++){const g=(18+Math.random()*22)|0;
@@ -2785,12 +2798,16 @@ function initSunSprite(){
   });
 })();
 function chaserVisualReady(){return chaserGlbOK||sunSpriteOK;}
+let sunVoiceAudio=null;
 function playSunVoice(kind){
   try{
+    if(sunVoiceAudio){sunVoiceAudio.pause();sunVoiceAudio.currentTime=0;}
     const a=new Audio(kind==='hit'
       ?'assets/chaser/sunxiaochuan_attitude.wav'
       :'assets/chaser/sunxiaochuan_roar.wav');
+    sunVoiceAudio=a;
     a.volume=kind==='hit'?0.34:0.28;
+    a.onended=()=>{if(sunVoiceAudio===a)sunVoiceAudio=null;};
     const p=a.play();if(p&&p.catch)p.catch(()=>{});
   }catch(e){}
 }
@@ -4635,7 +4652,7 @@ const S={
   openZ:0,openV:0,openBt:0,openPhase:0,openDone:false,openBrakeAt:-1,
   _workPass:false,_camRes:false,_brokenPass:false,
   dozing:false,dozeT:0,dozeStart:0,dozeProtectT:0,dozeWoke:0,wakeCount:0,
-  chaserOn:false,chaserGap:120,chaserLowT:0,chaserHitT:0,chaserEye:0,
+  chaserOn:false,chaserGap:120,chaserSpeed:0,chaserLowT:0,chaserHitT:0,chaserEye:0,
   chaserStage:0,   /* 追逐升级阶段 0未出现 1镜中异样 2跟车灯 3逼近 */
   pan:0,panT:0,panCd:0,  /* 第三人称"回头"镜头：追逐者必须真的在主画面里 */
   psi:0,accS:0,latS:0,bob:0,bobV:0,seam:0,gear:0,gearDip:0,rpm:0.2,
@@ -4750,10 +4767,66 @@ if(isTouch){
   /* 开场期间把"停"按钮当"上车"用 */
 }
 
-/* ---------- 环视：拖动画面看副驾、后视镜，松手再平滑回正 ----------
+/* ---------- 环视：优先鼠标锁定，浏览器拒绝时自动退回拖动 ----------
    松手不立即清零：行驶也先保留 1.4s 的观察时间、停车保留 2.4s，
    到点后把目标角缓慢收回 0，避免瞬间拉回造成眩晕。 */
 const look={yaw:0,pitch:0,ty:0,tp:0,drag:false,px:0,py:0,released:false,releaseT:0};
+let lookLocked=false,lookFallback=false,lookIdleTimer=0,lookLastInput=0,lookLockTimer=0;
+const lookHintEl=document.getElementById('lookHint');
+function canUseMouseLook(){
+  return S.started&&!S.ended&&!S.intro.active&&!S.dozing&&!q.has('shot');
+}
+function updateLookHint(){
+  const show=!isTouch&&canUseMouseLook()&&!lookLocked&&!lookFallback;
+  lookHintEl.classList.toggle('on',show);
+}
+function enableLookFallback(){
+  clearTimeout(lookLockTimer);
+  lookFallback=true;lookLocked=false;
+  canvas.classList.remove('pointer-locked');
+  lookHintEl.innerHTML='<b>按住左键拖动环视</b><br>当前浏览器不支持鼠标锁定';
+  lookHintEl.style.pointerEvents='none';
+  lookHintEl.classList.add('on');
+  setTimeout(()=>{if(lookFallback&&!look.drag)lookHintEl.classList.remove('on');},3200);
+}
+function requestLookLock(){
+  if(isTouch||lookLocked||lookFallback||!canUseMouseLook())return;
+  clearTimeout(lookLockTimer);
+  /* 部分内嵌浏览器既不授权、也不触发 pointerlockerror；超时后自动降级。 */
+  lookLockTimer=setTimeout(()=>{
+    if(!lookLocked&&!lookFallback)enableLookFallback();
+  },800);
+  const plain=()=>{
+    try{
+      const p=canvas.requestPointerLock();
+      if(p&&typeof p.catch==='function')p.catch(enableLookFallback);
+    }catch(e){enableLookFallback();}
+  };
+  try{
+    const p=canvas.requestPointerLock({unadjustedMovement:true});
+    if(p&&typeof p.catch==='function')p.catch(err=>{
+      if(err&&err.name==='NotSupportedError')plain();else enableLookFallback();
+    });
+  }catch(e){plain();}
+}
+document.addEventListener('pointerlockchange',()=>{
+  clearTimeout(lookLockTimer);
+  lookLocked=document.pointerLockElement===canvas;
+  canvas.classList.toggle('pointer-locked',lookLocked);
+  if(lookLocked){look.drag=false;look.released=false;lookLastInput=performance.now();}
+  else if(!isTouch){look.released=true;look.releaseT=performance.now();}
+  updateLookHint();
+});
+document.addEventListener('pointerlockerror',()=>{clearTimeout(lookLockTimer);enableLookFallback();});
+document.addEventListener('mousemove',e=>{
+  if(!lookLocked||!canUseMouseLook())return;
+  look.ty=Math.max(-Math.PI,Math.min(Math.PI,look.ty-e.movementX*0.0022));
+  look.tp=Math.max(-1.05,Math.min(0.80,look.tp-e.movementY*0.0018));
+  look.released=false;lookLastInput=performance.now();
+  clearTimeout(lookIdleTimer);
+  lookIdleTimer=setTimeout(()=>{look.released=true;look.releaseT=performance.now();},900);
+});
+lookHintEl.addEventListener('click',requestLookLock);
 /* 追车镜头现场微调，页面内持续生效（不刷新）：
    lift = 相机高出车顶多少米（默认 1.0，落在要求的 0.9~1.1 区间；
           下限 0.35 保证永远在车顶之上，不会扎进车顶/车体）；
@@ -4808,12 +4881,13 @@ function chaseClearance(tx,ty,tz){
 canvas.addEventListener('pointerdown',e=>{
   /* 开场：点画面即推进/拉门/跳过，不做环视 */
   if(S.intro.active){introInteract();return;}
+  if(!isTouch&&!lookLocked&&!lookFallback&&canUseMouseLook()){requestLookLock();return;}
   look.drag=true;look.released=false;look.px=e.clientX;look.py=e.clientY;
   canvas.classList.add('grabbing');
   try{if(canvas.setPointerCapture)canvas.setPointerCapture(e.pointerId);}catch(err){}
 });
 canvas.addEventListener('pointermove',e=>{
-  if(!look.drag)return;
+  if(!look.drag||lookLocked)return;
   /* 水平 ±180°（绕车旋转，见 update）；垂直向下约 66°/向上约 40°，全量作用到相机 */
   look.ty=Math.max(-Math.PI,Math.min(Math.PI,look.ty-(e.clientX-look.px)*0.0042));
   look.tp=Math.max(-1.05,Math.min(0.80,look.tp-(e.clientY-look.py)*0.0034));
@@ -4852,14 +4926,15 @@ const STATIONS=[
     '听众朋友，请把座椅靠背调直。',
     '本期节目到此结束——晚安。']}
 ];
-const radioEl=document.getElementById('hRadio');
-let radioLineEl=document.getElementById('hRadioLine');
+const radioNameEl=document.getElementById('hRadioName');
+const radioLineEl=document.getElementById('hRadioLine');
 let lineTimer=0,lineIdx=0;
 function setStation(i){
   if(i===S.station&&S.started)return;
   S.station=i;S.switchCount++;lineIdx=0;lineTimer=0;
   const st=STATIONS[i];
-  radioEl.innerHTML='电台 <b>'+st.name+'</b><br><span id="hRadioLine"></span>';
+  radioNameEl.textContent=st.name;
+  radioLineEl.textContent='';
   drawRadio('---');
   staticBurst(0.32);
   if(!q.has('shot'))toast('调到 · '+st.name+' '+st.freq);
@@ -4916,6 +4991,33 @@ function initAudio(){
     wiperBuf=buf;
   }catch(e){}
 }
+function stopAllAudio(){
+  /* 结局页彻底静音：引擎、雨声、胎噪、风声、路噪和底噪都是循环节点，
+     旧实现不会随结算页停止；同时关掉仍在播放的孙笑川 HTMLAudio。 */
+  if(sunVoiceAudio){try{sunVoiceAudio.pause();sunVoiceAudio.currentTime=0;}catch(e){}sunVoiceAudio=null;}
+  const dying=actx;
+  [noiseGain,engGain,rainGain,tireGain,windGain,rumbleGain].forEach(g=>{
+    if(g){try{g.gain.cancelScheduledValues(0);g.gain.value=0;}catch(e){}}
+  });
+  actx=null;noiseGain=null;engOsc=null;engOsc2=null;engLp=null;engGain=null;
+  rainGain=null;wiperBuf=null;tireGain=null;windGain=null;rumbleGain=null;
+  heartT=0;wiperCycle=-1;
+  if(dying&&dying.state!=='closed'){
+    try{
+      const closing=dying.close();
+      if(closing&&typeof closing.catch==='function')closing.catch(()=>{});
+    }catch(e){}
+  }
+}
+document.addEventListener('visibilitychange',()=>{
+  if(S.ended)return;
+  if(document.hidden){
+    if(sunVoiceAudio)sunVoiceAudio.pause();
+    if(actx)try{actx.suspend();}catch(e){}
+  }else if(actx&&S.started){
+    try{actx.resume();}catch(e){}
+  }
+});
 function wiperSqueak(){
   if(!actx||!wiperBuf)return;
   const t=actx.currentTime;
@@ -5371,7 +5473,7 @@ function syncDynamicColliders(dt){
       vs:S.openV,rest:0.20,fric:0.55,kind:'car',obj:openCar});
   if(S.chaserOn&&S.chaserGap<18&&MAX_CHASERS>0)
     dynBox(sOf(S.chaserGap),3.0,3.7,1.8,{tag:'追逐黑影',mass:1600,
-      vs:S.speed+2,rest:0.25,fric:0.60,kind:'chaser',obj:chaser});
+      vs:S.chaserSpeed,rest:0.25,fric:0.60,kind:'chaser',obj:chaser});
 }
 
 function update(dt){
@@ -5803,6 +5905,7 @@ function update(dt){
     /* 终点收尾段不再放追逐者：最后 160 m 只留终点门、雨声和引擎怠速 */
     if(!S.chaserOn&&S.dist<FINISH_S-160&&(S.dist>900||lowSpeedT>2.5)){
       S.chaserOn=true;S.chaserGap=34;S.chaserLowT=0;S.chaserHitT=0;S.chaserEye=0;
+      S.chaserSpeed=DIFF==='easy'?18.5:21.5;
       S.chaserStage=1;S.panT=0;S.panCd=12;
       playChaser('run');playSunVoice('start');
       toast('别停');
@@ -5813,20 +5916,22 @@ function update(dt){
       S.panT=1.7;S.panCd=18;
     }
     if(S.chaserOn){
+      const chaseT=Math.max(0,Math.min(1,(S.dist-900)/(FINISH_S-900)));
+      const chaseTarget=DIFF==='easy'
+        ?20.6+2.0*chaseT
+        :23.6+2.6*chaseT;
+      S.chaserSpeed+=(chaseTarget-S.chaserSpeed)*Math.min(1,dt*(DIFF==='easy'?.55:.82));
       /* 终点段：悄悄拉开距离，别在冲线前抢戏 */
       if(S.dist>FINISH_S-150){
         S.chaserGap=Math.min(90,S.chaserGap+8*dt);
         S.chaserEye=Math.max(0,S.chaserEye-dt*2.0);
+      }else{
+        /* 追逐距离由双方真实速度差决定：85 km/h 左右会被持续追近，
+           只有接近顶速才能把距离慢慢拉开。 */
+        S.chaserGap=Math.max(6,Math.min(90,
+          S.chaserGap+(S.speed-S.chaserSpeed)*dt*(DIFF==='easy'?.58:.84)));
+        if(lowSpeedT>2.0)S.chaserGap=Math.max(6,S.chaserGap-1.8*dt);
       }
-      /* 不要停：低速警告触发后，追逐压力明显加大 */
-      if(S.speed<40/3.6)S.chaserLowT+=dt;else S.chaserLowT=0;
-      if(lowSpeedT>2.0)S.chaserGap=Math.max(7,S.chaserGap-9*dt);
-      /* 只有停车或明显低于40km/h才会被追上；正常速度可以逐渐拉开。
-         不再为了“演一下追逐”强制把距离从44m瞬间压到14m。 */
-      if(S.chaserLowT>=2.2)S.chaserGap-=5.2*dt;
-      else if(S.drowsy>70)S.chaserGap-=2.2*dt;
-      else S.chaserGap+=1.1*dt;
-      S.chaserGap=Math.max(7,Math.min(90,S.chaserGap));
       const close=S.chaserGap<20;
       S.chaserEye=close?Math.min(1,S.chaserEye+dt*2.2):Math.max(0,S.chaserEye-dt*1.6);
       /* 低速危险：压力来自后视镜里的黑影变亮、变近，而不是前方多刷几辆车 */
@@ -5844,10 +5949,12 @@ function update(dt){
         radioSay('孙笑川贴上来了。别停车，别回头。');
         tone(140,0.4,'sine',0.07);
       }
-      if(S.chaserGap<10&&S.chaserHitT<=0&&S.chaserStage<4){
-        /* 贴上时不再写死掉速、也不弹回 58 m。真正的顶撞由动态盒按
-           相对速度做双向冲量（尾部接触给向前推力 + 轻微方向失控）。 */
-        S.chaserStage=4;S.chaserHitT=3.2;
+      if(S.chaserGap<6.45&&S.chaserHitT<=0){
+        /* 真正贴尾时给一次短促撞击和甩脱窗口；不会每帧连续震屏。 */
+        S.chaserStage=4;S.chaserHitT=1.25;
+        S.chaserGap=18;S.chaserSpeed=Math.max(9,S.speed-0.4);
+        S.speed=Math.max(0,S.speed-2.8);
+        S.headShakeT=0.38;S.rollImpact=0.028;S.hudJitterT=0.42;
         playChaser('stumble');playSunVoice('hit');
         toast('别停');
       }
@@ -6225,7 +6332,6 @@ function update(dt){
   lineTimer+=dt;
   if(lineTimer>8){lineTimer=0;lineIdx++;
     if(S.dist>1050&&Math.random()<0.5)setStation((S.station+1+((Math.random()*3)|0))%4);}
-  radioLineEl=document.getElementById('hRadioLine');
   if(radioLineEl){
     if(S.radioSayT>0){S.radioSayT-=dt;radioLineEl.textContent=S.radioSayText;}
     else{
@@ -6724,6 +6830,7 @@ function startGame(skipIntro){
       titleEl.style.opacity='0';setTimeout(()=>titleEl.style.display='none',500);
     }
     initAudio();hud.classList.add('on');
+    updateLookHint();
     camera.position.set(DRIVER_X,1.26,0.22);
     camera.rotation.set(0,0,0);
     look.yaw=look.ty=look.pitch=look.tp=0;
@@ -6746,6 +6853,10 @@ function setupHudFade(){
 function finish(kind){
   if(S.ended)return;
   S.ended=true;S.started=false;
+  stopAllAudio();
+  /* 结局页会把鼠标锁在画布里；主动释放，否则结算按钮点不到。 */
+  try{if(document.pointerLockElement)document.exitPointerLock();}catch(e){}
+  lookHintEl.classList.remove('on');
   const mins=Math.max(1,Math.round((performance.now()-S.startTime)/60000*10)/10);
   const risk=S.bumps*2+S.cones*2+S.parkTries+S.fines*2+(S.catHit?1:0)+(S.peakDrowsy>=85?2:0)+S.severe*4;
   const rating=kind==='冲线'?(risk<=2?'干净冲线':risk<=6?'有惊无险':'一路磕碰，总算冲线')
@@ -6794,10 +6905,9 @@ function finish(kind){
   hud.classList.remove('on');
   rearCamHud.classList.remove('on');
 }
-document.getElementById('btnStart').onclick=()=>startGame(false);
-/* 默认打开即坐进驾驶舱：不再需要点按钮才看到第一帧。
-   只留 3 秒极简提示，之后完全交给画面。 */
-if(!FROM_FACTORY&&!q.has('intro')&&!q.has('shot'))
+document.getElementById('btnStart').onclick=()=>{startGame(false);requestLookLock();};
+/* 必须有明确点击：既让玩家选择难度，也让浏览器在可信用户手势里授予 Pointer Lock。 */
+if(q.has('direct')&&!FROM_FACTORY&&!q.has('shot'))
   setTimeout(()=>{if(!S.started)startGame('brief');},260);
 document.getElementById('btnAgain').onclick=()=>{
   const u=new URL(location.href);u.searchParams.set('diff',DIFF);location.href=u.toString();
@@ -6837,7 +6947,8 @@ window.__game={
     finishDist:+Math.max(0,FINISH_S-S.dist).toFixed(1),
     toastT:+toastT.toFixed(2),toastOn:toastEl.classList.contains('on'),
     toastText:toastEl.textContent,
-    chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
+    chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserSpeed:+S.chaserSpeed.toFixed(2),
+    chaserEye:+S.chaserEye.toFixed(2),lookLocked,lookFallback,
     chaserVisual:chaserVisualReady(),chaserGlbOK,sunSpriteOK,
     chaserLowT:+S.chaserLowT.toFixed(2),chaserStage:S.chaserStage,
     catOn:S.catOn,catDone:S.catDone,catReact:S.catReact,catSeen:S.catSeen,
@@ -6945,6 +7056,7 @@ if(q.has('shot')){
     camera.rotation.y=look.yaw;camera.rotation.x=look.pitch;}
   if(q.has('chaserat')){
     S.chaserOn=true;S.chaserGap=Math.max(8,+q.get('chaserat')||18);
+    S.chaserSpeed=DIFF==='easy'?20.6:23.6;
     S.chaserStage=+(q.get('chaserstage')||2);
     S.panT=+(q.get('panhold')||0);
     S.pan=+(q.get('pan')||0);
