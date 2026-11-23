@@ -17,6 +17,8 @@ const ENDINGS = {
     text: "主泵停了。十二只奶蛙排成一队走向公路，没有回头。\n汽水有点甜，但没有奶味。\n——今天也没有被做成奶昔。" },
   shake: { name: "草莓奶昔 S 级", tag: "搞笑结局", color: "#e06b9e",
     text: "口感 S · 甜度 A · 奶蛙含量 100%\n恭喜解锁隐藏商品：奶蛙味奶昔 — 现已上市 — 限量供应。\n——你被消费得很彻底。" },
+  caught: { name: "第 13 号原料", tag: "坏结局", color: "#2a0d0d",
+    text: "他打了两下。\n第一下你还能听见自己的心跳，第二下只剩主泵的嗡鸣。\n——流水线上多了一瓶没有标签的奶。" },
   manager: { name: "新厂长", tag: "坏结局", color: "#3a1020",
     text: "母液涌进身体。十二只穿黑西装的奶蛙齐声说：欢迎新厂长。\n你想说话，发出的却是一声——哞。\n——它从来没打算放你走。" },
   god: { name: "蛙神降临", tag: "隐藏结局", color: "#4a2a5a",
@@ -33,28 +35,23 @@ const LS_KEY = "mf_endings_v1";
 function newState() {
   const bottles = {}; FLAVORS.forEach(f => bottles[f] = false);
   return {
-    inv: { coin: 0, key: false, floorKey: false, flashlight: false,
+    inv: { coin: 0, key: false, floorKey: false, flashlight: false, backpack: false, corridorKey: false,
       tapes: [false, false, false], bottles },
     flags: { pigeonSaved: false, valveSolved: false, truthHeard: 0,
       tapesInserted: 0, slots: [false, false, false, false, false],
-      altarOpen: false, metVend: false },
+      altarOpen: false, metVend: false,
+      recipeCards: [false, false, false], recipeFound: false },
     milk: 78, lactose: 100, happy: 0, flashOn: false, dead: false,
     startAt: performance.now(),
   };
 }
 let state = newState();
-function resetState() { state = newState(); refreshPanel(); }
+function resetState() { closeDialog(); state = newState(); refreshPanel(); }
 function elapsed() { return (performance.now() - state.startAt) / 1000; }
-const SHIFT = window.MF_SHIFT || { end: "02:47" };
-let clockFrozen = false;
 function clockStr() {
-  if (clockFrozen) return SHIFT.end;
-  const m = 13 + Math.floor(elapsed() / 60);
-  if (m >= 47) return SHIFT.end;
-  const s = Math.floor(elapsed() % 60);
+  const m = 13 + Math.floor(elapsed() / 60), s = Math.floor(elapsed() % 60);
   return "02:" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
 }
-function freezeClock() { clockFrozen = true; refreshPanel(); }
 function tapeCount() { return state.inv.tapes.filter(Boolean).length; }
 function bottleCount() { return FLAVORS.filter(f => state.inv.bottles[f]).length; }
 function slotCount() { return state.flags.slots.filter(Boolean).length; }
@@ -100,9 +97,6 @@ const CSS = `
 #mf-ending .txt{font-size:14px;line-height:2.1;color:rgba(255,255,255,.88);margin:26px 0 34px;white-space:pre-line;max-width:560px;}
 #mf-ending button{font-family:inherit;cursor:pointer;font-size:12px;padding:10px 26px;letter-spacing:.1em;
   background:rgba(0,0,0,.35);color:#fff;border:1px solid rgba(255,255,255,.5);}
-#mf-ending .ends{display:flex;gap:12px;justify-content:center;}
-#mf-ending button.go{background:rgba(255,194,122,.92);color:#1a1a14;border-color:transparent;font-weight:700;}
-#mf-ending button.go:hover{background:#ffd39a;}
 #mf-dance{position:fixed;inset:0;z-index:55;display:none;align-items:center;justify-content:center;
   flex-direction:column;background:rgba(20,8,26,.88);}
 #mf-dance.on{display:flex;}
@@ -126,8 +120,7 @@ function initUI() {
     <div id="mf-hint"></div><div id="mf-toast"></div>
     <div id="mf-dialog"><div class="who"></div><div class="line"></div><div class="next">E / 点击 继续 ▼</div></div>
     <div id="mf-confirm"><div class="q"></div><button class="yes">确定</button><button class="no">再想想</button></div>
-    <div id="mf-ending"><div class="tag"></div><div class="name"></div><div class="txt"></div>
-      <div class="ends"><button class="back">返回</button><button class="go">下班 · 开车回家 →</button></div></div>
+    <div id="mf-ending"><div class="tag"></div><div class="name"></div><div class="txt"></div><button>返回</button></div>
     <div id="mf-dance"><div class="t">奶 蛙 舞 · 跟 上 节 拍</div><div class="arrow"></div><div class="seq"></div><div class="bar"><i></i></div><div class="hint">按对应方向键 · 错拍或超时即失败</div>
       <div class="dbtns"><button data-d="ArrowLeft">←</button><button data-d="ArrowUp">↑</button><button data-d="ArrowDown">↓</button><button data-d="ArrowRight">→</button></div></div>`;
   document.body.appendChild(wrap);
@@ -153,22 +146,75 @@ function hint(text) {
 }
 
 /* ---- 对话 ---- */
-let dlgQueue = [], dlgCb = null;
+const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+function createTypewriter(element) {
+  let timer = null, chars = [], index = 0, text = "", done = null, generation = 0;
+  function cancel() { clearTimeout(timer); timer = null; generation++; }
+  function complete() {
+    cancel(); index = chars.length; element.textContent = text;
+    const cb = done; done = null; if (cb) cb();
+  }
+  function clear() { cancel(); chars = []; index = 0; text = ""; done = null; element.textContent = ""; }
+  function start(value, onComplete) {
+    clear(); text = String(value ?? ""); done = onComplete || null;
+    chars = segmenter ? Array.from(segmenter.segment(text), part => part.segment) : Array.from(text);
+    const round = generation;
+    function tick() {
+      if (round !== generation) return;
+      const char = chars[index++]; element.textContent += char;
+      if (index >= chars.length) { complete(); return; }
+      const delay = /[。！？!?…]/u.test(char) ? 240 : /[，、；：,;:]/u.test(char) ? 140 : 32;
+      timer = setTimeout(tick, delay);
+    }
+    if (!chars.length) complete(); else timer = setTimeout(tick, 32);
+  }
+  function isTyping() { return index < chars.length; }
+  function reveal() { if (!isTyping()) return false; complete(); return true; }
+  return { start, reveal, clear, isTyping };
+}
+let dlgQueue = [], dlgCb = null, dlgWriter = null, dlgWho = "", dlgPage = 0;
+const dialogInputs = new WeakSet();
+function consumeDialogInput(e) {
+  if (!e) return true;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (dialogInputs.has(e) || e.repeat) return false;
+  dialogInputs.add(e); return true;
+}
+function closeDialog() {
+  const wasOpen = dialogOpen();
+  if (dlgWriter) dlgWriter.clear();
+  dlgQueue = []; dlgCb = null;
+  if (els.dialog) { els.dialog.classList.remove("on"); els.dialog.dataset.state = "closed"; }
+  if (wasOpen) window.dispatchEvent(new CustomEvent("mf-dialog-close", { detail: { who: dlgWho } }));
+}
+function showDialogPage() {
+  if (!dlgQueue.length) {
+    const cb = dlgCb; closeDialog(); if (cb) cb(); return;
+  }
+  const text = dlgQueue.shift();
+  if (!dlgWriter) dlgWriter = createTypewriter(els.dialog.querySelector(".line"));
+  els.dialog.dataset.state = "typing";
+  els.dialog.querySelector(".next").textContent = "按住 E 补全字幕";
+  dlgWriter.start(text, () => {
+    els.dialog.dataset.state = "waiting";
+    els.dialog.querySelector(".next").textContent = "按住 E 继续 ▼";
+  });
+  window.dispatchEvent(new CustomEvent("mf-dialog-page", { detail: { who: dlgWho, text, page: dlgPage++ } }));
+}
 function dialog(who, lines, cb) {
-  dlgQueue = lines.slice(); dlgCb = cb || null;
+  closeDialog(); dlgQueue = lines.slice(); dlgCb = cb || null; dlgWho = who; dlgPage = 0;
+  lastAutoAdvance = performance.now() + 320;   /* 开门那一下不算"按住" */
   els.dialog.querySelector(".who").textContent = who;
   els.dialog.classList.add("on");
-  advanceDialog();
+  showDialogPage();
 }
-function advanceDialog() {
-  if (!dlgQueue.length) {
-    els.dialog.classList.remove("on");
-    const cb = dlgCb; dlgCb = null; if (cb) cb();
-    return;
-  }
-  els.dialog.querySelector(".line").textContent = dlgQueue.shift();
+function advanceDialog(e) {
+  if (!dialogOpen() || !consumeDialogInput(e)) return;
+  if ((inputGuard && inputGuard() === false) || locked || confirmOpen()) return;
+  if (dlgWriter && dlgWriter.reveal()) return;
+  showDialogPage();
 }
-function dialogOpen() { return els.dialog.classList.contains("on"); }
+function dialogOpen() { return !!els.dialog && els.dialog.classList.contains("on"); }
 
 /* ---- 确认 ---- */
 let confirmCb = null;
@@ -185,6 +231,7 @@ function confirmOpen() { return els.confirm.classList.contains("on"); }
 /* ---- 结局 ---- */
 function ending(id) {
   const e = ENDINGS[id]; if (!e) return;
+  closeDialog();
   const u = getUnlocked(); u[id] = Date.now();
   try { localStorage.setItem(LS_KEY, JSON.stringify(u)); } catch (err) {}
   els.ending.style.background = e.color;
@@ -192,7 +239,6 @@ function ending(id) {
   els.ending.querySelector(".name").textContent = e.name;
   els.ending.querySelector(".txt").textContent = e.text;
   els.ending.classList.add("on");
-  clockFrozen = true;
   hint(null); refreshPanel();
 }
 
@@ -243,25 +289,56 @@ function dancing() { return !!dance; }
 const props = [];
 let active = null;
 let locked = false;
+let visibilityTest = null, inputGuard = null, aimTest = null, interactHook = null;
+function setVisibilityTest(fn) { visibilityTest = typeof fn === "function" ? fn : null; }
+function setInputGuard(fn) { inputGuard = typeof fn === "function" ? fn : null; }
+/* 准星瞄准检查：交互候选必须落在视角锥内（由渲染层提供，每帧调用） */
+function setAimTest(fn) { aimTest = typeof fn === "function" ? fn : null; }
+/* 交互动作反馈钩子（第一人称手部动画等） */
+function setInteractHook(fn) { interactHook = typeof fn === "function" ? fn : null; }
 function setLock(v) { locked = v; if (v) { active = null; hint(null); } }
-function register(p) { p.radius = p.radius || 2.2; props.push(p); return p; }
-function clearProps() { props.length = 0; active = null; }
+function getProp(id) { return props.find(p => p.id === id); }
+function unregister(id) {
+  const i = props.findIndex(p => p.id === id);
+  if (i < 0) return;
+  const p = props.splice(i, 1)[0];
+  if (active === p) { active = null; hint(null); }
+  return p;
+}
+function register(p) {
+  p.radius = p.radius || 2.2;
+  const i = p.id == null ? -1 : props.findIndex(prop => prop.id === p.id);
+  if (i < 0) props.push(p);
+  else {
+    if (active === props[i]) { active = null; hint(null); }
+    props[i] = p;
+  }
+  return p;
+}
+function clearProps() { closeDialog(); props.length = 0; active = null; }
 function update(px, pz) {
-  if (locked || dialogOpen() || confirmOpen() || dancing() || els.ending.classList.contains("on")) { active = null; hint(null); return; }
+  if (dialogOpen()) autoAdvanceDialog(performance.now());
+  if ((inputGuard && inputGuard() === false) || locked || dialogOpen() || confirmOpen() || dancing() || els.ending.classList.contains("on")) { active = null; hint(null); return; }
   let best = null, bestD = 1e9;
   for (const p of props) {
     if (p.enabled && !p.enabled()) continue;
     const d = Math.hypot(px - p.pos.x, pz - p.pos.z);
-    if (d < p.radius && d < bestD) { const lb = p.label(); if (lb) { best = p; bestD = d; best._lb = lb; } }
+    if (d < p.radius && d < bestD) {
+      const lb = p.label();
+      if (!lb || (visibilityTest && visibilityTest(p) === false)) continue;
+      if (aimTest && !aimTest(p)) continue; // 准星没有指向目标时不显示 [E] 提示
+      best = p; bestD = d; best._lb = lb;
+    }
   }
   active = best;
   hint(best ? "<b>[E]</b> " + best._lb : null);
 }
-function interact() {
+function interact(e) {
+  if (dialogOpen()) { advanceDialog(e); return; }
+  if ((inputGuard && inputGuard() === false) || els.ending.classList.contains("on")) { active = null; hint(null); return; }
   if (locked) return;
-  if (dialogOpen()) { advanceDialog(); return; }
-  if (confirmOpen() || dancing()) return;
-  if (active) active.action();
+  if (confirmOpen() || dancing()) { consumeDialogInput(e); return; }
+  if (active) { if (interactHook) interactHook(active); active.action(); }
 }
 function getActive() { return active; }
 
@@ -273,6 +350,8 @@ function refreshPanel() {
   const s = state, u = getUnlocked();
   const invBits = [];
   if (s.inv.flashlight) invBits.push("奶瓶手电" + (s.flashOn ? "·开" : "·关"));
+  if (s.inv.backpack) invBits.push("员工背包");
+  if (s.inv.corridorKey) invBits.push("廊B钥匙");
   if (s.inv.coin) invBits.push("硬币×" + s.inv.coin);
   if (s.inv.key) invBits.push("鸽子的钥匙");
   if (s.inv.floorKey) invBits.push("地上的钥匙");
@@ -281,6 +360,8 @@ function refreshPanel() {
   const flagBits = [];
   if (s.flags.pigeonSaved) flagBits.push("鸽子已救");
   if (s.flags.valveSolved) flagBits.push("配方正确 3·2·1");
+  const recipeDone = s.flags.recipeCards.filter(Boolean).length;
+  flagBits.push(s.flags.recipeFound ? "配方卡齐 3/3" : "配方卡 " + recipeDone + "/3");
   flagBits.push("真相 " + s.flags.truthHeard + "/3");
   flagBits.push("磁带已插入 " + s.flags.tapesInserted + "/3");
   flagBits.push("凹槽 " + slotCount() + "/5");
@@ -299,19 +380,43 @@ function refreshPanel() {
 }
 
 /* ===== 全局按键 ===== */
+/* 按住 E 连续推进对话：不用点鼠标、也不用一格一格按。
+   浏览器自带的按键重复（e.repeat）被忽略，这里自己计时，
+   间隔 0.42 s 一页，按住不松就一直往下走。 */
+let eHeld = false, lastAutoAdvance = 0;
+const E_HOLD_GAP = 420;
+function autoAdvanceDialog(now) {
+  if (!eHeld || !dialogOpen() || confirmOpen() || locked) return;
+  if (now - lastAutoAdvance < E_HOLD_GAP) return;
+  lastAutoAdvance = now;
+  if (dlgWriter && dlgWriter.reveal()) return;   /* 正在逐字：先把本页补全 */
+  showDialogPage();
+}
 window.addEventListener("keydown", e => {
-  if (e.code === "KeyE") { e.preventDefault(); interact(); return; }
+  if (e.code === "KeyE") {
+    const target = e.target;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    eHeld = true;
+    if (e.repeat) return;
+    e.preventDefault(); interact(e); return;
+  }
   if (dance && danceKey(e.code)) e.preventDefault();
-});
+}, true);
+window.addEventListener("keyup", e => { if (e.code === "KeyE") { eHeld = false; lastAutoAdvance = 0; } }, true);
+window.addEventListener("blur", () => { eHeld = false; });
+window.addEventListener("click", e => {
+  if (dialogOpen() && !confirmOpen() && e.target.closest && e.target.closest("#mf-dialog, #view, #btnE")) advanceDialog(e);
+}, true);
+window.addEventListener("pagehide", closeDialog);
 
 return {
   FLAVORS, FLAVOR_CN, FLAVOR_COLOR, ENDINGS, MAIN_ENDINGS,
-  get state() { return state; }, resetState, elapsed, clockStr, freezeClock,
+  get state() { return state; }, resetState, elapsed, clockStr,
   tapeCount, bottleCount, slotCount,
   getUnlocked, allMainUnlocked, clearUnlocked,
-  initUI, toast, hint, dialog, dialogOpen, confirm, closeConfirm, confirmOpen, ending,
+  initUI, toast, hint, dialog, dialogOpen, advanceDialog, closeDialog, createTypewriter, confirm, closeConfirm, confirmOpen, ending,
   startDance, dancing,
-  register, clearProps, update, interact, getActive, setLock,
+  register, getProp, unregister, clearProps, update, interact, getActive, setLock, setVisibilityTest, setInputGuard, setAimTest, setInteractHook,
   bindPanel, refreshPanel,
 };
 })();

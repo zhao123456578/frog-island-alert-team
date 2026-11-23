@@ -2,8 +2,8 @@
 
 const ROADSIDE_S=286, HORDE_START_S=1070, HORDE_COUNT=14;
 const driveStory={phase:'roadside',route:'undecided',hit:false,hitT:0,maxDist:0,previousPose:null,models:{},audioError:null,
-  passedRoadside:false,forestPhase:'quiet',hordeTime:0,crowdGap:88,capture:false,endingTime:0,doorOpened:false,doorClosed:false};
-if(FROM_FACTORY||q.has('shot')||q.has('direct'))document.body.classList.add('immersive-drive');
+  passedRoadside:false,forestPhase:'quiet',hordeTime:0,crowdGap:88,capture:false,captureSide:'',endingTime:0,doorOpened:false,doorClosed:false,knock1:false,knock2:false};
+if(!q.has('intro'))document.body.classList.add('immersive-drive');
 
 function projectRoadPoint(point,route,guess){
   let best=null;
@@ -116,25 +116,42 @@ function clearOfRoutes(s,lat,route,clearance){
   }
   return true;
 }
+/* 树不再用 16 面片的树牌：主脚本里的 window.MFTree 会给出
+   "锥形树干 + 分枝 + 叶簇卡"的建模树（同一变体共享几何/贴图）。
+   GLB 只留作兜底：万一 MFTree 没加载，仍然能跑。 */
+function placeTreeModel(name,model){
+  const list=Array.isArray(model)?model:[model];
+  const shrub=name==='tree-shrub',variant=name==='tree-large'?1:0;
+  for(const route of ['main','forest']){
+    const start=route==='main'?150:FORK_S+10,spacing=shrub?13:(route==='forest'?9:14);
+    for(let s=start+variant*8;s<FINISH_S+155;s+=spacing){
+      for(const side of [-1,1]){
+        const seed=Math.abs(Math.sin(s*12.9898+side*78.233+variant*36.7));
+        const lat=side*((route==='forest'?5.6:8.0)+seed*(shrub?2.2:11));
+        const height=shrub?1.1+seed*1.1:7.0+seed*8;
+        if(!clearOfRoutes(s,lat,route,shrub?1:height*.36))continue;
+        /* 每个位置在三套色差/树形里轮着取，避免整排一模一样 */
+        const one=list[Math.floor(seed*997+s*3.7)%list.length]||list[0];
+        modelInstance(one,s,lat,height,route,seed*Math.PI*2);
+      }
+    }
+  }
+}
 const assetLoads=['tree-pine-large','tree-large','tree-shrub','soviet-house'].map(name=>new Promise(resolve=>{
+  if(name!=='soviet-house'&&window.MFTree){
+    const kind=name==='tree-pine-large'?'pine':name==='tree-shrub'?'shrub':'broad';
+    const base=name==='tree-pine-large'?9091:name==='tree-shrub'?4049:2251;
+    const model=[0,1,2].map(v=>window.MFTree.make(kind,base+v));
+    driveStory.models[name]=true;driveStory.mftree=true;
+    placeTreeModel(name,model);
+    resolve();return;
+  }
   environmentLoader.load('assets/environment/'+name+'.glb',gltf=>{
     const model=prepareEnvironment(gltf.scene);driveStory.models[name]=true;
     if(name==='soviet-house'){
       environmentBuildings.forEach(([s,lat,h,route])=>modelInstance(model,s,lat,h,route,lat<0?Math.PI/2:-Math.PI/2));
     }else{
-      const shrub=name==='tree-shrub',variant=name==='tree-large'?1:0;
-      for(const route of ['main','forest']){
-        const start=route==='main'?160:FORK_S+14,spacing=shrub?19:(route==='forest'?12:19);
-        for(let s=start+variant*8;s<FINISH_S+155;s+=spacing){
-          for(const side of [-1,1]){
-            const seed=Math.abs(Math.sin(s*12.9898+side*78.233+variant*36.7));
-            const lat=side*((route==='forest'?5.8:8.5)+seed*(shrub?2.5:10));
-            const height=shrub?1.1+seed:6.5+seed*6;
-            if(!clearOfRoutes(s,lat,route,shrub?1:height*.38))continue;
-            modelInstance(model,s,lat,height,route,seed*Math.PI*2);
-          }
-        }
-      }
+      placeTreeModel(name,model);
     }
     resolve();
   },undefined,error=>{driveStory.models[name]=false;console.error('[environment] '+name,error);resolve();});
@@ -208,20 +225,55 @@ addEventListener('visibilitychange',()=>{
   if(document.hidden)actx.suspend();else if(S.started)actx.resume();
 });
 
+/* v4.4 分层音：outdoor 页面没有全局 audio/AudioSys，直接从 manifest 的 wav 路径懒加载，
+   按 actx 时钟做冷却，避免每帧播放爆音；结局时统一停掉常驻音源。 */
+const storySfx={buf:new Map(),pending:new Map(),cool:Object.create(null),active:new Set()};
+const STORY_SFX_SRC={sfx_heartbeat:'player/sfx_heartbeat.wav',sfx_breath:'player/sfx_breath.wav',
+  amb_distant_whispers:'ambience/amb_distant_whispers.wav',amb_factory_drone:'ambience/amb_factory_drone.wav'};
+function storySfxLoad(id){
+  if(storySfx.buf.has(id))return Promise.resolve(storySfx.buf.get(id));
+  if(storySfx.pending.has(id))return storySfx.pending.get(id);
+  const p=fetch('assets/audio/'+STORY_SFX_SRC[id]).then(r=>r.ok?r.arrayBuffer():Promise.reject(new Error(id)))
+    .then(ab=>actx.decodeAudioData(ab)).then(b=>{storySfx.buf.set(id,b);storySfx.pending.delete(id);return b;})
+    .catch(()=>{storySfx.pending.delete(id);return null;});
+  storySfx.pending.set(id,p);return p;
+}
+function storySfxPlay(id,vol,rate,cooldown){
+  if(!actx||S.ended||document.hidden||actx.state!=='running'||!STORY_SFX_SRC[id])return;
+  const now=actx.currentTime;
+  if((storySfx.cool[id]||0)>now)return;
+  storySfx.cool[id]=now+(cooldown||1);
+  const play=b=>{
+    if(!b||S.ended)return;
+    const src=actx.createBufferSource(),g=actx.createGain();
+    src.buffer=b;src.playbackRate.value=rate||1;g.gain.value=vol;
+    src.connect(g);g.connect(actx.destination);storySfx.active.add(src);
+    src.onended=()=>{storySfx.active.delete(src);src.disconnect();g.disconnect();};
+    src.start();
+  };
+  const b=storySfx.buf.get(id);
+  if(b)play(b);else storySfxLoad(id).then(play);
+}
+function storySfxStopAll(){
+  for(const src of storySfx.active){try{src.stop();}catch(e){}src.disconnect();}
+  storySfx.active.clear();
+}
+
 const horde=[],crowdTextures=[];
 let passenger=null,passengerVoice=null;
 function initHorde(){
   if(!sunSpriteOK||horde.length)return;
   // 图集变换放在每张纸片的 UV 中，所有追逐者只共享两张 GPU 纹理。
   sunTextures.forEach(texture=>{const t=texture.clone();t.offset.set(0,0);t.repeat.set(1,1);t.needsUpdate=true;crowdTextures.push(t);});
-  const make=(height,crop)=>{
+  /* v4.4：每人独立步伐相位；身高按序号单调递减，近大远小多一层层次。 */
+  const make=(height,crop,index=0)=>{
     const g=new THREE.Group(),mat=new THREE.MeshBasicMaterial({map:crowdTextures[0],transparent:true,alphaTest:.36,
       side:THREE.DoubleSide,depthWrite:true,color:0xadb4a2});
     const mesh=new THREE.Mesh(new THREE.PlaneGeometry(height*SUN_ATLAS.fw/crop,height),mat);
     mesh.position.y=height/2;g.add(mesh);g.visible=false;scene.add(g);
-    return {g,mesh,crop,frame:-1,voice:null,start:null};
+    return {g,mesh,crop,frame:-1,voice:null,start:null,phase:index*2.399963,stride:7.2+(index%4)*.85};
   };
-  for(let i=0;i<HORDE_COUNT;i++)horde.push(make(1.82+(i%3)*.06,SUN_ATLAS.fh));
+  for(let i=0;i<HORDE_COUNT;i++)horde.push(make(1.94-i*.016,SUN_ATLAS.fh,i));
   passenger=make(.99,320);passenger.mesh.material.fog=false;passenger.mesh.material.color.setHex(0xb6b9a9);
   const fill=new THREE.PointLight(0xc5ba91,.35,3,1.5);fill.position.set(.45,1.55,.15);passenger.g.add(fill);
 }
@@ -243,7 +295,7 @@ function hordeVoice(actor,index,envelope,height){
   positionSunVoice(actor.voice,actor.g.position,envelope,height);
 }
 function beginForestCapture(){
-  driveStory.capture=true;driveStory.forestPhase='surround';driveStory.endingTime=0;
+  driveStory.capture=true;driveStory.captureSide='forest';driveStory.forestPhase='surround';driveStory.endingTime=0;
   S.camMode='cockpit';S.drowsy=12;S.dozing=false;S.recoilV=0;S.slipV=0;
   for(const key in keys)keys[key]=false;
   look.yaw=look.ty=look.pitch=look.tp=0;look.drag=false;
@@ -259,16 +311,22 @@ function updateForestHorde(dt,tnow){
   driveStory.hordeTime+=dt;
   driveStory.crowdGap=Math.max(4,driveStory.crowdGap-Math.max(5,33-S.speed+driveStory.hordeTime*.22)*dt);
   for(let i=0;i<horde.length;i++){
-    const actor=horde[i],gap=driveStory.crowdGap+i*2.8;
+    /* v4.4：纵深错落 + 独立步伐相位，头肩起伏与左右摆动各不相同。 */
+    const actor=horde[i],gap=driveStory.crowdGap+i*2.8+Math.sin(i*1.7)*1.1;
+    const swing=Math.sin(tnow*actor.stride*.5+actor.phase)*.13;
+    const bob=Math.abs(Math.sin(tnow*actor.stride+actor.phase))*.085;
     actor.g.visible=true;
-    placeRoad(actor.g,S.dist-gap,(i%5-2)*1.08+Math.sin(tnow*1.6+i)*.14,0,'forest');
-    actor.g.position.y+=Math.abs(Math.sin(tnow*8.4+i))*.06;faceHorde(actor);
-    frameHorde(actor,Math.floor(tnow*(13+i%3)+i*7));hordeVoice(actor,i,.9);
+    placeRoad(actor.g,S.dist-gap,(i%5-2)*1.08+swing+Math.sin(tnow*1.6+i)*.14,0,'forest');
+    actor.g.position.y+=bob;faceHorde(actor);
+    /* 近处人声大、远处小；再叠一层随最近人群距离衰减的低频嗡鸣。 */
+    const voiceEnv=Math.max(.25,.98-i*.045-Math.max(0,driveStory.crowdGap-20)*.014);
+    frameHorde(actor,Math.floor(tnow*(13+i%3)+i*7));hordeVoice(actor,i,voiceEnv);
   }
+  storySfxPlay('amb_distant_whispers',.04+.11*Math.max(0,1-(driveStory.crowdGap-4)/46),1,9);
   if(driveStory.crowdGap<=6.5)beginForestCapture();
 }
 function updateForestEnding(dt){
-  if(!driveStory.capture||S.ended)return;
+  if(!driveStory.capture||driveStory.captureSide!=='forest'||S.ended)return;
   const t=driveStory.endingTime+=dt,step=sm01(0,3.4,t);
   S.camMode='cockpit';S.drowsy=12;
   camera.position.set(DRIVER_X,1.26+Math.sin(t*1.9)*.004,.22);
@@ -301,15 +359,13 @@ function updateForestEnding(dt){
 function storyStage(phase){
   if(driveStory.phase===phase)return;
   driveStory.phase=phase;
-  if(phase==='rear'){
-    S.chaserGap=Math.max(36,Math.min(78,S.dist-ROADSIDE_S+24));
-    S.chaserSpeed=DIFF==='easy'?18.5:21.5;
-    playChaser('run');
-  }
+  if(phase==='rear'){S.chaserGap=Math.max(9,S.dist-ROADSIDE_S);playChaser('run');}
   if(phase==='ahead'||phase==='roadside')playChaser('idle');
 }
 function updateDriveStory(dt,tnow){
+  if(S.ended)storySfxStopAll();
   ensureSunAudio();
+  if(driveStory.capture){updateSunAudio(0);return;}
   driveStory.maxDist=Math.max(driveStory.maxDist,S.dist);
   const progress=driveStory.maxDist;
   let envelope=0;
@@ -327,32 +383,28 @@ function updateDriveStory(dt,tnow){
     }
     if(driveStory.phase==='rear'||driveStory.phase==='fading'){
       S.chaserOn=true;
-      if(S.chaserHitT>0)S.chaserHitT=Math.max(0,S.chaserHitT-dt);
-      const chaseT=Math.max(0,Math.min(1,(progress-ROADSIDE_S)/800));
-      const chaseTarget=DIFF==='easy'
-        ?20.6+2.0*chaseT
-        :23.6+2.6*chaseT;
-      S.chaserSpeed+=(chaseTarget-S.chaserSpeed)*Math.min(1,dt*(DIFF==='easy'?.55:.82));
-      if(driveStory.phase==='fading'){
-        S.chaserGap=Math.min(210,S.chaserGap+dt*16);
-      }else{
-        S.chaserGap=Math.max(6,Math.min(88,S.chaserGap+(S.speed-S.chaserSpeed)*dt*(DIFF==='easy'?.58:.84)));
-      }
+      /* 难度：默认 1.1×；从工厂带着 80+ 愤怒出来时 1.8×，追得更凶 */
+      const chaseScale=(HANDOFF&&Number(HANDOFF.anger)>=80)?1.8:1.1;
+      S.chaserGap=Math.max(0,Math.min(88,S.chaserGap+(S.speed-15)*dt*.36*chaseScale));
+      if(driveStory.phase==='fading')S.chaserGap=Math.min(210,S.chaserGap+dt*16);
       if(S.chaserPin)S.chaserGap=13;
-      if(S.chaserGap<=6.45&&S.chaserHitT<=0&&driveStory.phase!=='fading'){
-        /* 这不是装饰性追逐：掉速到被追上时会真的挨一下，随后获得一次甩脱窗口。 */
-        S.chaserHitT=1.15;S.chaserGap=18;S.chaserSpeed=Math.max(9,S.speed-0.4);
-        S.speed=Math.max(0,S.speed-2.8);S.headShakeT=.38;S.rollImpact=.028;S.hudJitterT=.42;S.glitchT=.12;
-        flash(.16,true);thud();playChaser('catch');
-        radioSay('它撞上来了——油门别松！');
+      /* 分叉前被追上：他会从右侧上车，坐进副驾驶，游戏结束 */
+      if(driveStory.phase==='rear'&&S.chaserGap<=1.7&&S.dist<FORK_S-25&&!S.ended){
+        beginRoadsideCapture();return;
       }
-      S.chaserStage=S.chaserGap<20?3:S.chaserGap<34?2:1;
-      S.chaserEye=Math.max(0,Math.min(1,(45-S.chaserGap)/34));
+      S.chaserStage=S.chaserGap<20?3:2;S.chaserEye=Math.max(0,(38-S.chaserGap)/30);
       const shoulder=4.65+(LANE_LAT+.45-4.65)*sm01(ROADSIDE_S+3,ROADSIDE_S+48,progress);
       placeRoad(chaserRoot,S.dist-S.chaserGap,shoulder+Math.sin(tnow)*.1,0,'main');
       envelope=driveStory.phase==='fading'?1-sm01(625,755,progress):1;
-      heartbeatTick(dt,S.chaserGap<32,S.chaserGap<16?.56:.82);
-      if(S.chaserHitT<=0&&chaserState==='catch')playChaser('run');
+      /* v4.4 追逐三层压迫：远(>8)低频围拢、中(3~8)呼吸低语、近(<3)心跳。
+         合成心跳只在 3~18m 兜底，近处改用 sfx_heartbeat，避免两种心跳叠加。 */
+      heartbeatTick(dt,driveStory.phase==='rear'&&S.chaserGap>=3&&S.chaserGap<18);
+      if(driveStory.phase==='rear'){
+        if(S.chaserGap>8)storySfxPlay('amb_factory_drone',.05+.07*Math.max(0,1-(S.chaserGap-8)/40),1,9);
+        else if(S.chaserGap>3)storySfxPlay('sfx_breath',.10+.10*(8-Math.max(3,S.chaserGap))/5,1,3.2);
+        else{storySfxPlay('sfx_heartbeat',.16+.10*(3-Math.max(0,S.chaserGap))/3,1,1.15);
+          S.headShakeT=Math.max(S.headShakeT||0,.06);}  /* v4.4：贴脸时轻微镜头震动 */
+      }
     }else{
       S.chaserOn=false;S.chaserEye=0;S.chaserStage=0;heartbeatTick(dt,false);
     }
@@ -366,7 +418,8 @@ function updateDriveStory(dt,tnow){
       const forward=rx*Math.sin(pose.phi)-rz*Math.cos(pose.phi),side=rx*Math.cos(pose.phi)+rz*Math.sin(pose.phi);
       if(driveStory.route==='home'&&Math.abs(forward)<carHalfL+.3&&Math.abs(side)<carHalfW+.42){
         driveStory.hit=true;driveStory.hitT=.8;driveStory.phase='passed';
-        S.headShakeT=.3;S.rollImpact=.025;S.bobV-=.22;thud();playChaser('stumble');
+        S.headShakeT=.45;S.rollImpact=.03;S.bobV-=.26;thud();playChaser('stumble');
+        if(window.carBloodImpact)window.carBloodImpact();
       }else if((driveStory.route==='forest'&&S.dist>FORK_S+115)||(driveStory.route==='home'&&S.dist>SUN_ROAD_S+20)){
         driveStory.phase='passed';
       }
@@ -418,15 +471,62 @@ function updateStoryScene(){
     if(forest||(s>FORK_S-30&&s<SUN_ROAD_S+80))p.visible=false;
   }
   finishGate.visible=false;checkpointSign.visible=false;finish100Sign.visible=false;finish60Sign.visible=false;park.visible=false;
-  rWarnEl.classList.remove('on');
-  if(!S.chaserOn)rDangerEl.classList.remove('on');
-  elFinishGuide.classList.remove('on');
+  /* v4.4：rWarn / rDanger / finishGuide 的显示交给 outdoor.html 的 updateRallyHud 全权控制。
+     这里原先把刚刚在 update 阶段点亮的 class 又每帧清掉，导致“不要停”和终点引导看不到。 */
   if(S.ended)rDangerEl.classList.remove('on');
   scene.fog.density=forest?.016:.0115;
 }
+
+/* 分叉前的普通公路：被追上 → 右侧拍门 → 上副驾 → 结束 */
+function beginRoadsideCapture(){
+  if(driveStory.capture)return;
+  driveStory.capture=true;driveStory.captureSide='road';driveStory.endingTime=0;
+  driveStory.knock1=driveStory.knock2=driveStory.doorOpened=driveStory.doorClosed=false;
+  S.camMode='cockpit';S.dozing=false;S.drowsy=12;S.recoilV=0;S.slipV=0;
+  for(const key in keys)keys[key]=false;
+  look.yaw=look.ty=look.pitch=look.tp=0;look.drag=false;
+  initHorde();
+  if(passenger)passenger.g.visible=false;
+  chaserRoot.visible=true;
+}
+function updateRoadsideCapture(dt){
+  if(!driveStory.capture||driveStory.captureSide!=='road'||S.ended)return;
+  const t=driveStory.endingTime+=dt;
+  S.camMode='cockpit';S.drowsy=12;S.dozing=false;
+  S.speed=Math.max(0,S.speed-dt*5.5);
+  camera.position.set(DRIVER_X,1.26+Math.sin(t*1.7)*.006,.22);
+  camera.rotation.order='YXZ';
+  const lookRight=-0.62*Math.PI*sm01(0.1,0.9,t)*(1-0.18*sm01(3.0,4.0,t));
+  camera.rotation.set(.015,lookRight,Math.sin(t*11)*.006*(t<.9?1:0));
+  camera.fov=59;camera.updateProjectionMatrix();
+  updateVoiceListener();
+  /* v4.4：拍门前后心跳逐步加重，强化“它就在车窗外”的压迫（带冷却）。 */
+  if(t<1.3)storySfxPlay('sfx_heartbeat',.16+.06*sm01(0,1.3,t),1,1);
+  const approach=sm01(0,1.05,t);
+  chaserRoot.visible=t<2.2;
+  if(chaserRoot.visible){
+    chaserRoot.position.set(2.9-1.25*approach,0,.62-.42*approach);
+    chaserRoot.rotation.y=-Math.PI/2+.18;
+    sunChaser.rotation.y=0;
+    setSunFrame(Math.floor(t*14)%SUN_ATLAS.count);
+  }
+  if(!driveStory.knock1&&t>=.5){driveStory.knock1=true;metalKnock(.95);S.headShakeT=.12;}
+  if(!driveStory.knock2&&t>=.78){driveStory.knock2=true;metalKnock(.85);S.headShakeT=.14;}
+  if(t>=1.15&&passenger){
+    passenger.g.visible=true;
+    const enter=sm01(1.15,2.45,t);
+    passenger.g.position.set(1.58-1.12*enter,.60+.10*Math.sin(enter*Math.PI),.26);
+    passenger.g.rotation.y=-Math.PI/2;
+    frameHorde(passenger,40);
+    if(sunAudio&&!passengerVoice)passengerVoice=createSunVoice(.24,0);
+    positionSunVoice(passengerVoice,passenger.g.position,t>2.3?1:0,.70);
+  }
+  if(t>=2.55&&!driveStory.doorClosed){driveStory.doorClosed=true;thud();metalKnock(.55);}
+  if(t>=3.8){driveStory.forestPhase='done';finish('同乘');}
+}
 window.__outdoor.story=()=>({phase:driveStory.phase,route:driveStory.route,reference:driveRoute,hit:driveStory.hit,
   fork:FORK_S,sun:SUN_ROAD_S,roadside:ROADSIDE_S,passedRoadside:driveStory.passedRoadside,
-  forestPhase:driveStory.forestPhase,gap:driveStory.crowdGap,chaserGap:S.chaserGap,chaserSpeed:S.chaserSpeed,capture:driveStory.capture,endingTime:driveStory.endingTime,
+  forestPhase:driveStory.forestPhase,gap:driveStory.crowdGap,capture:driveStory.capture,side:driveStory.captureSide,endingTime:driveStory.endingTime,
   crowd:horde.map(a=>({visible:a.g.visible,position:a.g.position.toArray(),voice:a.voice?{distance:a.voice.distance,clip:SUN_VOICES[a.voice.last],gain:a.voice.gain.gain.value}:null})),
   passenger:passenger?{visible:passenger.g.visible,position:passenger.g.position.toArray()}:null,
   models:{...driveStory.models},instances:environmentObjects.length,

@@ -1,0 +1,1269 @@
+"use strict";
+window.createNightShift=function(ctx){
+  const {scene,camera,state:S,game:G,colliders,objects,surfaces,psMat,labelTexture,audio}=ctx;
+  const st={started:false,intro:false,good:0,eaten:0,shiftDone:false,eavesdrop:false,office:false,
+    thought:false,visited2:false,valve:false,anger:0,hidden:false,exposed:false,gun:false,ammo:0,
+    hp:2,ehp:5,punchT:0,punchCd:0,punchHit:false,flashT:0,hurtT:0,dead:false,hearT:0,knockT:0,
+    pumpOff:false,unplugged:false,escapeTime:0,leaving:false,foam:0,caught:0,capturing:false,arcadeChase:false,
+    askedToilet:false,toiletDone:false,toiletExitSeen:false,factoryArrivalSeen:false,
+    spawnGrace:0,pressureT:0,pressureTier:0};
+  const npc={pos:new THREE.Vector3(-15.3,0,-4.17),yaw:0,state:'PATROL',zone:0,route:0,path:[],pathAt:0,
+    last:new THREE.Vector3(),lost:0,search:0,stun:0,wait:1,repath:0,seen:false,cooldown:0,travel:0,goal:null,detour:null,direct:false,stuckT:0};
+  const events=[];let elapsed=0,work=false,workT=0,cursor=0,breathT=0,noiseT=0,officeHum=null,footAt=0;
+  let hiddenCabinet=null,capturePose=null,coworkerModel=null,coworkerMode='WAIT',coworkerPath=[],coworkerAt=0;
+  /* v4.4：NO.07 寻路防卡死状态。分段目标 + no-progress 检测 + 侧移/备用路线/安全重置。 */
+  const COWORKER_SEAT={x:6.99,z:10.54};
+  const COWORKER_WAYPOINTS=[
+    {x:3.4,z:8.6},{x:5.6,z:8.4},{x:6.4,z:9.6},COWORKER_SEAT   /* 离开传送带 → 中间通道 → 绕桌角 → 椅前 */
+  ];
+  const COWORKER_FALLBACK=[
+    [{x:3.0,z:6.4},{x:6.0,z:7.2},{x:6.99,z:9.0},COWORKER_SEAT],
+    [{x:4.2,z:9.8},{x:6.99,z:10.0},COWORKER_SEAT]
+  ];
+  const cowNav={
+    leg:-1,route:0,noProgress:0,lastX:0,lastZ:0,detourT:0,detourSide:1,
+    sitPhase:-1,sitT:0,sitFrom:null,resetDone:false,
+    waypoints:COWORKER_WAYPOINTS   /* 当前生效路线（正常指向主路线，兜底时指向备用） */
+  };
+  let npcVisYaw=0; /* 孙笑川视觉朝向平滑：有限角速度转身，不再整模型瞬转 */
+  let arcade=null,arcadeTexture=null,cinematic=null,ventSeen=false;const fans=[];
+  const population=createShiftPopulation({scene,camera,state:S,audio,psMat,colliders,objects});
+  const ventTarget=new THREE.Vector3(3.39,4.03,-101.02);
+  const ventTrigger={x:12.85,z:-89.53,radius:Math.hypot(11.57-12.85,-86.20+89.53)};
+  const openingShots=[
+    {x:0,y:1.35,z:9,yaw:-2.3*Math.PI/180,pitch:68.8*Math.PI/180},
+    {x:0,y:1.35,z:9,yaw:-7.8*Math.PI/180,pitch:0.7*Math.PI/180},
+    {x:0,y:1.35,z:9,yaw:-58.4*Math.PI/180,pitch:2.5*Math.PI/180}
+  ];
+  const shot=(x,y,z,yaw,pitch)=>({x,y,z,yaw:yaw*Math.PI/180,pitch:pitch*Math.PI/180});
+  const storyShots={
+    directions:[shot(2.39,1.35,-17.72,4.5,-8.9),shot(2.39,1.35,-17.72,100.5,-3)],
+    toiletExit:[shot(-10.51,1.35,-14.75,-93.1,0.9),shot(-10.51,1.35,-14.75,-25.7,1.6)],
+    factoryArrival:[shot(3.51,1.35,-52.3,-43.2,-4.6),shot(3.51,1.35,-52.3,89.3,-1.8),shot(3.51,1.35,-52.3,-28.9,-7.1)]
+  };
+  const storyTriggers={directions:{x:2.45,z:-16.96,radius:0.95},toiletExit:{x:-10.51,z:-14.75,radius:1.2},factoryArrival:{x:3.77,z:-52.32,radius:1.15}};
+  const directionWorker=ctx.built[0].props.lineFrogs.find(f=>f.x>0&&Math.abs(f.z+19.83)<0.2);
+  let ventFrog=null;
+  const group=new THREE.Group();group.name='夜班剧情与遮挡';scene.add(group);
+  const add=(name,o)=>{o.name=name;group.add(o);objects.push({name,obj:o});return o;};
+  function box(name,x,z,w,d,h,color,wall){
+    const m=add(name,new THREE.Mesh(new THREE.BoxGeometry(w,h,d,Math.max(1,Math.ceil(w/2)),2,Math.max(1,Math.ceil(d/2))),psMat({color})));
+    m.position.set(x,h/2,z);const c={type:'box',x,z,w,d,h,wall:!!wall};colliders.push(c);return {mesh:m,col:c};
+  }
+  function sign(text,x,y,z,angle,width=2.4){
+    const m=add(text[0],new THREE.Mesh(new THREE.PlaneGeometry(width,0.66),psMat({map:labelTexture(text,'#1e2827','#c2c9ab',{w:256,h:80,size:23}),lit:false,side:THREE.DoubleSide})));
+    m.position.set(x,y,z);m.rotation.y=angle||0;return m;
+  }
+  function prop(id,x,z,label,action,radius=1.8){return MF.register({id,pos:{x,z},radius,label:typeof label==='function'?label:()=>label,action});}
+  function later(delay,fn){events.push({at:elapsed+delay,fn});}
+  const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+  const insideOffice=p=>p.x>-20.8&&p.x<-13.15&&p.z>-7.8&&p.z<1.8;
+  const inSafe=p=>(p.x>13.4&&p.x<20.7&&p.z>-17.7&&p.z<-6.3)||(p.x<-13.4&&p.x>-20.7&&p.z>-67.7&&p.z<-56.3);
+  const uiBusy=()=>MF.dialogOpen()||MF.confirmOpen()||MF.dancing()||document.getElementById('mf-ending').classList.contains('on');
+  const pageVoices={frog:['sfx_nw_gaga','sfx_nw_andi','sfx_nw_ganba','sfx_nw_yume','sfx_nw_hana'],
+    sun:['sfx_sc_roar','sfx_sc_attitude','sfx_sc_window','sfx_sc_property','sfx_sc_again','sfx_sc_revive','sfx_sc_whatever','sfx_sc_sumimasen']};
+  const voiceAt={frog:0,sun:0};let pageVoice=null;
+  function stopPageVoice(){if(!pageVoice)return;pageVoice.pause();audio.playing.delete(pageVoice);pageVoice=null;}
+  function playPageVoice(who,text){
+    stopPageVoice();
+    if(!S.started||S.pause||document.hidden||audio.muted||/沉思|玩家|广播/.test(who)||/^\s*[（(]/u.test(text))return;
+    const family=/^孙笑川(?:$|[ ·：:])/.test(who)?'sun':/^(?:NO\.?\s*0?7\b|工位奶蛙(?:$|[ ·])|奶泡(?:$|[ ·])|奶蛙(?:$|[ ·]))/i.test(who)?'frog':null;
+    if(!family)return;
+    const pool=pageVoices[family];pageVoice=audio.play(pool[voiceAt[family]++%pool.length],family==='frog'?0.16:0.32);
+  }
+  window.addEventListener('mf-dialog-page',e=>playPageVoice(e.detail.who,e.detail.text));
+  window.addEventListener('mf-dialog-close',stopPageVoice);
+
+  box('遮挡·废弃压缩机',-9.24,-21.63,2.4,1.6,1.9,0x566460);
+  box('遮挡·压缩机检修屏',-10.7,-22.1,0.28,3,2.35,0x65736c);
+  box('遮挡·压缩机备件箱',-7.8,-23.6,1.2,0.9,0.8,0x756c56);
+  sign(['停用设备','请绕行'], -9.24,2.25,-20.8,0,1.8);
+  box('办公室档案柜',-20.3,0.7,1.1,0.65,2.2,0x444f50);
+  sign(['孙笑川办公室','未经许可 禁止入内'], -12.87,2.3,-6,Math.PI/2,2);
+  const record=add('办公室夜班档案',new THREE.Mesh(new THREE.BoxGeometry(0.42,0.035,0.3),psMat({color:0xc1baa0})));
+  record.position.set(-16.45,0.89,-4.17);
+  sign(['01 灌装厂','工位 / 监控室 →'],4.23,2.37,4.68,-Math.PI/2);
+  function slogan(lines,x,y,z){
+    sign(lines,x,y,z,Math.PI/2,1.5);
+    box('宣传牌支架',x,z,0.08,0.65,y-0.3,0x4e5c51);
+  }
+  slogan(['每一滴都属于工厂','请把笑容留在工位'], -2.08,1.21,-4.38);
+  slogan(['准时上工 · 自愿奉献','奶源永不枯竭'], -2.14,1.18,7.59);
+  const portraitFrame=add('孙笑川画像·相框',new THREE.Mesh(new THREE.BoxGeometry(1.05,1.36,0.08),psMat({color:0x705b3b})));
+  portraitFrame.position.set(-14.89,1.92,1.54);portraitFrame.rotation.y=Math.PI;
+  [-0.38,0.38].forEach(dx=>{const bracket=new THREE.Mesh(new THREE.BoxGeometry(0.035,0.04,0.46),psMat({color:0x3d423c}));bracket.position.set(-14.89+dx,2.3,1.77);group.add(bracket);});
+  const portraitTexture=new THREE.TextureLoader().load('gifcut/head_key_white.png');
+  portraitTexture.magFilter=THREE.NearestFilter;portraitTexture.minFilter=THREE.LinearFilter;
+  portraitTexture.offset.x=0.44;portraitTexture.repeat.x=0.56;
+  const portrait=add('孙笑川画像',new THREE.Mesh(new THREE.PlaneGeometry(0.93,1.24),psMat({map:portraitTexture,lit:false,color:0xb6af95})));
+  portrait.position.set(-14.89,1.92,1.49);portrait.rotation.y=Math.PI;
+  const coldCanvas=document.createElement('canvas');coldCanvas.width=coldCanvas.height=128;
+  const coldCtx=coldCanvas.getContext('2d');coldCtx.fillStyle='#173645';coldCtx.fillRect(0,0,128,128);
+  coldCtx.strokeStyle='#ccebf0';coldCtx.lineWidth=5;coldCtx.strokeRect(5,5,118,118);
+  coldCtx.lineWidth=6;coldCtx.lineCap='round';
+  for(let i=0;i<6;i++){const a=i*Math.PI/3,dx=Math.cos(a),dy=Math.sin(a);coldCtx.beginPath();coldCtx.moveTo(64,64);coldCtx.lineTo(64+dx*41,64+dy*41);
+    for(const side of [-1,1]){coldCtx.moveTo(64+dx*23,64+dy*23);coldCtx.lineTo(64+dx*33-dy*10*side,64+dy*33+dx*10*side);}coldCtx.stroke();}
+  const coldTex=new THREE.CanvasTexture(coldCanvas);coldTex.magFilter=THREE.NearestFilter;
+  const coldIcon=add('冷库·雪花图标',new THREE.Mesh(new THREE.PlaneGeometry(0.85,0.85),psMat({map:coldTex,lit:false})));
+  coldIcon.position.set(12.71,1.42,-92.11);coldIcon.rotation.y=-Math.PI/2;
+  sign(['02 发酵厂','沿黄线前行'], -3.3,2.25,-45.8,0);
+  sign(['安全屋 ←','关闭铁门，不要出声'], -9.6,2.25,-61.8,Math.PI/2);
+  sign(['03 主泵室','里面有人在说话'],0,2.4,-101.8,0);
+  box('遮挡·东侧配电柜',6.4,-12.7,2.2,0.8,2.35,0x475551);
+  box('遮挡·东侧封箱屏',5.6,-28,3.8,0.65,2.25,0x706754);
+  box('遮挡·西侧机房屏',-7.9,-29,3.4,0.65,2.4,0x596463);
+  box('遮挡·交错发酵屏 A',1.6,-64.7,3.3,0.5,2.25,0x637067);
+  box('遮挡·交错发酵屏 B',-1.8,-78.7,3.2,0.5,2.25,0x637067);
+  box('遮挡·南端堆垛屏',-3.57,-93.43,3.6,0.55,2.45,0x637067);
+  box('遮挡·南端备件柜',-6.2,-95.8,1.2,2.2,2.1,0x4e5a56);
+  box('遮挡·南端回收箱',-1.4,-96.2,1.35,1.1,1.35,0x7b7159);
+  box('遮挡·南端横置机箱',-4.8,-90.5,1.5,1.1,1.8,0x566460);
+  sign(['维修物料','保持中央通道畅通'], -3.57,2.12,-93.13,0,2.2);
+  const cabinets=[];
+  function makeCabinet(x,z,angle){
+    const id='night-hide-'+cabinets.length,root=add('躲藏柜 '+(cabinets.length+1),new THREE.Group());
+    root.position.set(x,0,z);root.rotation.y=angle;
+    const model=createHidingLocker({psMat,labelTexture,number:13+cabinets.length});root.add(model.root);
+    const fx=Math.sin(angle),fz=Math.cos(angle),side=Math.abs(fx)>0.5;
+    const col={type:'box',x,z,w:side?model.depth:model.width,d:side?model.width:model.depth,h:model.height};colliders.push(col);
+    const c={id,x,z,angle,root,col,model,doorT:0,enterT:0,from:null,
+      front:{x:x+fx*0.9,y:1.4,z:z+fz*0.9},exit:{x:x+fx*1.18,y:1.35,z:z+fz*1.18}};
+    cabinets.push(c);return c;
+  }
+  [[10,-94,0],[12.09,-18.12,-Math.PI/2],[-12.36,-17.13,Math.PI/2],[-12.37,-85.91,Math.PI/2],
+    [16.09,-94.45,0],[-14.84,-118.71,Math.PI/2],[-5.50,-101.46,0]].forEach(p=>makeCabinet(...p));
+  const gun=add('安全屋气压镇静枪',new THREE.Group());gun.position.set(-16,1.02,-57.2);
+  const barrel=new THREE.Mesh(new THREE.BoxGeometry(0.48,0.14,0.14),psMat({color:0x899494}));gun.add(barrel);
+  const grip=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.23,0.14),psMat({color:0x374038}));grip.position.set(-0.1,-0.15,0);gun.add(grip);
+  sign(['气压镇静枪 / 3 发','G 瞄准射击 · 只会暂时击晕'], -16,1.6,-57.5,Math.PI,2.3);
+  /* ===== 麻醉枪：世界模型 + 第一人称持枪模型（射击有后坐力） ===== */
+  const gunView=new THREE.Group();gunView.name='麻醉枪·第一人称';gunView.visible=false;
+  gunView.position.set(0.235,-0.255,-0.52);gunView.rotation.set(0.035,-0.06,0);
+  camera.add(gunView);
+  const gunBody=new THREE.Mesh(new THREE.BoxGeometry(0.078,0.088,0.26),psMat({color:0x39413b,flatShading:true}));gunView.add(gunBody);
+  const gunBarrel=new THREE.Mesh(new THREE.CylinderGeometry(0.019,0.019,0.28,7),psMat({color:0x7f8c86,flatShading:true}));
+  gunBarrel.rotation.x=Math.PI/2;gunBarrel.position.set(0,0.012,-0.25);gunView.add(gunBarrel);
+  const gunTank=new THREE.Mesh(new THREE.CylinderGeometry(0.033,0.033,0.17,7),psMat({color:0x8fb07a,flatShading:true}));
+  gunTank.rotation.x=Math.PI/2;gunTank.position.set(0,-0.056,-0.13);gunView.add(gunTank);
+  const gunGrip=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.15,0.075),psMat({color:0x2b302a,flatShading:true}));
+  gunGrip.position.set(0,-0.11,0.05);gunGrip.rotation.x=-0.22;gunView.add(gunGrip);
+  const gunSight=new THREE.Mesh(new THREE.BoxGeometry(0.018,0.026,0.05),psMat({color:0xc9b06a,flatShading:true}));
+  gunSight.position.set(0,0.058,-0.05);gunView.add(gunSight);
+  const gunDart=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,0.07,6),psMat({color:0xe2d48a,flatShading:true}));
+  gunDart.rotation.x=Math.PI/2;gunDart.position.set(0,0.012,-0.40);gunView.add(gunDart);
+  const gunHand=new THREE.Mesh(new THREE.BoxGeometry(0.075,0.075,0.09),psMat({color:0xb77a32,flatShading:true}));
+  gunHand.position.set(0,-0.115,0.05);gunView.add(gunHand);
+  const muzzleFlash=new THREE.Mesh(new THREE.PlaneGeometry(0.22,0.16),
+    new THREE.MeshBasicMaterial({color:0xffd9a0,transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false}));
+  muzzleFlash.position.set(0,0.012,-0.46);muzzleFlash.visible=false;gunView.add(muzzleFlash);
+  let gunKick=0,flashT=0,combatHudT=0;
+  /* v4.4 打击反馈状态：命中后仰、击退硬直、倒地/起身序列、命中标记 */
+  const hitFx={lean:0,leanX:0,leanZ:0,knockPhase:0,knockT:0,recover:0,wallStun:0,hitBefore:5};
+  let whooshNode=null;   /* 当前挥击风声节点，命中后立即压音让冲击声占主导 */
+  function showHitMark(){
+    /* 动态取元素：UI DOM 在本函数定义之后才 appendChild，提前缓存会是 null */
+    const hitEl=document.getElementById('night-hit'),hitMarkEl=document.getElementById('night-hitmark');
+    if(!hitEl||!hitMarkEl)return;
+    hitEl.classList.remove('on');hitMarkEl.classList.remove('on');
+    void hitEl.offsetWidth;   /* 强制重排以重启动画 */
+    hitEl.classList.add('on');hitMarkEl.classList.add('on');
+  }
+  [[4,2,4,-18],[4,-18,4,-36],[-3.3,-38,-3.3,-45],[0,-57,0,-61],[0,-87,0,-99]].forEach(a=>{
+    const d=Math.hypot(a[2]-a[0],a[3]-a[1]);const m=add('磨损导向线',new THREE.Mesh(new THREE.PlaneGeometry(0.07,d),psMat({color:0xc5ac5c,lit:false,transparent:true,opacity:0.26})));
+    m.rotation.x=-Math.PI/2;m.position.set((a[0]+a[2])/2,0.027,(a[1]+a[3])/2);
+  });
+  const ventFrogRoot=add('通风管·被拖回的奶蛙',new THREE.Group());ventFrogRoot.position.set(3.37,3.80,-101.14);ventFrogRoot.visible=false;
+  const coworker=add('同事 NO.07',new THREE.Group());coworker.position.set(2.66,0,7.88);coworker.rotation.y=102.9*Math.PI/180;
+  const coworkerSeat=add('NO.07 游戏座椅',new THREE.Group());coworkerSeat.position.set(6.99,0,10.54);
+  const seatMat=psMat({color:0x4a5145});
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.65,0.12,0.6),seatMat);seat.position.y=0.5;coworkerSeat.add(seat);
+  [-0.25,0.25].forEach(x=>[-0.23,0.23].forEach(z=>{const leg=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.48,0.06),seatMat);leg.position.set(x,0.24,z);coworkerSeat.add(leg);}));
+  const desk=box('NO.07 掌机台',6.99,11.05,1.05,0.5,0.88,0x535c50);
+  const handheld=add('NO.07 掌机',new THREE.Mesh(new THREE.BoxGeometry(0.36,0.06,0.22),psMat({color:0x96b27e,lit:false})));
+  handheld.position.set(6.99,0.94,10.94);
+  const arcadeBody=box('俄罗斯方块街机',6.51,6.87,0.72,1.05,1.85,0x334d48);
+  sign(['TETRIS / 休息机','工作时间请勿超过 20 秒'],6.9,2.14,6.87,Math.PI/2,1.5);
+  const arcadeScreen=add('街机 CRT',new THREE.Mesh(new THREE.PlaneGeometry(0.52,0.9),new THREE.MeshBasicMaterial({color:0xffffff})));
+  arcadeScreen.rotation.y=Math.PI/2;arcadeScreen.position.set(6.885,1.23,6.87);
+  const controls=add('街机操作台',new THREE.Mesh(new THREE.BoxGeometry(0.24,0.13,0.9),psMat({color:0x64766b})));
+  controls.position.set(6.95,0.75,6.87);
+  function ceilingFan(x,z,ceiling){
+    const root=add('吊扇',new THREE.Group());root.position.set(x,ceiling-0.1,z);
+    const mat=psMat({color:0x455552}),rod=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.75,6),mat);rod.position.y=-0.375;root.add(rod);
+    const rotor=new THREE.Group();rotor.position.y=-0.78;root.add(rotor);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.16,10),mat);rotor.add(hub);
+    for(let i=0;i<4;i++){const arm=new THREE.Group();arm.rotation.y=i*Math.PI/2;const blade=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.035,0.2),mat);blade.position.x=0.57;blade.rotation.x=0.13;arm.add(blade);rotor.add(arm);}
+    fans.push(rotor);
+  }
+  [[-4.7,-11,5.2],[4.7,-27,5.2],[0,-41,5.2],[0,-58,5],[0,-75,5],[0,-93,5]].forEach(p=>ceilingFan(...p));
+  ctx.hideSlime();ctx.freeChair();
+
+  const style=document.createElement('style');style.textContent=`
+    #night-status{position:fixed;right:22px;top:80px;z-index:25;color:#cccbb5;font:12px monospace;letter-spacing:1px;text-align:right;pointer-events:none}
+    #night-status strong{display:block;font-size:16px;margin:7px 0;color:#bdc990}#night-status.danger strong{color:#e69982}
+    #night-hp{position:fixed;right:22px;top:54px;z-index:26;font:11px monospace;color:#8f9c84;text-align:right;pointer-events:none;letter-spacing:1px}
+    #night-hp b{display:inline-block;width:13px;height:11px;margin-left:4px;background:#86c24b;border:1px solid #4d6b3a;vertical-align:-1px}
+    #night-hp b.off{background:#3a2420;border-color:#5a332c}
+    #night-foe{position:fixed;right:22px;top:142px;z-index:26;font:11px monospace;color:#b08a7a;text-align:right;pointer-events:none;letter-spacing:1px;opacity:0;transition:opacity .2s}
+    #night-foe.on{opacity:1}
+    #night-foe i{display:inline-block;width:9px;height:9px;margin-left:3px;background:#a33a2e;border:1px solid #5a1d16}
+    #night-foe i.off{background:#2a1a17;border-color:#3a2420}
+    #night-hurt{position:fixed;inset:0;pointer-events:none;z-index:30;opacity:0;transition:opacity .16s;
+      background:radial-gradient(ellipse at center,transparent 38%,#7a0d0d55 72%,#5a0505cc 100%)}
+    /* v4.4 命中反馈：HIT 文字 + 准星命中标记（空挥不显示） */
+    #night-hit{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%) scale(1);z-index:31;pointer-events:none;
+      font:700 26px/1 monospace;letter-spacing:.34em;color:#eaffd0;text-shadow:0 0 12px #86c24b,0 2px 4px #000;
+      opacity:0}
+    #night-hit.on{animation:nightHit .42s ease-out forwards}
+    #night-hitmark{position:fixed;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;z-index:31;pointer-events:none;opacity:0}
+    #night-hitmark::before,#night-hitmark::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:2px;margin:-1px 0 0 -8px;background:#eaffd0;box-shadow:0 0 5px #86c24b}
+    #night-hitmark::before{transform:rotate(45deg)}#night-hitmark::after{transform:rotate(-45deg)}
+    #night-hitmark.on{animation:nightMark .34s ease-out forwards}
+    @keyframes nightHit{0%{opacity:0;transform:translate(-50%,-50%) scale(1.5)}22%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-54%) scale(.94)}}
+    @keyframes nightMark{0%{opacity:0;transform:scale(1.7)}30%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.9)}}
+    #night-work{display:none;position:fixed;left:50%;bottom:8%;transform:translateX(-50%);width:min(470px,90vw);z-index:45;padding:22px;background:#101916f2;border:1px solid #94a47b;color:#dfe2cd;font:14px monospace}
+    #night-work.on{display:block}#night-track{height:34px;background:#35433c;position:relative;margin:20px 0}#night-target{position:absolute;left:43%;width:14%;height:100%;background:#a1b776}#night-cursor{position:absolute;top:-4px;height:42px;width:4px;background:#fff}
+    #night-work button,#night-shoot{background:#25352e;border:1px solid #849579;color:#e0e3d3;padding:10px;margin:4px;cursor:pointer;font:12px monospace}#night-work p{font-size:12px;color:#a6b09e;line-height:1.7}
+    #night-hide{display:none;position:fixed;inset:0;pointer-events:none;z-index:28;background:radial-gradient(ellipse at center,transparent 6%,#03060466 45%,#030604e6 100%)}#night-hide.on{display:block}
+    #night-cinema{display:none;position:fixed;inset:0;z-index:44;pointer-events:none;background:linear-gradient(#000 0%,#000 7%,transparent 7%,transparent 93%,#000 93%)}#night-cinema.on{display:block;pointer-events:auto}
+    #night-cinema .next{position:absolute;bottom:8%;left:0;width:100%;text-align:center;color:#adb5a5;font:11px monospace}
+    #night-cinema button{pointer-events:auto;position:absolute;bottom:3%;right:24px;background:transparent;border:0;color:#bcc4b4;font:12px monospace;cursor:pointer}
+    #night-cinema span{position:absolute;top:2%;left:24px;color:#adb5a5;font:12px monospace;letter-spacing:3px}
+    #night-cinema p{position:absolute;bottom:11%;left:50%;transform:translateX(-50%);margin:0;width:min(720px,88vw);text-align:center;white-space:pre-line;color:#eee9d3;font:17px/1.8 monospace;text-shadow:0 2px 5px #000,0 0 10px #000}
+    .night-cinematic #hud,.night-cinematic #dpad,.night-cinematic #night-status,.night-cinematic #broadcast,.night-cinematic #night-bag,.night-cinematic #tip,.night-cinematic #mf-toast{visibility:hidden;opacity:0;pointer-events:none}
+    #night-hide span{position:absolute;bottom:20%;width:100%;text-align:center;color:#adb8a0;font:13px monospace}
+    #night-shoot{position:fixed;right:24px;bottom:120px;z-index:35;display:none}#sceneBar{display:none!important}.dev-open #sceneBar.on{display:flex!important}
+    #hudGoal{max-width:300px;line-height:1.7}#mf-hint{max-width:90vw;white-space:normal;text-align:center}
+    body:not(.dev-open) #dpad button[data-k="KeyR"],body:not(.dev-open) #dpad button[data-k="KeyQ"]{visibility:hidden}
+    #mfPanel{display:none}.dev-open #mfPanel,.inventory-open #mfPanel{display:block}#night-bag{position:fixed;right:24px;bottom:76px;z-index:35;background:#17221ddd;border:1px solid #65775d;color:#bec6b3;padding:8px;cursor:pointer}
+  `;document.head.appendChild(style);
+  const ui=document.createElement('div');ui.innerHTML=`<div id="night-status" hidden>夜班 / NO.13<strong></strong><span></span></div>
+    <div id="night-hp" hidden>体力 <b></b><b></b></div><div id="night-foe">孙笑川 <i></i><i></i><i></i><i></i><i></i></div><div id="night-hurt"></div>
+    <div id="night-hit">HIT</div><div id="night-hitmark"></div>
+    <div id="night-work"><b>灌装工位 · 空格停在浅绿色区域</b><div id="night-track"><i id="night-target"></i><i id="night-cursor"></i></div><div id="night-result">合格 0 / 3</div><p>工位灯在闪。办公室那边却传来和机器不同的声音。</p><button id="night-stop">封盖 [空格]</button><button id="night-eat">偷吃一瓶 [F]</button><button id="night-stand">离开工位 [R]</button></div>
+    <div id="night-cinema"><span></span><p aria-live="polite"></p><div class="next"></div><button id="night-skip">跳过 / ESC</button></div><div id="night-hide"><span>躲在员工柜中 · E 离开 · 脚步声仍在外面</span></div><button id="night-shoot">G · 镇静枪</button><button id="night-bag">背包 / B</button>`;
+  document.body.appendChild(ui);
+  const statusEl=document.getElementById('night-status'),workEl=document.getElementById('night-work');
+  const resultEl=document.getElementById('night-result'),cursorEl=document.getElementById('night-cursor');
+  const hideEl=document.getElementById('night-hide'),shootEl=document.getElementById('night-shoot');
+  const hpEl=document.getElementById('night-hp'),foeEl=document.getElementById('night-foe'),hurtEl=document.getElementById('night-hurt');
+  function refreshCombatHud(){
+    hpEl.hidden=!st.started;
+    hpEl.querySelectorAll('b').forEach((b,i)=>b.classList.toggle('off',i>=st.hp));
+    const near=npc.state==='CHASE'||st.ehp<5;
+    foeEl.classList.toggle('on',st.started&&near&&!st.dead);
+    foeEl.querySelectorAll('i').forEach((b,i)=>b.classList.toggle('off',i>=st.ehp));
+    hurtEl.style.opacity=st.hurtT>0?String(Math.min(0.9,st.hurtT/0.28)):'0';   /* v4.4：红边归一到 0.28s */
+  }
+
+  const cinemaEl=document.getElementById('night-cinema');
+  function blendView(a,b,u){let turn=b.yaw-a.yaw;turn=((turn+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+    return {x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u,yaw:a.yaw+turn*u,pitch:a.pitch+(b.pitch-a.pitch)*u};
+  }
+  function introDialog(){MF.dialog('NO.07 · 同事',['喂，第 13 号，你把传送带当床了？','从右边的窄门下来，沿黄线到操作椅。点击停线，浅绿色那段才算合格。','三瓶合格品就下班。我去调试室玩游戏了，你可别被孙笑川抓到。'],sendCoworkerToSeat);}
+  const ease=v=>{v=Math.max(0,Math.min(1,v));return v*v*(3-2*v);};
+  const caption=cinemaEl.querySelector('p'),captionNext=cinemaEl.querySelector('.next');
+  const captionWriter=MF.createTypewriter(caption);
+  const captionPages={
+    directions:[{at:0.4,end:2.5,who:'你',text:'厕所在哪？'},{at:2.5,end:7.4,who:'工位奶蛙',text:'就在你对面。'}],
+    toiletExit:[{at:0.4,end:2.6,who:'你',text:'刚才那声音……不是机器。'},{at:2.6,end:5.6,who:'你',text:'办公室就在那边。厂2也传来同样的声音。'}],
+    factoryArrival:[{at:1.05,end:4.3,who:'孙笑川',text:'そこで何をしている？持ち場に戻れ！'}]
+  };
+  function showCaptionPage(c,index){
+    c.page=index;c.pageClicked=false;c.waiting=false;
+    const page=c.pages[index];cinemaEl.dataset.state='typing';captionNext.textContent='E / 点击 补全字幕';
+    captionWriter.start(page.who+'：'+page.text,()=>{
+      cinemaEl.dataset.state='waiting';captionNext.textContent='E / 点击 继续 ▼';
+    });
+    playPageVoice(page.who,page.text);
+  }
+  function advanceCinematic(){
+    const c=cinematic;if(!c||S.pause||document.hidden)return;
+    if(captionWriter.reveal())return;
+    if(c.page<0||c.pageClicked)return;
+    c.pageClicked=true;
+    cinemaEl.dataset.state='playing';captionNext.textContent='镜头播放中…';
+    if(c.waiting)nextCaptionPage(c);
+  }
+  function nextCaptionPage(c){
+    if(captionWriter.isTyping()||!c.pageClicked)return;
+    if(c.page+1<c.pages.length)showCaptionPage(c,c.page+1);
+    else finishCinematic();
+  }
+  function releaseCinematicActors(){
+    ctx.built[1].props.ventGrille.rotation.x=0;ventFrogRoot.visible=false;
+    if(directionWorker&&directionWorker.actor)directionWorker.actor.update(0,'sit',1);
+    captionWriter.clear();captionNext.textContent='';cinemaEl.dataset.state='closed';stopPageVoice();
+  }
+  function startCinematic(kind){
+    if(kind==='directions'&&!(st.shiftDone&&st.good>=3))return;
+    MF.closeDialog();releaseCinematicActors();
+    ctx.standUp();ctx.resetStance();ctx.clearKeys();
+    const from=ctx.getView();
+    if(kind==='vent'){
+      const dx=ventTarget.x-from.x,dy=ventTarget.y-from.y,dz=ventTarget.z-from.z;
+      cinematic={kind,t:0,duration:7.4,from,to:{...from,yaw:Math.atan2(-dx,-dz),pitch:Math.atan2(dy,Math.hypot(dx,dz))},knocked:false,pulled:false,slammed:false};
+      ventSeen=true;audio.play('amb_ventilation',0.22);
+    }else{
+      const shots=kind==='opening'?openingShots:storyShots[kind];
+      const timings={opening:[[0,0],[1.6,0],[4,1],[5.6,1],[8,2],[9.6,2]],
+        directions:[[0,0],[4.6,0],[6.2,1],[7.4,1]],
+        toiletExit:[[0,0],[1.6,0],[3.4,1],[5.6,1]],
+        factoryArrival:[[0,0],[0.65,0],[1.25,1],[2.55,1],[3.2,2],[4.3,2]]};
+      const cues=timings[kind].map(([at,i])=>({at,view:shots[i]}));
+      cinematic={kind,t:0,duration:cues[cues.length-1].at,shots,cues};
+      if(kind==='opening')cinematic.after=introDialog;
+      if(kind==='directions')st.askedToilet=true;
+      if(kind==='toiletExit'){st.toiletExitSeen=true;audio.play('amb_distant_whispers',0.25);}
+      if(kind==='factoryArrival'){
+        st.factoryArrivalSeen=true;st.visited2=true;setAnger(Math.max(60,st.anger+25));
+        npc.pos.set(-3.43,0,-50.18);npc.zone=1;npc.state='INVESTIGATE';npc.last.set(3.51,0,-52.3);
+        npc.path=[];npc.pathAt=0;npc.repath=0;npc.stun=0;npc.cooldown=2.5;npc.seen=false;
+        npc.yaw=Math.atan2(from.x-npc.pos.x,from.z-npc.pos.z);actor.position.copy(npc.pos);
+      }
+      ctx.setView(shots[0]);
+    }
+    const titles={opening:'00:13 / 夜班开始',vent:'通风管里有声音',directions:'工位旁 / 问路',toiletExit:'走出厕所',factoryArrival:'02 / 身后的脚步'};
+    Object.assign(cinematic,{pages:captionPages[kind]||[],page:-1,pageClicked:false,waiting:false});
+    cinemaEl.dataset.state='playing';
+    MF.setLock(true);document.body.classList.add('night-cinematic');cinemaEl.classList.add('on');cinemaEl.querySelector('span').textContent=titles[kind];
+  }
+  function finishCinematic(){if(!cinematic)return;const c=cinematic;
+    ctx.setView(c.kind==='vent'?c.to:c.shots[c.shots.length-1]);releaseCinematicActors();
+    cinematic=null;MF.setLock(false);ctx.clearKeys();cinemaEl.classList.remove('on');document.body.classList.remove('night-cinematic');refreshHint();if(c.after)c.after();
+  }
+  function updateCinematic(dt){if(!cinematic)return;const c=cinematic;
+    const boundary=c.pages.length?(c.page<0?c.pages[0].at:c.pages[c.page].end):c.duration;
+    c.t=Math.min(c.t+dt,boundary);
+    if(c.page<0&&c.pages.length&&c.t>=boundary)showCaptionPage(c,0);
+    else if(c.t>=boundary){
+      if(!c.pages.length){finishCinematic();return;}
+      c.waiting=true;
+      if(c.pageClicked){nextCaptionPage(c);if(!cinematic)return;}
+    }
+    if(c.kind==='vent'){
+      ctx.setView(blendView(c.from,c.to,ease(c.t/1.25)));
+      const push=ease((c.t-1.4)/1.2),pull=ease((c.t-4.35)/0.85),fall=ease((c.t-5.3)/0.32);
+      const struggle=c.t>2.6&&c.t<4.35?Math.sin(c.t*27)*0.018:0;
+      ventFrogRoot.visible=S.showChar&&c.t>=1.1&&c.t<5.3;
+      ventFrogRoot.position.set(3.37+struggle,3.80+struggle*0.4,-101.14-0.32+push*0.83-pull*1.8);
+      if(ventFrog)ventFrog.update(dt,'prone',0.3+push*0.7);
+      const bounce=c.t>5.62?Math.abs(Math.sin((c.t-5.62)*17))*0.16*Math.exp(-(c.t-5.62)*5):0;
+      ctx.built[1].props.ventGrille.rotation.x=-(push*0.65+struggle*1.6)*(1-fall)-bounce;
+      if(c.t>1.5&&!c.knocked){c.knocked=true;audio.play('sfx_door_creak',0.3);audio.play('sfx_breath',0.22);}
+      if(c.t>4.35&&!c.pulled){c.pulled=true;audio.play('sfx_stinger',0.3);audio.play('sfx_sticky_step',0.35);}
+      if(c.t>5.6&&!c.slammed){c.slammed=true;audio.play('sfx_lock_turn',0.55);}
+    }else{
+      let i=0;while(i<c.cues.length-2&&c.t>c.cues[i+1].at)i++;
+      const a=c.cues[i],b=c.cues[i+1];ctx.setView(blendView(a.view,b.view,ease((c.t-a.at)/(b.at-a.at))));
+      if(c.kind==='directions'){
+        if(directionWorker&&directionWorker.actor){
+          directionWorker.actor.update(0,'sit',1);
+          const amount=ease((c.t-0.8)/1.5)*(1-ease((c.t-5.9)/1.4));
+          directionWorker.actor.lookHead(1.4*amount,0.06*amount);
+        }
+      }else if(c.kind==='factoryArrival'){
+        actor.rotation.y=Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z);actor.rotation.z=0;
+        setFrame(Math.floor(c.t*6)%atlas.count);
+      }
+    }
+  }
+  window.addEventListener('click',e=>{
+    if(!cinematic||!e.target.closest||!e.target.closest('#night-cinema, #view, #btnE'))return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(S.pause||document.hidden)return;
+    if(e.target.closest('#night-skip'))finishCinematic();else advanceCinematic();
+  },true);
+  window.addEventListener('keydown',e=>{
+    if(!cinematic||!['Escape','KeyE'].includes(e.code)||e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(e.repeat||S.pause||document.hidden)return;
+    if(e.code==='Escape')finishCinematic();else advanceCinematic();
+  },true);
+  window.addEventListener('pagehide',resetPose);
+  function closeWork(){work=false;workEl.classList.remove('on');ctx.clearKeys();ctx.standUp();}
+  function openWork(){if(uiBusy()||st.capturing)return;finishArcadeChase();if(arcade)arcade.close();work=true;workT=0;workEl.classList.add('on');ctx.clearKeys();ctx.setPose(2.45,1.35,-16.96,Math.PI/2);resultEl.textContent='合格 '+st.good+' / 3 · 偷吃 '+st.eaten+' 瓶';}
+  function completeShift(){if(st.shiftDone||st.good<3)return;st.shiftDone=true;MF.state.inv.floorKey=true;MF.state.inv.backpack=true;MF.refreshPanel();
+    closeWork();audio.play('sfx_pa_static',0.22);MF.dialog('下班广播',['本班产量达标。第 13 号，钥匙已经放进你的背包。','右侧监控室的绿色出口通向停车场。你可以直接开车走。','（办公室的声音还没停。西侧厕所的通风管里，似乎有人在哭。）']);refreshHint();}
+  function stopWork(){if(!work||S.pause||document.hidden)return;const ok=cursor>=0.43&&cursor<=0.57;
+    if(ok){st.good=Math.min(3,st.good+1);audio.play('sfx_lock_turn',0.28);}else{audio.play('sfx_vending_beep',0.2);setAnger(st.anger+5);}
+    resultEl.textContent=(ok?'封盖合格':'偏了，可以继续试')+' · '+st.good+' / 3';workT=0;
+    completeShift();}
+  function eat(){if(!work||S.pause||document.hidden)return;st.eaten++;MF.state.happy=Math.min(100,MF.state.happy+20);MF.state.milk=Math.min(100,MF.state.milk+5);audio.play('sfx_swallow',0.45);MF.refreshPanel();
+    resultEl.textContent='偷吃 '+st.eaten+' 瓶 · 合格 '+st.good+' / 3';
+    if(st.eaten===3){closeWork();ctx.startLaugh();setAnger(40);npc.last.set(3.2,0,-17);npc.state='INVESTIGATE';npc.path=[];npc.repath=0;
+      [0.25,0.7,1.15].forEach((d,i)=>later(d,()=>{const a=audio.play('sfx_frog_laugh_raw',0.2-i*0.035);if(a){a.playbackRate=0.88+i*0.12;later(3.5-i*0.5,()=>{a.pause();audio.playing.delete(a);});}}));
+      later(2,()=>{MF.dialog('孙笑川',['そんなに大声を出して、何をしているんだ！','遊んでいないで、持ち場に戻れ！'],()=>MF.dialog('NO.07',['（办公室门口响起脚步声。NO.07 把笑憋了回去。）','先把三瓶合格品做完。想查那些声音，下班后去厕所听。']));});
+    }
+    refreshHint();}
+  document.getElementById('night-stop').onclick=stopWork;document.getElementById('night-eat').onclick=eat;document.getElementById('night-stand').onclick=closeWork;
+  /* 工位小游戏的键盘：空格封盖 / F 偷吃 / R 离开。这里直接挂在 window 上，
+     因为主脚本的 keydown 在 work 打开时会被 inputBlocked 吃掉。 */
+  window.addEventListener('keydown',e=>{
+    if(!work||e.repeat||S.pause||document.hidden)return;
+    if(e.target&&(e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)))return;
+    if(e.code==='Space'){e.preventDefault();e.stopImmediatePropagation();stopWork();}
+    else if(e.code==='KeyF'){e.preventDefault();e.stopImmediatePropagation();eat();}
+    else if(e.code==='KeyR'){e.preventDefault();e.stopImmediatePropagation();closeWork();}
+  },true);
+  document.getElementById('view').addEventListener('click',()=>{if(work)stopWork();});
+  MF.unregister('chair');MF.unregister('seated');
+  prop('night-work',2.8,-16.96,()=>st.shiftDone?'回到工位（可以继续偷吃）':'上工 · 封盖小游戏',openWork,2);
+  const coworkerProp=prop('coworker',2.66,7.88,'问问 NO.07',()=>MF.dialog('NO.07',['喂，第 13 号，别在传送带上摸鱼。','沿右侧黄线走到黄色操作椅。把划线停在浅绿色那段，三瓶就能下班。','我去调试室玩会儿游戏。你别玩太久，超过二十秒他会来抓你，赶紧回工位。'],sendCoworkerToSeat));
+  arcade=createNightArcade({canInput:()=>S.started&&!S.pause&&!document.hidden&&!uiBusy()&&!st.capturing,onClose:()=>ctx.clearKeys(),onTimeout:()=>{
+    st.arcadeChase=true;setAnger(Math.max(70,st.anger));npc.state='CHASE';npc.last.copy(camera.position);npc.path=[];npc.repath=0;npc.cooldown=0;npc.lost=0;
+    MF.dialog('孙笑川',['仕事中にゲームだと？今すぐ持ち場に戻れ！']);refreshHint();
+  }});
+  arcadeTexture=new THREE.CanvasTexture(arcade.textureCanvas);arcadeTexture.magFilter=THREE.NearestFilter;arcadeScreen.material.map=arcadeTexture;
+  prop('night-arcade',7.5,6.87,()=>st.arcadeChase?'他正在找你，先回工位':'玩俄罗斯方块（超过 20 秒会被发现）',()=>{
+    if(st.arcadeChase){MF.toast('先回黄色操作椅，别再摸鱼了。');return;}
+    ctx.standUp();ctx.clearKeys();ctx.setPose(7.85,1.35,6.87,Math.PI/2);arcade.open();
+  },1.75);
+  function finishArcadeChase(){if(!st.arcadeChase)return;st.arcadeChase=false;setAnger(st.valve?85:st.office?65:40);npc.state='PATROL';npc.path=[];npc.repath=0;npc.cooldown=8;npc.seen=false;MF.toast('你回到了工位。孙笑川停止追赶，继续巡逻。');}
+  prop('toilet-think',-14.5,-15.5,'在厕所静一静 / 听通风管',()=>{
+    st.thought=true;st.eavesdrop=true;audio.play('amb_distant_whispers',0.32);
+    MF.dialog('奶蛙 · 厕所沉思',['管道里传来一声：「爸爸，我不想喝奶了……」','孙笑川的办公室在西侧靠近传送带起点的房间，桌上放着夜班记录。进去会被发现。','NO.07 说：厂2也有这样的声音。沿传送带走到尽头，左侧门廊通往发酵厂。','你可以就此离开。但那声音听起来……不像机器。'],()=>{st.toiletDone=true;refreshHint();});refreshHint();},2);
+  prop('office-record',-16.12,-4.17,'查看办公室的夜班记录',()=>{
+    st.office=true;setAnger(65);npc.last.copy(camera.position);npc.state='INVESTIGATE';npc.repath=0;
+    MF.dialog('夜班记录',['「试饮员不是员工。它们是原料。」','桌下的录音机还在反复播放一个孩子的声音。'],()=>MF.dialog('孙笑川',['誰の許可で入ってきたんだ？']));refreshHint();},1.75);
+  prop('stungun',-16,-57.2,()=>st.gun?'补充镇静弹（3 发）':'拿起镇静枪（G 射击）',()=>{st.gun=true;st.ammo=3;gun.visible=false;shootEl.style.display='block';MF.toast('G 瞄准射击，击晕 6 秒。不要隔着墙浪费子弹。');});
+  cabinets.forEach(c=>prop(c.id,c.front.x,c.front.z,()=>st.hidden?'离开清洁柜':'躲入清洁柜',()=>{
+    if(st.hidden){if(hiddenCabinet.enterT>=1.25)exitHide();return;}
+    ctx.resetStance();st.exposed=npc.seen&&distance(npc.pos,camera.position)<9;st.hidden=true;hiddenCabinet=c;ctx.standUp();ctx.clearKeys();
+    c.from=ctx.getView();c.enterT=0;hideEl.classList.add('on');pinCabinet();
+    if(st.exposed){npc.last.set(c.front.x,0,c.front.z);npc.state='INVESTIGATE';npc.path=[];npc.repath=0;npc.search=0;MF.toast('他看见你进柜子了。脚步声正在靠近。');}
+    refreshHint();},1.8));
+  function pinCabinet(){const c=hiddenCabinet,k=Math.max(0,Math.min(1,(c.enterT-0.18)/0.65)),u=k*k*(3-2*k);
+    const target={x:c.x+Math.sin(c.angle)*c.model.eye.z,y:c.model.eye.y,z:c.z+Math.cos(c.angle)*c.model.eye.z,yaw:c.angle+Math.PI,pitch:0};
+    ctx.setView(blendView(c.from,target,u));
+  }
+  function exitHide(){if(!hiddenCabinet)return;const c=hiddenCabinet;st.hidden=false;st.exposed=false;hiddenCabinet=null;c.doorT=0.95;hideEl.classList.remove('on');ctx.setPose(c.exit.x,c.exit.y,c.exit.z,c.angle+Math.PI);ctx.clearKeys();refreshHint();}
+  function shoot(){if(cinematic||!st.gun||work||st.hidden||(arcade&&arcade.isOpen())||st.capturing||uiBusy()||S.pause||!S.started)return;if(st.ammo<=0){MF.toast('空枪。安全屋桌上还有镇静弹。');return;}st.ammo--;
+    const d=distance(camera.position,npc.pos),dx=npc.pos.x-camera.position.x,dz=npc.pos.z-camera.position.z;
+    const aim=(-Math.sin(ctx.getYaw())*dx-Math.cos(ctx.getYaw())*dz)/Math.max(d,0.01);
+    audio.play('sfx_pa_static',0.65);
+    gunKick=1;flashT=0.055;if(ctx.shake)ctx.shake(0.42,0.13);
+    if(d<15&&aim>0.9&&lineClear({...camera.position,y:1.4},{...npc.pos,y:1.4},true)){npc.stun=6;npc.state='STUNNED';st.ehp=5;npcFlash(0.12);MF.toast('击中了。六秒，快离开他的视线。');}
+    else{MF.toast('没有击中。剩余 '+st.ammo+' 发。');}
+  }
+  shootEl.onclick=shoot;
+  /* ===== 近战：左键出拳 · 孙笑川 5 血 · 主角 2 血 ===== */
+  function npcFlash(dur){st.flashT=Math.max(st.flashT,dur||0.1);}
+  function combatReady(){
+    return st.started&&!st.dead&&!S.pause&&!document.hidden&&!st.hidden&&!st.capturing&&!work&&!(arcade&&arcade.isOpen())&&!uiBusy()&&!cinematic;
+  }
+  /* 挥击：随时可挥，对着空气也能挥；只有挥到人身上才结算伤害 */
+  function tryPunch(){
+    if(!combatReady()||st.punchCd>0)return false;
+    st.punchT=0.0001;st.punchCd=0.52;st.punchHit=false;
+    if(ctx.punch)ctx.punch();
+    /* 挥击风声：《我的世界》原版横扫攻击音效（Sweep_attack1），
+       已裁掉前导静音、峰值归一，起手就响。只做 ±2% 的音高微随机，保持原版听感。 */
+    const whoosh=audio.play('sfx_punch_whoosh',0.45);
+    if(whoosh){whoosh.playbackRate=0.99+Math.random()*0.03;whooshNode=whoosh;}
+    else{const b=audio.play('sfx_breath',0.16);if(b){b.playbackRate=2.1;whooshNode=b;}}
+    if(ctx.shake)ctx.shake(0.18,0.07);          /* 空挥也有惯性 */
+    return true;
+  }
+  /* 贴身到能打到人的距离：用来决定左键是“交互”还是“挥击” */
+  function punchInRange(){
+    if(!st.started||st.dead||st.hidden)return false;
+    return npc.state==='CHASE'||distance(npc.pos,camera.position)<3.2;
+  }
+  function punchResolve(){
+    const d=distance(npc.pos,camera.position);
+    if(d>2.7||npc.stun>0)return;
+    const dx=npc.pos.x-camera.position.x,dz=npc.pos.z-camera.position.z;
+    const aim=(-Math.sin(ctx.getYaw())*dx-Math.cos(ctx.getYaw())*dz)/Math.max(d,0.01);
+    if(aim<0.28||Math.abs(camera.position.y-(npc.pos.y+1.35))>1.7)return;
+    if(!lineClear({...camera.position,y:camera.position.y},{x:npc.pos.x,y:npc.pos.y+1.4,z:npc.pos.z},true,npcCol))return;
+    /* ===== v4.4 命中反馈：只有真正打中才走到这里，空挥一律不触发 ===== */
+    hitFx.hitBefore=st.ehp;
+    st.ehp=Math.max(0,st.ehp-1);
+    npcFlash(0.1);                                   /* 命中帧病态白/绿高闪 0.08-0.12s */
+    if(ctx.hitstop)ctx.hitstop(0.065);               /* 冻结 0.05-0.08s，不超 0.1 */
+    const nx=dx/Math.max(d,0.01),nz=dz/Math.max(d,0.01);
+    /* 方向性镜头冲击：沿玩家→NPC 方向，0.12-0.18s，幅度有上限由底层限制 */
+    if(ctx.shake)ctx.shake(0.78,0.15,nx,nz);
+    /* 上身惯性后仰：记录打击方向，update 中衰减 */
+    hitFx.lean=1;hitFx.leanX=-nx;hitFx.leanZ=-nz;
+    showHitMark();                                   /* 准星 HIT 标记 + 屏幕中央 HIT */
+    /* 声音分层：低频闷响（主冲击）+ 中高频软组织瞬态；命中即压掉挥击风声 */
+    const thud=audio.play('sfx_jelly_drop',0.66);if(thud)thud.playbackRate=0.72;
+    const snap=audio.play('sfx_swallow',0.22);if(snap)snap.playbackRate=1.15;
+    if(whooshNode){try{whooshNode.volume=Math.min(whooshNode.volume||0.45,0.06);}catch(e){}}
+    /* 击退：沿玩家→NPC 推 0.3m（0.25-0.35）；撞墙则原地硬直，不穿墙 */
+    const kb=0.3;
+    if(!blocked(npc.pos.x+nx*kb,npc.pos.z+nz*kb,0.3,false,npcCol)){
+      npc.pos.x+=nx*kb;npc.pos.z+=nz*kb;
+    }else hitFx.wallStun=0.28;                       /* 撞墙硬直 */
+    npc.path=[];npc.repath=0.3;npc.last.copy(camera.position);npc.lost=0;
+    if(st.ehp<=0){
+      /* 第五下：踉跄 → 跪倒 → 倒下，由 hitFx.knockPhase 在 update 中演出 */
+      npc.stun=6;npc.state='STUNNED';npc.seen=false;st.ehp=5;
+      hitFx.knockPhase=1;hitFx.knockT=0;hitFx.recover=0;
+      MF.toast('他踉跄着跪倒，不动了。六秒后会醒。',3200);
+    }else{
+      npc.state='CHASE';npc.cooldown=Math.min(npc.cooldown,0.6);
+      MF.toast('打中了。他还剩 '+st.ehp+' 下。',1600);
+    }
+    refreshCombatHud();
+  }
+  function updatePunch(dt){
+    st.punchCd=Math.max(0,st.punchCd-dt);
+    if(st.punchT>0){
+      st.punchT+=dt;
+      if(!st.punchHit&&st.punchT>=0.16){st.punchHit=true;punchResolve();}   /* 与挥击动画的横扫帧对齐 */
+      if(st.punchT>0.46)st.punchT=0;
+    }
+  }
+  function playerHurt(){
+    if(st.dead)return;
+    /* v4.4：红边≤0.3s，方向性击退镜头（远离攻击者），2.4s 冷却保证不连续掉血 */
+    st.hp=Math.max(0,st.hp-1);st.hurtT=0.28;npc.cooldown=2.4;
+    const hx=camera.position.x-npc.pos.x,hz=camera.position.z-npc.pos.z,hl=Math.max(0.01,Math.hypot(hx,hz));
+    if(ctx.shake)ctx.shake(0.72,0.18,hx/hl,hz/hl);
+    audio.play('sfx_stinger',0.35);
+    refreshCombatHud();
+    if(st.hp<=0){
+      st.dead=true;st.hurtT=0.9;npc.state='CAPTURE';npc.path=[];
+      MF.ending('caught');
+    }else{
+      MF.toast('他打中了你。还能挨 '+st.hp+' 下。',2600);
+    }
+  }
+  document.getElementById('night-bag').onclick=()=>document.body.classList.toggle('inventory-open');
+  window.addEventListener('keydown',e=>{if(e.repeat||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
+    if(e.code==='KeyG')shoot();
+    if(e.code==='KeyB'){document.body.classList.toggle('inventory-open');ctx.clearKeys();}
+    if(work&&e.code==='Escape'){closeWork();e.preventDefault();}
+  });
+
+  const wallSegments=[];
+  for(const c of colliders){if(c.type!=='bounds')continue;
+    for(const side of ['w','e','n','s']){const vertical=side==='w'||side==='e',start=vertical?c.minZ:c.minX,end=vertical?c.maxZ:c.maxX;
+      const fixed=side==='w'?c.minX:side==='e'?c.maxX:side==='n'?c.minZ:c.maxZ;
+      const gaps=(c.gaps||[]).filter(g=>g.s===side).sort((a,b)=>a.a-b.a);let from=start;
+      const push=(a,b)=>{if(b<=a)return;wallSegments.push(vertical?{x0:fixed,z0:a,x1:fixed,z1:b,h:c.H||5}:{x0:a,z0:fixed,x1:b,z1:fixed,h:c.H||5});};
+      for(const gap of gaps){push(from,gap.a);from=Math.max(from,gap.b);}push(from,end);
+    }
+  }
+  const roundRooms=colliders.filter(c=>c.type==='round');
+  roundRooms.forEach(c=>{for(let i=0;i<60;i++){const a=(i+0.5)*Math.PI/30;if(a<0.108||Math.abs(a-Math.PI*2)<0.108||Math.abs(a-Math.PI*1.5)<0.108)continue;
+    wallSegments.push({x0:c.x+Math.sin(a-Math.PI/60)*c.r,z0:c.z+Math.cos(a-Math.PI/60)*c.r,x1:c.x+Math.sin(a+Math.PI/60)*c.r,z1:c.z+Math.cos(a+Math.PI/60)*c.r,h:c.H});}});
+  const rooms=colliders.filter(c=>c.type==='bounds');
+  const solid=colliders.filter(c=>c.type==='box'||c.type==='cyl'||c.type==='seg');
+  /* 角色碰撞体：玩家镜头不再穿进 NPC 模型（self 标记供 NPC 自身寻路/移动时跳过） */
+  const npcCol={type:'cyl',x:npc.pos.x,z:npc.pos.z,r:1.0,h:1.8,self:true};
+  const cowCol={type:'cyl',x:coworker.position.x,z:coworker.position.z,r:0.55,h:1.6,self:true};
+  /* 同事 NO.07 会从玩家身边挤过去：它的碰撞体只留给 NPC 寻路用，
+     不加进玩家碰撞列表。否则玩家站在它去座椅的路线附近时，会被它
+     一路顶着推进墙角（x≈7.13, z≈5.92 那个点），怎么走都出不来。 */
+  colliders.push(npcCol);solid.push(npcCol,cowCol);
+  const pointSegment=(x,z,a)=>{const dx=a.x1-a.x0,dz=a.z1-a.z0,L=dx*dx+dz*dz;const u=L?Math.max(0,Math.min(1,((x-a.x0)*dx+(z-a.z0)*dz)/L)):0;return Math.hypot(x-a.x0-u*dx,z-a.z0-u*dz);};
+  function inShape(x,z,c,r){
+    if(c.type==='box')return Math.abs(x-c.x)<c.w/2+r&&Math.abs(z-c.z)<c.d/2+r;
+    if(c.type==='cyl')return Math.hypot(x-c.x,z-c.z)<c.r+r;
+    return pointSegment(x,z,c)<(c.r||0.1)+r;
+  }
+  function blocked(x,z,r=0.31,planning=false,selfCol=null){
+    if(!rooms.some(c=>x>=c.minX-0.001&&x<=c.maxX+0.001&&z>=c.minZ-0.001&&z<=c.maxZ+0.001)&&!roundRooms.some(c=>Math.hypot(x-c.x,z-c.z)<=c.r-r))return true;
+    if(inSafe({x,z}))return true;
+    if(wallSegments.some(w=>pointSegment(x,z,w)<r+0.06))return true;
+    if(solid.some(c=>c!==selfCol&&!c.off&&!(planning&&c.autoDoor)&&(c.yMin===undefined||c.yMin<0.35)&&inShape(x,z,c,r)))return true;
+    return surfaces.some(c=>c.solid&&!c.stair&&c.y>0.46&&x>c.x0-r&&x<c.x1+r&&z>c.z0-r&&z<c.z1+r);
+  }
+  /* 厂2 的三段楼梯（世界坐标）：NPC 要上楼时先走到楼梯下口，再一级一级踩上去 */
+  const STAIRS=[
+    {x:-11.45,bot:-101.4,botOut:-0.7,top:-98.0},
+    {x:11.65,bot:-56.3,botOut:0.7,top:-60.9},
+    {x:9.3,bot:-80.1,botOut:0.7,top:-84.7}
+  ];
+  /* 目标和自己不在同一层时，返回该走的楼梯口/梯段 */
+  function stairApproach(tx,tz,fromY,ty){
+    if(!isFinite(ty)||Math.abs(ty-fromY)<1.2)return null;
+    const goingUp=ty>fromY;
+    /* 已经站在某段楼梯上：直接朝这段的另一头走，走完就换层 */
+    const onFlight=STAIRS.find(s=>Math.abs(npc.pos.x-s.x)<1.9&&npc.pos.z<=s.bot+1.2&&npc.pos.z>=s.top-0.5);
+    if(onFlight)return {x:onFlight.x,z:goingUp?onFlight.top-0.7:onFlight.bot+onFlight.botOut};
+    let best=null;
+    for(const s of STAIRS){
+      const z=goingUp?s.bot+s.botOut:s.top-0.7;
+      const d=Math.hypot(s.x-tx,z-tz);
+      if(!best||d<best.d)best={d,x:s.x,z};
+    }
+    return best?{x:best.x,z:best.z}:null;
+  }
+  /* 楼梯高度场：只认 step 面，NPC 踩到哪级就站在哪级；离开楼梯自动落回 0 */
+  function npcGround(x,z,foot){
+    let h=0;
+    for(const s of surfaces){
+      if(s.solid&&!s.stair)continue;   /* 非楼梯的实心面仍然当墙 */
+      if(x>=s.x0&&x<=s.x1&&z>=s.z0&&z<=s.z1&&s.y<=foot+0.55&&s.y>h)h=s.y;
+    }
+    return h;
+  }
+  function lineClear(a,b,interact=false,skipCol=null){
+    const d=distance(a,b),n=Math.max(1,Math.ceil(d/0.16));
+    for(let i=1;i<n;i++){
+      const u=i/n,x=a.x+(b.x-a.x)*u,z=a.z+(b.z-a.z)*u,y=(a.y||1.35)+((b.y||1.35)-(a.y||1.35))*u;
+      if(wallSegments.some(w=>w.h>y&&pointSegment(x,z,w)<0.1))return false;
+      for(const c of solid){if(c===skipCol||c.off||c.type==='seg'||c.sight===false||(c.h||2)<y||(c.yMin||0)>y)continue;
+        if(interact&&inShape(b.x,b.z,c,0.12)&&!c.wall)continue;
+        if(inShape(x,z,c,0))return false;}
+    }
+    return true;
+  }
+  const grid={minX:-24,minZ:-140,step:0.6,w:85,h:256};
+  const cell=(x,z)=>({x:Math.round((x-grid.minX)/grid.step),z:Math.round((z-grid.minZ)/grid.step)});
+  const world=(x,z)=>({x:grid.minX+x*grid.step,z:grid.minZ+z*grid.step});
+  function findPath(a,b,selfCol=null){
+    const total=grid.w*grid.h,cache=new Int8Array(total);
+    const ok=(x,z)=>{if(x<0||x>=grid.w||z<0||z>=grid.h)return false;const id=z*grid.w+x;if(!cache[id]){const p=world(x,z);cache[id]=blocked(p.x,p.z,0.31,true,selfCol)?-1:1;}return cache[id]>0;};
+    /* 目标格被占（罐体/死角）时，往外找最近的可走格，最多找 7 米 */
+    function nearest(p){const c=cell(p.x,p.z);let best=null,bd=1e9;
+      for(let dz=-12;dz<=12;dz++)for(let dx=-12;dx<=12;dx++){
+        const gx=c.x+dx,gz=c.z+dz;
+        if(gx<0||gx>=grid.w||gz<0||gz>=grid.h||!ok(gx,gz))continue;
+        const w=world(gx,gz),d=(w.x-p.x)*(w.x-p.x)+(w.z-p.z)*(w.z-p.z);
+        if(d<bd){bd=d;best={x:gx,z:gz};}}
+      return best;}
+    const from=nearest(a),to=nearest(b);if(!from||!to)return [];
+    const begin=from.z*grid.w+from.x,end=to.z*grid.w+to.x,queue=new Int32Array(total),parent=new Int32Array(total);parent.fill(-1);
+    let head=0,tail=1;queue[0]=begin;parent[begin]=begin;
+    while(head<tail&&parent[end]===-1){const id=queue[head++],x=id%grid.w,z=Math.floor(id/grid.w);
+      /* 八连通：四连通会被斜着卡住的窄口堵死（这正是"厂2 卡住"的原因） */
+      for(const d of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){
+        const nx=x+d[0],nz=z+d[1];if(nx<0||nx>=grid.w||nz<0||nz>=grid.h)continue;
+        const ni=nz*grid.w+nx;if(!ok(nx,nz)||parent[ni]!==-1)continue;parent[ni]=id;queue[tail++]=ni;}
+    }
+    if(parent[end]===-1)return [];
+    const path=[];let id=end;while(id!==begin){path.push(world(id%grid.w,Math.floor(id/grid.w)));id=parent[id];}path.reverse();return path;
+  }
+  const routes=[[[-15.3,-4.17],[-14.1,-6],[-9,-6],[-3.2,-21],[-3.2,-38],[3.2,-38],[4,-22],[4,-10],[-3.3,-44],[-8,-26]],
+    [[4.5,-56],[0,-61],[-9.5,-62.5],[0,-69],[-2,-77],[0,-85],[10,-89],[0,-98],[-10,-82.5]],
+    /* 第三幕：绕母液罐巡逻（四角折返，不穿罐体） */
+    [[-8,-130],[8,-130],[8,-114],[-8,-114]]];
+  /* v4.4：从当前位置到"当前分段目标"重新算路；目标被占时 findPath 内部 nearest 会找最近可走格 */
+  function coworkerPlanLeg(){
+    const wp=cowNav.waypoints;
+    const target=wp[Math.min(cowNav.leg,wp.length-1)];
+    coworkerPath=findPath(coworker.position,target,cowCol);
+    coworkerAt=0;cowNav.noProgress=0;cowNav.detourT=0;
+    /* 路径为空也继续（下面会触发兜底），不要永久站桩 */
+  }
+  function sendCoworkerToSeat(){
+    st.intro=true;if(coworkerMode!=='WAIT'&&coworkerMode!=='SITTING')return;
+    coworkerMode='WALK';cowNav.leg=0;cowNav.route=0;cowNav.sitPhase=-1;cowNav.resetDone=false;
+    cowNav.waypoints=COWORKER_WAYPOINTS;cowNav.lastX=coworker.position.x;cowNav.lastZ=coworker.position.z;
+    coworkerPlanLeg();
+  }
+  const frogReady=FrogActor.ready.then(()=>{
+    coworkerModel=FrogActor.create(1.5);coworker.add(coworkerModel.root);
+    ventFrog=FrogActor.create(1.5);ventFrogRoot.add(ventFrog.root);
+    ventFrog.root.rotation.set(-Math.PI/2,Math.PI,0,'YXZ');ventFrog.update(0,'prone',0);
+    ventFrogRoot.updateMatrixWorld(true);
+    const head=ventFrog.bones.Head.getWorldPosition(new THREE.Vector3()).sub(ventFrogRoot.position);
+    ventFrog.root.position.sub(head);
+  });
+  /* v4.4 NO.07 走向座椅：分段寻路 + 卡住检测 + wall slide + 侧移/备用路线/安全重置 + 连续坐下动作 */
+  function coworkerSafeReset(){
+    /* 备用路线也失败：镜头外淡出 → 放到椅旁安全点 → 淡入，绝不留在墙里 */
+    if(cowNav.resetDone)return;
+    coworker.visible=false;
+    setTimeout(()=>{
+      const seat={x:COWORKER_SEAT.x,z:COWORKER_SEAT.z-0.7};
+      coworker.position.set(blocked(seat.x,seat.z,0.22,false,cowCol)?COWORKER_SEAT.x:seat.x,0,
+        blocked(seat.x,seat.z,0.22,false,cowCol)?COWORKER_SEAT.z:seat.z);
+      coworker.rotation.y=Math.PI;
+      coworker.visible=true;
+      coworkerMode='SITTING';cowNav.sitPhase=0;cowNav.sitT=0;
+      cowNav.sitFrom={x:coworker.position.x,z:coworker.position.z};
+      cowNav.resetDone=true;
+    },260);
+  }
+  function coworkerTryStep(dx,dz,d,dt){
+    /* wall slide：整步被挡时拆成两轴分别尝试，任一轴能走就不算卡住 */
+    const step=Math.min(dt*1.35,d);
+    const ux=dx/d,uz=dz/d,px=coworker.position.x,pz=coworker.position.z;
+    let nx=px+ux*step,nz=pz+uz*step,moved=false;
+    if(!blocked(nx,nz,0.22,false,cowCol)){moved=true;}
+    else{
+      if(!blocked(nx,pz,0.22,false,cowCol)){nz=pz;moved=true;}
+      else if(!blocked(px,nz,0.22,false,cowCol)){nx=px;moved=true;}
+    }
+    if(moved){
+      coworker.position.set(nx,0,nz);coworker.rotation.y=Math.atan2(-dx,-dz);cowNav.detourT=0;
+    }
+    return moved;
+  }
+  function updateCoworker(dt){
+    if(coworkerMode==='WAIT')coworker.rotation.y=102.9*Math.PI/180;
+
+    if(coworkerMode==='WALK'){
+      const cx=coworker.position.x,cz=coworker.position.z;
+      /* 侧移绕行窗口：侧向偏移 0.4-0.8m，绕开桌角/椅背 */
+      if(cowNav.detourT>0){
+        cowNav.detourT-=dt;
+        const sx=Math.cos(coworker.rotation.y)*cowNav.detourSide*2.2;
+        const sz=-Math.sin(coworker.rotation.y)*cowNav.detourSide*2.2;
+        if(!blocked(cx+sx*dt,cz+sz*dt,0.22,false,cowCol))coworker.position.set(cx+sx*dt,0,cz+sz*dt);
+      }
+
+      const p=coworkerPath[coworkerAt];
+      if(!p){
+        /* 当前分段走完：切下一段；全部走完则进入坐下序列 */
+        if(cowNav.leg<cowNav.waypoints.length-1){
+          cowNav.leg++;coworkerPlanLeg();
+        }else{
+          coworkerMode='SITTING';cowNav.sitPhase=0;cowNav.sitT=0;
+          cowNav.sitFrom={x:coworker.position.x,z:coworker.position.z};
+        }
+      }else{
+        const dx=p.x-cx,dz=p.z-cz,d=Math.hypot(dx,dz);
+        if(d<0.16){coworkerAt++;}
+        else{
+          const moved=coworkerTryStep(dx,dz,d,dt);
+          /* no-progress 检测：位移低于阈值累计计时 */
+          const realMove=Math.hypot(coworker.position.x-cowNav.lastX,coworker.position.z-cowNav.lastZ);
+          if(moved&&realMove>=0.02){cowNav.noProgress=0;cowNav.lastX=coworker.position.x;cowNav.lastZ=coworker.position.z;}
+          else cowNav.noProgress+=dt;
+          if(cowNav.noProgress>0.35){
+            /* 0.35s 无位移：重算当前段路径 */
+            coworkerPlanLeg();cowNav.noProgress=0;
+            cowNav.detourT=0.45;
+          }
+          if(cowNav.noProgress>0.9){
+            /* 0.9s：左右侧移绕行 */
+            cowNav.detourSide*=-1;cowNav.detourT=0.55;cowNav.noProgress=0;
+          }
+          if(cowNav.noProgress>2.0){
+            /* 2s：切换备用路线（只替换 cowNav 引用，不破坏主路线常量） */
+            cowNav.route++;
+            if(cowNav.route<=COWORKER_FALLBACK.length){
+              cowNav.waypoints=COWORKER_FALLBACK[cowNav.route-1];
+              cowNav.leg=0;coworkerPlanLeg();cowNav.noProgress=0;
+            }else coworkerSafeReset();
+          }
+        }
+      }
+    }
+
+    /* 连续坐下：走到椅前 → 转身面向椅子 → 后退半步 → 坐下 → PLAY 玩掌机（无瞬移） */
+    if(coworkerMode==='SITTING'){
+      cowNav.sitT+=dt;
+      if(cowNav.sitPhase===0){
+        /* 0: 面向座椅转身 */
+        const want=Math.PI;
+        let rel=want-coworker.rotation.y;
+        rel=((rel+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+        coworker.rotation.y+=Math.sign(rel)*Math.min(Math.abs(rel),dt*3.2);
+        if(Math.abs(rel)<0.08||cowNav.sitT>0.6){cowNav.sitPhase=1;cowNav.sitT=0;}
+      }else if(cowNav.sitPhase===1){
+        /* 1: 后退半步到椅位 */
+        const k=Math.min(1,cowNav.sitT/0.45),f=cowNav.sitFrom;
+        coworker.position.x=f.x+(COWORKER_SEAT.x-f.x)*k;
+        coworker.position.z=f.z+(COWORKER_SEAT.z-f.z)*k;
+        if(k>=1){cowNav.sitPhase=2;cowNav.sitT=0;}
+      }else if(cowNav.sitPhase===2){
+        /* 2: 下蹲落座（y 0→0.35），0.5s */
+        const k=Math.min(1,cowNav.sitT/0.5);
+        coworker.position.y=0.35*k;
+        if(k>=1){coworkerMode='PLAY';coworker.rotation.y=Math.PI;coworker.position.set(COWORKER_SEAT.x,0.35,COWORKER_SEAT.z);}
+      }
+    }
+
+    cowCol.x=coworker.position.x;cowCol.z=coworker.position.z;
+    coworkerProp.pos.x=coworker.position.x;coworkerProp.pos.z=coworker.position.z;
+    if(coworkerModel){
+      const anim=coworkerMode==='WALK'||(coworkerMode==='SITTING'&&cowNav.sitPhase===1)?'walk':coworkerMode==='PLAY'?'play':'idle';
+      coworkerModel.update(dt,anim,1);
+      coworkerModel.root.rotation.x=coworkerMode==='WAIT'?-1.1*Math.PI/180:(coworkerMode==='SITTING'&&cowNav.sitPhase===2)?-0.35:0;
+      /* 待机或坐下时只转头看玩家，身体不会像纸片一样整体瞬间旋转 */
+      if(coworkerMode!=='WALK'&&coworkerMode!=='SITTING'){
+        const face=Math.atan2(camera.position.x-coworker.position.x,camera.position.z-coworker.position.z);
+        let rel=face-coworker.rotation.y;
+        rel=((rel+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+        if(Math.abs(rel)<1.35)coworkerModel.lookHead(rel*0.72,-0.035);
+      }
+    }
+  }
+  const actor=add('孙笑川',new THREE.Group());actor.position.copy(npc.pos);
+  /* v4.4：纸片人背后补一层低模身体轮廓（暗色躯干+头肩），转身时有体积感，不再只是贴图转圈。
+     贴图负责面部细节，低模只提供侧后方的轮廓与投影。 */
+  const bodySil=new THREE.Group();actor.add(bodySil);
+  const silMat=new THREE.MeshBasicMaterial({color:0x1a1e1a});
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.5,1.15,7),silMat);torso.position.y=0.82;bodySil.add(torso);
+  const shoulders=new THREE.Mesh(new THREE.BoxGeometry(1.02,0.24,0.42),silMat);shoulders.position.y=1.34;bodySil.add(shoulders);
+  const headSil=new THREE.Mesh(new THREE.SphereGeometry(0.27,7,5),silMat);headSil.position.y=1.62;bodySil.add(headSil);
+  /* 地面投影：贴地的暗色椭圆，随 NPC 位置移动，给纸片人落地感 */
+  const shadowMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.32,depthWrite:false});
+  const npcShadow=new THREE.Mesh(new THREE.CircleGeometry(0.62,16),shadowMat);
+  npcShadow.rotation.x=-Math.PI/2;npcShadow.position.y=0.02;group.add(npcShadow);
+  let npcMesh=null,frame=-1,sheets=[];
+  const atlas=window.PAPERBOT_ATLAS;
+  const ready=Promise.all(atlas.sheets.map(src=>new Promise(resolve=>new THREE.TextureLoader().load(src,t=>{
+    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.LinearFilter;t.generateMipmaps=false;resolve(t);
+  },undefined,()=>resolve(null))))).then(loaded=>{
+    sheets=loaded;if(sheets.some(t=>!t)){MF.toast('孙笑川贴图加载失败，请刷新页面。');return;}
+    const mat=new THREE.MeshBasicMaterial({map:sheets[0],alphaTest:0.42,side:THREE.DoubleSide,color:0xc3c9bd});
+    npcMesh=new THREE.Mesh(new THREE.PlaneGeometry(2.3*atlas.fw/atlas.fh,2.3),mat);npcMesh.position.y=1.15;actor.add(npcMesh);setFrame(0);
+  });
+  function setFrame(i){if(!npcMesh||i===frame)return;frame=i;
+    const per=atlas.cols*atlas.rows,si=Math.floor(i/per),fi=i%per,t=sheets[si],img=t.image;
+    t.offset.set(((fi%atlas.cols)*atlas.cellW+atlas.pad)/img.width,1-(Math.floor(fi/atlas.cols)*atlas.cellH+atlas.pad+atlas.fh)/img.height);
+    t.repeat.set(atlas.fw/img.width,atlas.fh/img.height);npcMesh.material.map=t;
+  }
+  function setAnger(v){st.anger=Math.min(100,Math.max(st.valve?80:0,v));refreshHint();}
+  function transfer(){if(npc.zone===1)return;npc.zone=1;npc.route=0;npc.state='TRANSFER';npc.path=[];npc.repath=0;refreshHint();}
+  function pullValve(){if(st.valve)return;st.valve=true;st.visited2=true;setAnger(85);transfer();npc.last.set(0,0,-70);if(npc.state!=='TRANSFER'){npc.state='INVESTIGATE';npc.path=[];npc.repath=0;}audio.play('sfx_stinger',0.45);audio.play('sfx_sc_roar',0.6);
+    MF.toast('阀门触发了警报。无论有没有进办公室，他都会追来。西侧绿灯是安全屋。',6500);refreshHint();}
+  function caught(){if(st.capturing)return;st.caught++;G.caught++;st.capturing=true;npc.state='CAPTURE';npc.seen=false;npc.path=[];npc.repath=0;
+    closeWork();if(arcade)arcade.close();if(st.hidden)exitHide();ctx.resetStance();ctx.clearKeys();
+    capturePose={x:camera.position.x,y:Math.max(1.35,camera.position.y),z:camera.position.z,yaw:Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z)};
+    ctx.setPose(capturePose.x,capturePose.y,capturePose.z,capturePose.yaw);
+    MF.dialog('孙笑川',['なんで私の言うことを聞いてくれないの？','なんでそんなに頑固なの？'],()=>{
+      st.capturing=false;capturePose=null;ctx.clearKeys();npc.cooldown=10;npc.state='PATROL';npc.search=0;npc.lost=0;npc.path=[];npc.repath=0;
+      MF.toast(st.arcadeChase?'他松开了你，赶紧回工位。':'他松开了你。利用转角离开，剧情与收集进度已保留。',4000);refreshHint();
+    });refreshHint();}
+  function npcSpeed(){
+    const mult=st.anger>=80?1.8:1.1; /* 难度：默认 1.1×；愤怒 80 起 1.8× */
+    return (npc.state==='CHASE'?2.5+st.anger*0.01:npc.state==='TRANSFER'?2.4:1.25+st.anger*0.006)*mult;
+  }
+  const NPC_TURNS=[[0,0],[.35,.35],[-.35,.35],[.35,-.35],[-.35,-.35],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7],
+    [1.1,1.1],[-1.1,1.1],[1.1,-1.1],[-1.1,-1.1],[1.5,1.5],[-1.5,1.5],[1.5,-1.5],[-1.5,-1.5]];
+  function npcStep(x,z,step,dx,dz,d){
+    /* 目标点被挡住时沿墙滑：先走正方向，再依次试越来越大的转角，总比站着不动强。
+       已经卡进罐体边缘时用更小的判定半径，先把自己挪出来。 */
+    const ux=dx/d,uz=dz/d;
+    const r0=blocked(npc.pos.x,npc.pos.z,0.31,false,npcCol)?0.06:0.31;
+    for(const [a,b] of NPC_TURNS){
+      const ca=Math.cos(a),sa=Math.sin(a);
+      const sx=ux*ca-uz*sa,sz=ux*sa+uz*ca;
+      const tx=npc.pos.x+sx*step,tz=npc.pos.z+sz*step;
+      if(!blocked(tx,tz,r0,false,npcCol))return {x:tx,z:tz};
+    }
+    return null;
+  }
+  /* 实在挤不过去时，朝目标方向左右绕开（罐体夹角），别在死角里站桩 */
+  /* 兜底脱困：在身边找一小块空地直接挪过去，保证永远不卡死 */
+  function hopSpot(gx,gz){
+    /* 先朝目标方向跳，绕过罐体；实在没有再随机跳 */
+    if(gx!==undefined){
+      const dx=gx-npc.pos.x,dz=gz-npc.pos.z,d=Math.hypot(dx,dz);
+      if(d>0.01){
+        const ux=dx/d,uz=dz/d;
+        for(const a of [0,.7,-.7,1.4,-1.4,2.0,-2.0]){
+          const ca=Math.cos(a),sa=Math.sin(a);
+          const sx=ux*ca-uz*sa,sz=ux*sa+uz*ca;
+          for(const r of [1.4,2.2,1.0,3.0]){
+            const x=npc.pos.x+sx*r,z=npc.pos.z+sz*r;
+            if(!blocked(x,z,0.06,false,npcCol))return {x,z};
+          }
+        }
+      }
+    }
+    for(let i=0;i<24;i++){
+      const a=Math.random()*Math.PI*2,r=0.9+Math.random()*1.8;
+      const x=npc.pos.x+Math.cos(a)*r,z=npc.pos.z+Math.sin(a)*r;
+      if(!blocked(x,z,0.06,false,npcCol)&&!blocked(x,z,0.31,false,npcCol))return {x,z};
+    }
+    for(let i=0;i<16;i++){
+      const a=Math.random()*Math.PI*2,r=1.2+Math.random()*2.4;
+      const x=npc.pos.x+Math.cos(a)*r,z=npc.pos.z+Math.sin(a)*r;
+      if(!blocked(x,z,0.06,false,npcCol))return {x,z};
+    }
+    return null;
+  }
+  function detourSpot(gx,gz){
+    const dx=gx-npc.pos.x,dz=gz-npc.pos.z,d=Math.hypot(dx,dz);
+    if(d<0.01)return null;
+    const ux=dx/d,uz=dz/d;
+    for(const a of [0.9,-0.9,1.3,-1.3,1.7,-1.7,2.2,-2.2]){
+      const ca=Math.cos(a),sa=Math.sin(a);
+      const sx=ux*ca-uz*sa,sz=ux*sa+uz*ca;
+      for(const r of [3,4.5,2.2]){
+        const x=npc.pos.x+sx*r,z=npc.pos.z+sz*r;
+        if(!blocked(x,z,0.31,false,npcCol))return {x,z};
+      }
+    }
+    return null;
+  }
+  function walkNPC(dt){
+    if(npc.direct||npc.pathAt>=npc.path.length){
+      /* 没有可行路径（窄缝、罐体夹角）时直接朝目标挤 + 沿墙滑，绝不站桩 */
+      const g=npc.goal;
+      if(!g)return false;
+      const dx=g.x-npc.pos.x,dz=g.z-npc.pos.z,d=Math.hypot(dx,dz);
+      if(d<0.45)return false;
+      const step=Math.min(npcSpeed()*dt,d);
+      const p=npcStep(npc.pos.x+dx/d*step,npc.pos.z+dz/d*step,step,dx,dz,d);
+      if(!p){
+        npc.repath=0.4;npc.stuckT=(npc.stuckT||0)+dt;
+        if(npc.stuckT>0.9){npc.stuckT=0;const spot=detourSpot(g.x,g.z);if(spot)npc.detour=spot;}
+        npc.wedgeT=(npc.wedgeT||0)+dt;
+        if(npc.wedgeT>1.5){npc.wedgeT=0;const hop=hopSpot(g.x,g.z);if(hop)npc.pos.set(hop.x,npcGround(hop.x,hop.z,npc.pos.y),hop.z);}
+        return false;
+      }
+      npc.stuckT=0;npc.wedgeT=0;
+      const gy=npcGround(p.x,p.z,npc.pos.y);
+      if(gy>npc.pos.y+0.55){npc.repath=0.4;return false;}
+      const ny=gy>npc.pos.y?gy:Math.max(gy,npc.pos.y-dt*7);
+      npc.pos.set(p.x,ny,p.z);npc.yaw=Math.atan2(dx,dz);npc.travel+=step;return true;
+    }
+    const target=npc.path[npc.pathAt],dx=target.x-npc.pos.x,dz=target.z-npc.pos.z,d=Math.hypot(dx,dz);
+    if(d<0.1){npc.pathAt++;return true;}
+    const speed=npcSpeed();
+    const step=Math.min(speed*dt,d);
+    const p=npcStep(npc.pos.x+dx/d*step,npc.pos.z+dz/d*step,step,dx,dz,d);
+    if(!p){npc.path=[];npc.repath=0.2;npc.stuckT=(npc.stuckT||0)+dt;
+      npc.wedgeT=(npc.wedgeT||0)+dt;
+      if(npc.wedgeT>1.5){npc.wedgeT=0;const hop=hopSpot(npc.goal?npc.goal.x:undefined,npc.goal?npc.goal.z:undefined);if(hop)npc.pos.set(hop.x,npcGround(hop.x,hop.z,npc.pos.y),hop.z);}
+      return false;}
+    npc.stuckT=0;npc.wedgeT=0;
+    const gy=npcGround(p.x,p.z,npc.pos.y);
+    if(gy>npc.pos.y+0.55){npc.path=[];npc.repath=0.2;return false;}
+    const ny=gy>npc.pos.y?gy:Math.max(gy,npc.pos.y-dt*7);
+    npc.pos.set(p.x,ny,p.z);npc.yaw=Math.atan2(dx,dz);npc.travel+=step;return true;
+  }
+  function updateNPC(dt){
+    /* v4.3：直选第三幕的 8 秒安全宽限。NPC 不移动、不索敌、不造成伤害；
+       宽限到期后照常按愤怒值巡逻/追捕，正常第三幕流程不受影响。 */
+    if(st.spawnGrace>0&&S.scene===2){
+      npc.cooldown=Math.max(npc.cooldown,0.4);npc.seen=false;return;
+    }
+    npc.cooldown=Math.max(0,npc.cooldown-dt);npc.repath-=dt;
+    if(npc.stun>0){npc.stun-=dt;npc.state='STUNNED';
+      if(npc.stun<=0){
+        /* v4.4：醒来先撑地站起（hitFx.recover 驱动视觉），站起期间不索敌不追，随后进入愤怒追捕 */
+        hitFx.recover=0.9;hitFx.knockPhase=0;npc.state='STUNNED';npc.cooldown=0.9;
+        st.ehp=5;setAnger(100);npcFlash(0.12);MF.toast('他撑着地面站了起来。愤怒 100。',2600);refreshCombatHud();
+      }
+      return;
+    }
+    /* 起身序列：0.9s 内不能攻击/索敌，避免"刚醒就打" */
+    if(hitFx.recover>0){hitFx.recover-=dt;npc.seen=false;npc.cooldown=Math.max(npc.cooldown,0.2);
+      if(hitFx.recover<=0){npc.state='SEARCH';npc.search=5;npc.repath=0;}return;}
+    const d=distance(npc.pos,camera.position),dx=camera.position.x-npc.pos.x,dz=camera.position.z-npc.pos.z;
+    const facing=(Math.sin(npc.yaw)*dx+Math.cos(npc.yaw)*dz)/Math.max(0.01,d);
+    /* v4.4 追逐压迫感远近分层：8-17m 远处金属/脚步，3-8m 呼吸低语，1.5-3m 心跳。
+       仅在他活跃接近（非击晕/非宽限/非隐藏）且可见距离内触发，带冷却避免爆音。 */
+    const hunting=npc.state==='CHASE'||npc.state==='INVESTIGATE'||npc.state==='SEARCH';
+    st.pressureT=Math.max(0,st.pressureT-dt);
+    if(hunting&&!st.hidden&&!st.dead&&st.spawnGrace<=0){
+      const tier=d<3?3:d<8?2:d<17?1:0;
+      st.pressureTier=tier;
+      if(tier>0&&st.pressureT<=0){
+        if(tier===1){audio.play('sfx_door_creak',0.12);st.pressureT=2.6;}       /* 远处金属摩擦/脚步 */
+        else if(tier===2){audio.play('sfx_breath',0.16);st.pressureT=1.5;}        /* 中距呼吸低语 */
+        else{audio.play('sfx_heartbeat',0.3);st.pressureT=0.85;}                  /* 贴脸心跳 */
+      }
+    }else st.pressureTier=0;
+    /* 听觉：奔跑会持续暴露位置——不用看见，也能把他引过来 */
+    if(!st.hidden&&!st.dead&&ctx.running&&ctx.running()){
+      st.hearT-=dt;
+      if(st.hearT<=0){
+        st.hearT=0.55;
+        const range=st.anger>=80?22:16;
+        if(d<range&&npc.state!=='CHASE'&&npc.state!=='CAPTURE'){
+          npc.last.copy(camera.position);npc.lost=0;
+          if(npc.state==='PATROL'||npc.state==='SEARCH'||npc.state==='INVESTIGATE'){
+            npc.state='INVESTIGATE';npc.path=[];npc.repath=0;
+          }
+          if(d<8&&st.anger>=60)npc.state='CHASE';
+        }
+      }
+    }else st.hearT=0;
+    const see=!st.hidden&&!inSafe(camera.position)&&Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7&&d<17&&(facing>0.2||d<2)&&lineClear({x:npc.pos.x,y:npc.pos.y+1.6,z:npc.pos.z},camera.position,false,npcCol);
+    npc.seen=see;
+    if(st.arcadeChase&&!st.hidden&&!inSafe(camera.position)&&npc.cooldown<=0){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
+    else if(see&&st.anger>=60&&npc.cooldown<=0&&(!MF.state.dead||st.anger>=80)){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
+    else if(npc.state==='CHASE'){npc.lost+=dt;if(npc.lost>1.5){npc.state='INVESTIGATE';npc.repath=0;}}
+    if(npc.state==='CHASE'&&d<1.5&&see&&npc.cooldown<=0&&Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7){playerHurt();return;}
+    if(st.hidden&&st.exposed&&d<2.6){npc.search+=dt;if(npc.search>3){caught();return;}}
+    let target;
+    if(npc.state==='TRANSFER'){target={x:4.5,z:-56};if(distance(npc.pos,target)<1.2){npc.state=st.valve?'INVESTIGATE':'PATROL';npc.repath=0;}}
+    if(npc.state==='CHASE')target=camera.position;
+    else if(npc.state==='INVESTIGATE'){target=npc.last;if(distance(npc.pos,target)<1.2){npc.state='SEARCH';npc.search=6;npc.path=[];}}
+    /* 跨层目标：先绕到楼梯口，别在楼梯边上原地打转 */
+    npc.direct=false;
+    if(npc.detour){
+      target=npc.detour;
+      if(distance(npc.pos,npc.detour)<1.1)npc.detour=null;
+    }
+    if(target&&typeof target.y==='number'&&!npc.detour){
+      const ty=target.y-1.35,stair=stairApproach(target.x,target.z,npc.pos.y,ty);
+      if(stair){target=stair;npc.direct=true;}
+    }
+    else if(npc.state==='SEARCH'){npc.search-=dt;npc.yaw+=dt*0.8;npc.goal=null;if(npc.search<=0){npc.state='PATROL';npc.repath=0;}return;}
+    else if(npc.state==='PATROL'){
+      const r=routes[npc.zone],p=r[npc.route%r.length];target={x:p[0],z:p[1]};
+      if(distance(npc.pos,target)<1.2){npc.wait-=dt;if(npc.wait>0)return;npc.route=(npc.route+1)%r.length;npc.wait=1.2;npc.repath=0;target={x:r[npc.route][0],z:r[npc.route][1]};}
+    }
+    npc.goal=target?{x:target.x,z:target.z}:null;
+    if(target&&npc.repath<=0&&!npc.direct){npc.path=findPath(npc.pos,target,npcCol);npc.pathAt=0;npc.repath=npc.state==='CHASE'?0.8:(npc.state==='INVESTIGATE'?1.2:3);
+      if(!npc.path.length&&npc.state==='PATROL'){npc.route++;npc.repath=0.5;}}
+    walkNPC(dt);
+  }
+
+  const door=MF.getProp('door'),oldDoorAction=door.action;
+  door.label=()=>!st.shiftDone?'员工出口（先完成三瓶合格品）':'员工出口 · 前往停车场';
+  door.action=()=>{if(!st.shiftDone){MF.toast('NO.07：先做完三瓶合格品，我会把钥匙给你。');return;}oldDoorAction();};
+  const lock=box('厂2夜班门',-3.3,-46,3.2,0.18,2.65,0x536259,true);solid.push(lock.col);
+  sign(['02 发酵厂','下班后解除门禁'], -3.3,2,-45.87,0,2);
+  prop('factory2door',-3.3,-45.45,()=>st.shiftDone?'打开厂2门 / 调查异响':'厂2门禁 · 先完成夜班',()=>{
+    if(!st.shiftDone){MF.toast('先回操作椅完成三瓶合格品。');return;}lock.mesh.visible=false;lock.col.off=true;MF.toast('厂2的声音更近了。可以随时原路返回停车场。');},2.1);
+  const oldRed=MF.getProp('redbtn');
+  oldRed.action=()=>{if(MF.state.flags.tapesInserted<3||!G.valveDone){MF.toast('需要三盘磁带，以及草莓3、巧克力2、薄荷1的阀门配方。');return;}
+    if(st.pumpOff){MF.toast('泵已停止。母液罐侧面的红色接口松开了。');return;}
+    MF.confirm('停止主泵？\n停泵不会杀死罐里的奶泡。',ok=>{if(!ok)return;st.pumpOff=true;audio.play('sfx_factory_death',0.5);MF.dialog('奶泡',['谢谢。但停泵只是让我不再产奶。','红色接口松开了。你愿意拔掉管子，让我也离开吗？']);refreshHint();});};
+  prop('foam',0,-118,'听母液罐里的声音',()=>{st.foam=Math.min(3,st.foam+1);MF.dialog('奶泡',[st.foam===1?'又一只。第几号了？……算了，都一样。':st.foam===2?'老哞不是坏人。他只是太想她了。那孩子的声音是录下来的。':'真正的她，声音比录音更哑。你愿意听我把话说完，已经很好了。']);},2.1);
+  const redPipe=box('母液罐红色解脱阀',-3.6,-122,0.38,0.5,1.4,0x9b453d);
+  sign(['红色接口','停泵后可拔管'], -3.6,1.9,-121.7,0,1.5);
+  prop('unplug',-3.6,-121.1,()=>st.unplugged?null:st.pumpOff?'拔掉红色管子':'红色管子（先停泵）',()=>{
+    if(!st.pumpOff){MF.toast('泵还在运转。');return;}
+    MF.confirm('拔掉后警报将持续 30 秒。\n准备好前往后门了吗？',ok=>{if(!ok)return;st.unplugged=true;st.escapeTime=30;redPipe.mesh.visible=false;redPipe.col.off=true;
+      audio.play('sfx_stinger',0.6);MF.dialog('奶泡',['谢谢。告诉老哞……我不怪他。','（后门正在解除锁定。红灯开始倒计时。）']);refreshHint();});},1.8);
+  sign(['员工后门','E 离厂 / 停车场'], 0,2,-137.2,0,2.6);
+  prop('pump-exit',0,-135.6,'后门 · 离开工厂',()=>leave(),2.2);
+  const tapeText=[['老哞',['小哞又偷喝奶了。拉肚子还笑……她说这是家的味道。']],['老哞',['奶泡很乖。它什么都懂。','对不起，奶泡。']],['小哞 · AI 录音',['爸爸，我不想喝奶了，我想你抱我。','老哞：（很长的沉默）……再产一批就好了。']]];
+  const heard=new Set();let replay=0;
+  function playTape(){const owned=MF.state.inv.tapes.map((v,i)=>v?i:-1).filter(i=>i>=0);if(!owned.length){MF.toast('先找回磁带：厂1休息室收音机、厂2冷库。');return;}
+    const next=owned.find(i=>!heard.has(i))??owned[replay++%owned.length];audio.play('sfx_tape_hiss',0.2);
+    MF.dialog(tapeText[next][0],tapeText[next][1],()=>{heard.add(next);MF.state.flags.truthHeard=heard.size;MF.refreshPanel();refreshHint();});}
+  for(const id of ['tapeplayer','altarplayer'])MF.getProp(id).action=playTape;
+  prop('safe-tapes',-16.75,-57.2,()=>st.gun?'重听员工磁带':null,playTape,1.75);
+  function leave(){
+    if(st.leaving||uiBusy())return;
+    if(!st.shiftDone){MF.toast('先完成夜班，再决定是否留下调查。');return;}
+    if(st.unplugged&&st.escapeTime>0){MF.toast('后门解锁还需 '+Math.ceil(st.escapeTime)+' 秒。');return;}
+    const truth=MF.state.flags.truthHeard;
+    MF.confirm(st.unplugged?'后门开了。带奶泡的最后一句话离开？':truth?'你已听见罐子里的声音，但工厂仍在生产。\n正常下班不等于解救。确定现在离厂？':'按时下班，去停车场开车？正常下班不等于解救。\n也可以留下调查办公室和厂2。',ok=>{
+      if(!ok){ctx.setPose(S.scene===2?0:19.84,1.35,S.scene===2?-134:-17.0,0);return;}
+      st.leaving=true;G.endingEscape=true;const branch=st.unplugged?'wean':st.visited2?'investigate':'early';
+      try{sessionStorage.setItem('mf_handoff',JSON.stringify({branch,anger:st.anger,truthHeard:truth,tapes:MF.tapeCount(),elapsed:Math.round(MF.elapsed()),act:S.scene+1}));}catch(e){}
+      /* 只延迟离厂导航：branch 仍只由拔管/到过厂2决定，磁带数不代表解救。 */
+      ctx.clearKeys();MF.setLock(true);
+      /* 不设 S.pause：室内帧循环会在暂停时连同 BGM/环境音一起静音。 */
+      const blockedEvents=['keydown','keyup','pointerdown','mousedown','mousemove','touchstart','touchmove','wheel'];
+      const blockDeparture=e=>{ctx.clearKeys();e.preventDefault();e.stopImmediatePropagation();};
+      blockedEvents.forEach(type=>window.addEventListener(type,blockDeparture,{capture:true,passive:false}));
+      const curtain=document.createElement('div');curtain.id='night-departure';
+      curtain.setAttribute('role','status');curtain.setAttribute('aria-live','polite');
+      curtain.style.cssText='position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:#000;color:#d8d3bd;font:15px/2 monospace;letter-spacing:2px;text-align:center;white-space:pre-line;padding:24px;';
+      curtain.textContent=st.unplugged?'离开员工后门\n带着奶泡的最后一句话走进雨里。':'离开员工出口 · 正常下班不等于解救\n工厂仍在身后运转。';
+      document.body.appendChild(curtain);
+      curtain.animate([{opacity:0},{opacity:1}],{duration:550,fill:'forwards'});
+      /* 音乐/环境音留到最后再交接，黑场期间不提前切断。单次定时器，无轮询链。 */
+      const departTimer=setTimeout(()=>{
+        ctx.clearKeys();NightMusic.handoff();audio.playing.forEach(a=>a.pause());
+        location.href='yard.html?from=factory&route='+branch+'&act='+(S.scene+1);
+      },950);
+      window.addEventListener('pagehide',()=>{
+        clearTimeout(departTimer);ctx.clearKeys();
+        blockedEvents.forEach(type=>window.removeEventListener(type,blockDeparture,true));
+      },{once:true});
+    });
+  }
+  function refreshHint(){
+    const scene=S.scene;
+    let hint;
+    if(!st.started)hint='夜班 / 第 13 号试饮员';
+    else if(scene===0){
+      hint=!st.shiftDone?'NO.07：沿传送带右侧黄线，到操作椅封好三瓶。'
+        :!st.visited2?'钥匙在背包里。右侧绿门能下班；西侧厕所能听清异响。'
+        :'厂2门禁已解除。沿传送带尽头左转，穿过门廊去发酵厂。';
+    }else if(scene===1){
+      hint=!st.valve?'厂2：阀门后的声音在叫你。西侧绿灯是安全屋。'
+        :'厂2：他已经追来了。利用罐体和转角断开视线，冷库里有磁带。';
+    }else{
+      hint=!st.valve?'厂3：警报声还在响——回厂2对齐阀门（草莓3·巧克力2·薄荷1）。'
+        :!st.pumpOff?'厂3：主泵仍在运转。控制台插三盘磁带后按红色按钮；母液接口在罐体南侧。'
+        :st.unplugged?'后门解锁 '+Math.ceil(st.escapeTime)+' 秒 · 向主泵室尽头走。'
+        :'奶泡还在罐子里。你可以拔管，也可以直接离开。';
+    }
+    if(st.arcadeChase)hint='孙笑川正在追你：回到黄色操作椅，结束这次摸鱼追捕。';
+    if(st.capturing)hint='被孙笑川抓住 · E / 点击继续对话，结束后恢复行动。';
+    document.getElementById('hudGoal').textContent=hint;
+    document.getElementById('hudCount').textContent=G.got;document.getElementById('hudTape').textContent=G.tapes;
+    statusEl.hidden=!st.started;statusEl.classList.toggle('danger',npc.state==='CHASE');
+    statusEl.querySelector('strong').textContent=st.hidden?'屏住呼吸':npc.state==='CHASE'?'他看见你了':npc.state==='STUNNED'?'暂时安全':inSafe(camera.position)?'安全屋':'愤怒 '+Math.round(st.anger)+' / 100';
+    const names={PATROL:'巡逻',TRANSFER:'正前往厂2',INVESTIGATE:'查看声源',SEARCH:'搜索最后目击处',CHASE:'追捕',STUNNED:'被击晕',CAPTURE:'训话'};
+    statusEl.querySelector('span').textContent='孙笑川 · '+(npc.pos.z<-106?'厂3':npc.pos.z<-50?'厂2':'厂1')+' · '+names[npc.state]+(st.gun?' / 镇静弹 '+st.ammo:'');
+    refreshCombatHud();
+  }
+  function resetPose(){
+    MF.closeDialog();releaseCinematicActors();
+    if(cinematic){cinematic=null;MF.setLock(false);cinemaEl.classList.remove('on');document.body.classList.remove('night-cinematic');}
+    ctx.resetStance();closeWork();if(arcade)arcade.close();if(st.hidden)exitHide();
+    if(st.capturing){st.capturing=false;capturePose=null;npc.cooldown=10;npc.state='PATROL';npc.path=[];npc.repath=0;npc.search=0;npc.lost=0;}
+    ctx.clearKeys();
+  }
+  /* 统一幕初始化：HUD 目标 / NPC 区域·状态·路径 / 剧情旗标全部与当前幕同步，
+     主菜单直选、loadAct、开发者选关共用这一条路径，禁止残留上一幕状态。 */
+  function setupScene(sceneIdx,resetStory){
+    if(resetStory){
+      st.good=0;st.shiftDone=false;st.visited2=false;st.valve=false;st.pumpOff=false;st.unplugged=false;
+      st.escapeTime=0;st.foam=0;st.askedToilet=false;st.toiletDone=false;st.toiletExitSeen=false;
+      st.factoryArrivalSeen=false;st.eavesdrop=false;st.office=false;st.thought=false;st.arcadeChase=false;
+      st.anger=0;st.hidden=false;st.exposed=false;st.capturing=false;st.gun=false;st.ammo=0;
+      st.spawnGrace=0;
+      st.hp=2;st.ehp=5;st.dead=false;st.hurtT=0;st.flashT=0;st.punchT=0;st.punchCd=0;st.hearT=0;
+      if(st.hidden)exitHide();
+      if(arcade&&arcade.isOpen())arcade.close();
+    }
+    if(sceneIdx===0){
+      npc.zone=0;npc.state='PATROL';npc.route=0;npc.wait=1.2;npc.path=[];npc.pathAt=0;
+      npc.repath=0;npc.stun=0;npc.cooldown=resetStory?0:6;npc.seen=false;
+      npc.pos.set(-15.3,0,-4.17);
+    }else if(sceneIdx===1){
+      st.good=3;st.shiftDone=true;MF.state.inv.floorKey=true;lock.col.off=true;lock.mesh.visible=false;
+      st.visited2=true;
+      if(!st.valve)setAnger(40);
+      npc.zone=1;npc.state='INVESTIGATE';npc.last.set(0,0,-57);npc.path=[];npc.pathAt=0;
+      npc.repath=0;npc.stun=0;npc.cooldown=2.5;npc.seen=false;
+      npc.pos.set(-3.43,0,-50.18);
+    }else{
+      /* v4.3：章节目录直选第三幕时给 8 秒安全宽限。
+         NPC 从门口 (-130，离出生点太近) 后撤到巡逻环东北角 (-114)，
+         开场广播/地形展示期间既不追也不攻击；宽限结束后恢复原本的追捕。 */
+      st.shiftDone=true;MF.state.inv.floorKey=true;lock.col.off=true;lock.mesh.visible=false;
+      st.visited2=true;
+      if(resetStory)st.valve=true;
+      setAnger(st.valve?70:60);
+      /* setAnger 在 valve 打开时会把下限钳到 80；直选开场这里单独压到 70，
+         8 秒宽限结束后 normal 追捕仍会按愤怒值正常触发。 */
+      st.anger=st.valve?70:60;
+      npc.zone=2;npc.state='PATROL';npc.route=3;npc.wait=1.2;npc.path=[];npc.pathAt=0;
+      npc.repath=0;npc.stun=0;npc.cooldown=10;npc.seen=false;
+      npc.pos.set(8,0,-114);
+      st.spawnGrace=8;
+    }
+    npcCol.x=npc.pos.x;npcCol.z=npc.pos.z;
+    actor.position.copy(npc.pos);
+    refreshHint();
+  }
+  function start(skip){st.started=true;statusEl.hidden=false;officeHum=audio.loop('amb_distant_whispers',0.01);population.start();
+    if(!skip)startCinematic('opening');
+    else{sendCoworkerToSeat();setupScene(S.scene,true);}
+    refreshHint();
+  }
+  function canInteract(p){if(st.hidden)return p.id===hiddenCabinet.id;
+    if(Math.abs(camera.position.y-(p.pos.y||1.35))>1.9)return false;
+    return lineClear(camera.position,{x:p.pos.x,y:p.pos.y||1.35,z:p.pos.z},true);}
+  function update(t,dt){
+    population.update(t,dt);
+    if(!st.started||S.pause||dt<=0)return;
+    elapsed+=dt;
+    /* 开场安全宽限：广播/地形展示期间冻结 NPC 攻击与追逐计时 */
+    if(st.spawnGrace>0)st.spawnGrace=Math.max(0,st.spawnGrace-dt);
+    cabinets.forEach(c=>{
+      if(st.hidden&&hiddenCabinet===c){c.enterT+=dt;const v=c.enterT<0.3?c.enterT/0.3:c.enterT<0.85?1:Math.max(0,1-(c.enterT-0.85)/0.4);c.model.setOpen(v);}
+      else if(c.doorT>0){c.doorT=Math.max(0,c.doorT-dt);c.model.setOpen(Math.sin(c.doorT/0.95*Math.PI));}
+      else c.model.setOpen(0);
+    });
+    if(cinematic){updateCinematic(dt);NightMusic.setDucked(true);return;}
+    /* 战斗演出：出拳判定 / 枪口后坐 / 命中闪白 / 受伤红边 */
+    st.hurtT=Math.max(0,st.hurtT-dt);
+    updatePunch(dt);
+    gunKick=Math.max(0,gunKick-dt*7);
+    flashT=Math.max(0,flashT-dt);
+    muzzleFlash.visible=flashT>0;
+    const gunOn=st.gun&&!st.hidden&&!work&&!st.capturing&&!st.dead&&!(arcade&&arcade.isOpen())&&!uiBusy();
+    gunView.visible=gunOn;
+    if(gunOn){
+      gunView.position.z=-0.52+gunKick*0.075;
+      gunView.position.y=-0.255+gunKick*0.02+Math.sin(elapsed*1.6)*0.003;
+      gunView.rotation.x=0.035-gunKick*0.46;
+      gunView.rotation.z=Math.sin(elapsed*1.1)*0.01;
+    }
+    if(npcMesh)npcMesh.material.color.setHex(st.flashT>0?0xffffff:0xc3c9bd);
+    st.flashT=Math.max(0,st.flashT-dt);
+    combatHudT+=dt;if(combatHudT>0.1){combatHudT=0;refreshCombatHud();}
+    if(!uiBusy()&&!work&&!st.hidden&&!st.capturing&&!arcade.isOpen()&&!MF.state.dead){
+      const near=kind=>Math.abs(camera.position.y-1.35)<0.65&&distance(camera.position,storyTriggers[kind])<=storyTriggers[kind].radius;
+      if(st.shiftDone&&st.good>=3&&!st.askedToilet&&S.scene===0&&directionWorker&&directionWorker.actor&&near('directions')){startCinematic('directions');return;}
+      if(st.toiletDone&&!st.toiletExitSeen&&S.scene===0&&near('toiletExit')){startCinematic('toiletExit');return;}
+      if(!st.factoryArrivalSeen&&S.scene===1&&near('factoryArrival')){startCinematic('factoryArrival');return;}
+      if(!ventSeen&&ventFrog&&S.scene===1&&distance(camera.position,ventTrigger)<=ventTrigger.radius){startCinematic('vent');return;}
+    }
+    for(let i=events.length-1;i>=0;i--)if(events[i].at<=elapsed&&!uiBusy()){const event=events.splice(i,1)[0];event.fn();}
+    NightMusic.setDucked(uiBusy()||npc.state==='CHASE');
+    if(work){workT+=dt;/* 封盖划线：1.15 格/秒、来回扫（到端头折返，不再从 100% 瞬跳回 0） */
+      const cw=workT*1.05,tp=cw%2;cursor=tp<1?tp:2-tp;cursorEl.style.left=(cursor*100).toFixed(2)+'%';}
+    const arcadeWasOpen=arcade.isOpen();arcade.update(dt);if(arcadeWasOpen)arcadeTexture.needsUpdate=true;
+    fans.forEach((fan,i)=>fan.rotation.y+=dt*(1.8+i*0.17));
+    if(st.hidden)pinCabinet();
+    if(st.capturing&&capturePose)ctx.setPose(capturePose.x,capturePose.y,capturePose.z,capturePose.yaw);
+    if(!uiBusy())updateCoworker(dt);
+    if(!uiBusy()&&!work&&!arcade.isOpen()&&!st.capturing){
+      if(st.arcadeChase&&distance(camera.position,{x:2.8,z:-16.96})<1.65&&Math.abs(camera.position.y-1.35)<0.8)finishArcadeChase();
+      if(S.scene===1&&!st.visited2){st.visited2=true;setAnger(Math.max(st.anger,40));transfer();audio.play('amb_distant_whispers',0.4);MF.toast('厂2的管道里也有人说话。先记住左侧安全屋，再碰阀门。',5500);}
+      if(S.scene===2&&npc.zone!==2){
+        npc.zone=2;
+        if(npc.state!=='CHASE'&&npc.state!=='CAPTURE'){
+          if(npc.state==='INVESTIGATE'||npc.state==='SEARCH'){npc.state='INVESTIGATE';npc.last.copy(camera.position);}
+          else npc.state='PATROL';
+          npc.path=[];npc.repath=0;
+        }
+      }
+      if(insideOffice(camera.position)&&!st.office){st.office=true;setAnger(65);npc.last.copy(camera.position);npc.state='INVESTIGATE';npc.repath=0;MF.dialog('孙笑川',['誰の許可で事務所に入ってきたんだ？']);}
+      if(st.unplugged)st.escapeTime=Math.max(0,st.escapeTime-dt);
+      if(!uiBusy())updateNPC(dt);
+    }
+    actor.position.copy(npc.pos);npcCol.x=npc.pos.x;npcCol.z=npc.pos.z;
+    /* v4.4：地面投影跟随；倒地时投影拉长变淡 */
+    npcShadow.position.set(npc.pos.x,npc.pos.y+0.02,npc.pos.z);
+    const down=hitFx.knockPhase>0||hitFx.recover>0;
+    npcShadow.scale.set(down?1.5:1,down?0.6:1,1);
+    shadowMat.opacity=down?0.18:0.32;
+    /* 视觉朝向平滑（限角速度 5 rad/s）+ 待机呼吸起伏 */
+    const faceTarget=Math.atan2(camera.position.x-npc.pos.x,camera.position.z-npc.pos.z);
+    let dY=faceTarget-npcVisYaw;dY=((dY+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+    npcVisYaw+=dY*Math.min(1,dt*5);
+    actor.rotation.y=npcVisYaw;
+    const moving=npc.path.length>npc.pathAt&&npc.state!=='SEARCH';
+    /* v4.4 命中视觉：后仰衰减 + 撞墙硬直 + 踉跄跪倒序列 + 倒地呼吸抽搐 + 起身 */
+    hitFx.lean=Math.max(0,hitFx.lean-dt*5.5);
+    hitFx.wallStun=Math.max(0,hitFx.wallStun-dt);
+    let bodyTilt=0,bodyDrop=0;
+    if(hitFx.knockPhase>0){
+      hitFx.knockT+=dt;
+      const kt=hitFx.knockT;
+      /* 0-0.22 踉跄后仰 → 0.22-0.5 跪倒 → 0.5+ 完全倒地 */
+      if(kt<0.22){const k=kt/0.22;bodyTilt=-0.35*k;bodyDrop=-0.18*k;}
+      else if(kt<0.5){const k=(kt-0.22)/0.28;bodyTilt=-0.35-0.95*k;bodyDrop=-0.18-0.42*k;}
+      else{bodyTilt=-1.3;bodyDrop=-0.6;
+        /* 倒地期间保留呼吸起伏与轻微抽搐 */
+        bodyTilt+=Math.sin(kt*2.1)*0.04;bodyDrop+=Math.sin(kt*5.3)*0.015;}
+    }else if(hitFx.recover>0){
+      /* 起身：从倒地带回站立，膝盖先起、身体后直 */
+      const k=1-hitFx.recover/0.9;
+      bodyTilt=-1.3*(1-k);bodyDrop=-0.6*(1-k);
+    }else{
+      /* 未击倒：命中瞬间上身惯性后仰（朝打击反方向） */
+      bodyTilt=hitFx.lean*0.22;
+    }
+    actor.position.y=npc.pos.y+0.04+bodyDrop+Math.abs(Math.sin(elapsed*(npc.state==='CHASE'?7.5:2.2)))*0.04*(moving?0.6:1);
+    actor.rotation.z=bodyTilt+(hitFx.wallStun>0?Math.sin(elapsed*40)*0.05:0);
+    setFrame(hitFx.knockPhase>0?0:Math.floor(npc.travel*7)%atlas.count);
+    breathT+=dt;if(breathT>0.35){breathT=0;refreshHint();}
+    if(st.shiftDone&&!st.eavesdrop&&!st.visited2){noiseT+=dt;if(noiseT>24){noiseT=0;audio.play('amb_distant_whispers',0.15);MF.toast('西侧厕所通风管又响了一声。');}}
+    if(officeHum){const d=distance(camera.position,S.scene===0?{x:-16.12,z:-4.17}:{x:0,z:-106});officeHum.a.volume=Math.max(0,1-d/22)*(work?0.18:0.12);}
+    if(npc.travel-footAt>1.1){footAt=npc.travel;const d=distance(npc.pos,camera.position);if(d<18)audio.play('sfx_sticky_step',(1-d/18)*0.23);}
+  }
+  return {start,update,refreshHint,resetPose,leave,pullValve,setAnger,findPath,lineClear,blocked,setupScene,tryPunch,punchInRange,
+    combat:()=>({hp:st.hp,ehp:st.ehp,dead:st.dead,punchCd:st.punchCd,anger:st.anger,npcY:+npc.pos.y.toFixed(2),state:npc.state,npcX:+npc.pos.x.toFixed(2),npcZ:+npc.pos.z.toFixed(2),stun:+(npc.stun||0).toFixed(2),started:!!st.started,ready:combatReady(),grace:+st.spawnGrace.toFixed(2)}),
+    ready:Promise.all([ready,frogReady,population.ready]),
+    nearNPC:(x,z)=>distance(npc.pos,{x,z}),
+    blocksInput:()=>!!cinematic||work||st.hidden||st.capturing||arcade.isOpen(),workOpen:()=>work||arcade.isOpen(),isHidden:()=>st.hidden,
+    cinematicActive:()=>!!cinematic,population:()=>population.status(),
+    canInteract,status:()=>({story:{...st},npc:{x:npc.pos.x,y:+npc.pos.y.toFixed(2),z:npc.pos.z,yaw:npc.yaw,state:npc.state,zone:npc.zone,seen:npc.seen,path:npc.path.length,pathAt:npc.pathAt,stun:npc.stun},work,cursor,
+      coworker:{x:+coworker.position.x.toFixed(2),z:+coworker.position.z.toFixed(2),y:+coworker.position.y.toFixed(2),yaw:+coworker.rotation.y.toFixed(2),mode:coworkerMode,path:coworkerPath.length,pathAt:coworkerAt,
+        nav:{leg:cowNav.leg,route:cowNav.route,noProgress:+cowNav.noProgress.toFixed(2),sitPhase:cowNav.sitPhase,resetDone:cowNav.resetDone}},arcade:arcade.status(),cabinet:hiddenCabinet&&hiddenCabinet.id,
+      cinematic:cinematic?{kind:cinematic.kind,time:cinematic.t,duration:cinematic.duration,page:cinematic.page,pageCount:cinematic.pages.length,
+        typing:captionWriter.isTyping(),waiting:cinematic.waiting,pageClicked:cinematic.pageClicked,awaitingClick:cinematic.page>=0&&!cinematic.pageClicked}:null,ventSeen,ventTrigger:{...ventTrigger},
+      vent:{visible:ventFrogRoot.visible,position:ventFrogRoot.position.toArray(),grille:ctx.built[1].props.ventGrille.rotation.x},storyTriggers}),
+    cabinets:()=>cabinets.map(c=>({id:c.id,x:c.x,z:c.z,front:{...c.front},exit:{...c.exit},angle:c.angle,width:c.model.width,depth:c.model.depth,height:c.model.height,enterTime:c.enterT,doorAngle:c.model.doors[0].pivot.rotation.y})),
+    routes:()=>routes.map(r=>r.map(p=>({x:p[0],z:p[1]})))};
+};

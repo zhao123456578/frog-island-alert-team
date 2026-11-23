@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="icon" href="data:,">
+<title>奶蛙 v4.4 · 回归检查入口</title>
+<style>
+  :root{
+    --bg:#080d0c;--card:#0d1412;--card2:#111b16;--line:#2b3a33;--line2:#3b4a41;
+    --hi:#86c24b;--hi2:#b6e07a;--txt:#e6e2cf;--dim:#8d9683;--dim2:#6c7d75;--warn:#c0644f;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--txt);font-family:var(--sans)}
+  body{
+    background-image:
+      radial-gradient(ellipse at 50% -10%,rgba(134,194,75,.10),transparent 60%),
+      linear-gradient(rgba(255,255,255,.012) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.012) 1px,transparent 1px);
+    background-size:auto,28px 28px,28px 28px;
+    padding:32px 20px 60px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}
+  .kick{font:10px/1 var(--mono);letter-spacing:.32em;color:var(--hi);margin-bottom:12px}
+  h1{font-size:clamp(22px,4vw,34px);margin:0 0 8px;letter-spacing:.04em;line-height:1.25}
+  .sub{font:11px/1.7 var(--mono);letter-spacing:.1em;color:var(--dim2)}
+  .ver{display:inline-block;border:1px solid var(--line2);border-radius:2px;padding:3px 9px;
+    font:10px/1 var(--mono);letter-spacing:.16em;color:var(--hi2);margin-left:10px;vertical-align:middle}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:20px 0 26px}
+  .btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;
+    border:1px solid var(--line2);background:var(--card);color:var(--txt);
+    padding:10px 16px;font:12px/1 var(--mono);letter-spacing:.12em;border-radius:2px;transition:.15s}
+  .btn:hover{border-color:var(--hi);color:var(--hi2);transform:translateY(-1px)}
+  .btn.primary{border-color:var(--hi);color:#0b1209;background:var(--hi);font-weight:700}
+  .btn.primary:hover{background:var(--hi2);color:#0b1209}
+  .sec{font:10px/1 var(--mono);letter-spacing:.28em;color:var(--dim2);
+    margin:30px 0 12px;display:flex;align-items:center;gap:12px}
+  .sec::after{content:"";flex:1;height:1px;background:var(--line)}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  a.card{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);
+    background:var(--card);padding:16px 16px 14px;border-radius:3px;transition:.15s;position:relative;overflow:hidden}
+  a.card:hover{border-color:var(--hi);background:var(--card2);transform:translateY(-2px);
+    box-shadow:0 8px 26px rgba(0,0,0,.35)}
+  a.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line2);transition:.15s}
+  a.card:hover::before{background:var(--hi)}
+  .row{display:flex;align-items:baseline;gap:10px}
+  .n{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--hi)}
+  .t{font-size:16px;font-weight:700;letter-spacing:.05em}
+  .tag{margin-left:auto;font:9px/1 var(--mono);letter-spacing:.12em;color:var(--dim2);
+    border:1px solid var(--line);padding:3px 7px;border-radius:2px}
+  .d{font-size:12px;line-height:1.65;color:var(--dim);margin:9px 0 10px}
+  .path{font:10px/1.5 var(--mono);letter-spacing:.02em;color:var(--hi2);
+    background:#0a100d;border:1px solid var(--line);padding:6px 8px;border-radius:2px;
+    word-break:break-all}
+  .path b{color:var(--dim2);font-weight:400}
+  .notes{border:1px solid var(--line);background:var(--card);padding:18px 20px;margin-top:30px;border-radius:3px}
+  .notes h3{margin:0 0 10px;font-size:13px;letter-spacing:.12em;color:var(--hi2)}
+  .notes ul{margin:0;padding-left:18px}
+  .notes li{font-size:12px;line-height:1.9;color:var(--dim)}
+  .notes b{color:var(--txt)}
+  .notes .w{color:var(--warn)}
+  footer{margin-top:26px;font:10px/1.6 var(--mono);letter-spacing:.1em;color:var(--dim2);text-align:center}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kick">MILKFROG · QA / REGRESSION ENTRY</div>
+    <h1>奶蛙：午夜奶厂 + 夜班归途<span class="ver">v4.4 参赛候选版</span></h1>
+    <div class="sub">回归检查统一入口 · 点任意条目进入对应场景 · 共 9 条验收路径</div>
+  </header>
+
+  <div class="bar">
+    <a class="btn primary" href="start.html">▸ 进入游戏封面</a>
+    <a class="btn" href="试玩说明.txt">试玩说明</a>
+    <a class="btn" href="修复说明_v4.4.txt">本次修复说明</a>
+  </div>
+
+  <div class="sec">室内三幕 / INDOOR ACTS</div>
+  <div class="grid">
+    <a class="card" href="index.html?act=0&amp;auto=1">
+      <div class="row"><span class="n">01</span><span class="t">第一幕 · 醒奶区</span><span class="tag">ACT I</span></div>
+      <div class="d">开场广播、奶泵流程与基础互动；确认无 JS 错误、字幕与音频正常。</div>
+      <div class="path"><b>index.html</b>?act=0&amp;auto=1</div>
+    </a>
+    <a class="card" href="index.html?act=1&amp;auto=1">
+      <div class="row"><span class="n">02</span><span class="t">第二幕 · 发酵区</span><span class="tag">ACT II</span></div>
+      <div class="d">交接剧情与场景切换；确认场景完整、模型与资源加载正常。</div>
+      <div class="path"><b>index.html</b>?act=1&amp;auto=1</div>
+    </a>
+    <a class="card" href="index.html?act=2&amp;auto=1">
+      <div class="row"><span class="n">03</span><span class="t">第三幕 · 主奶泵室</span><span class="tag">ACT III</span></div>
+      <div class="d"><b style="color:var(--hi2)">重点：直选后静等 8 秒不应被攻击</b>，hp 保持满、无坏结局；场景与主奶泵完整。</div>
+      <div class="path"><b>index.html</b>?act=2&amp;auto=1</div>
+    </a>
+    <a class="card" href="index.html?act=0&amp;dev=1&amp;auto=1">
+      <div class="row"><span class="n">04</span><span class="t">开发者模式</span><span class="tag">DEV</span></div>
+      <div class="d">开发面板与跳章功能；确认三幕室内剧情、暂停菜单、背包不受影响。</div>
+      <div class="path"><b>index.html</b>?act=0&amp;dev=1&amp;auto=1</div>
+    </a>
+  </div>
+
+  <div class="sec">步行 / 上车 / 驾驶 / WALK &amp; DRIVE</div>
+  <div class="grid">
+    <a class="card" href="outdoor.html?walk=1">
+      <div class="row"><span class="n">05</span><span class="t">停车场步行与上车</span><span class="tag">SIDE A</span></div>
+      <div class="d">步行靠近左侧驾驶门 → 按 E 上车 → 坐稳过场；确认Pointer Lock 与上车动画正常。</div>
+      <div class="path"><b>outdoor.html</b>?walk=1</div>
+    </a>
+    <a class="card" href="outdoor.html?from=factory&amp;route=early&amp;act=1">
+      <div class="row"><span class="n">06</span><span class="t">工厂交接驾驶</span><span class="tag">SIDE B</span></div>
+      <div class="d">从工厂交接直接进入驾驶段；确认流程衔接与音频初始化正常。</div>
+      <div class="path"><b>outdoor.html</b>?from=factory&amp;route=early&amp;act=1</div>
+    </a>
+    <a class="card" href="outdoor.html?shot=check&amp;dist=600&amp;speed=12&amp;diff=normal">
+      <div class="row"><span class="n">07</span><span class="t">驾驶 HUD 与路面</span><span class="tag">HUD</span></div>
+      <div class="d"><b style="color:var(--hi2)">重点：速度/距离/箭头/危险红边/后视监控/toast/终点引导全部可见</b>；路面远景无黑色闪块，鼠标可直接环视。</div>
+      <div class="path"><b>outdoor.html</b>?shot=check&amp;dist=600&amp;speed=12&amp;diff=normal</div>
+    </a>
+    <a class="card" href="outdoor.html">
+      <div class="row"><span class="n">08</span><span class="t">正常入口 / 难度选择</span><span class="tag">TITLE</span></div>
+      <div class="d"><b style="color:var(--hi2)">重点：先显示标题与难度选择，默认“标准”</b>；点击“发动引擎”才发车。仅 ?direct 自动进入。</div>
+      <div class="path"><b>outdoor.html</b></div>
+    </a>
+  </div>
+
+  <div class="sec">结局路线 / ENDINGS</div>
+  <div class="grid">
+    <a class="card" href="outdoor.html?shot=city&amp;dist=1560&amp;speed=18&amp;diff=normal">
+      <div class="row"><span class="n">09</span><span class="t">城市结局 · 到家了</span><span class="tag">CITY</span></div>
+      <div class="d"><b style="color:var(--hi2)">重点：冲线后立刻静音</b>，10 秒仍无引擎/雨声/底噪；“再开一次”声音恢复。</div>
+      <div class="path"><b>outdoor.html</b>?shot=city&amp;dist=1560&amp;speed=18&amp;diff=normal</div>
+    </a>
+    <a class="card" href="outdoor.html?shot=forest&amp;dist=870&amp;speed=18&amp;diff=normal">
+      <div class="row"><span class="n">10</span><span class="t">森林路线 · 副驾驶有人</span><span class="tag">FOREST</span></div>
+      <div class="d"><b style="color:var(--hi2)">重点：追逐人群与“副驾驶有人”结局仍正常</b>；不要把森林路线当背景装饰。</div>
+      <div class="path"><b>outdoor.html</b>?shot=forest&amp;dist=870&amp;speed=18&amp;diff=normal</div>
+    </a>
+  </div>
+
+  <div class="notes">
+    <h3>检查须知 / NOTES</h3>
+    <ul>
+      <li>首次打开本页会自动完成访问授权，之后点击任意条目都能正常跳转；若某页 403，回到本页点一次“进入游戏封面”再试。</li>
+      <li><b>驾驶鼠标环视</b>：点击画面锁定指针后直接移动鼠标即可转头，看后视镜/侧窗无需按住左键；Esc 释放，再点重锁。</li>
+      <li>预览 iframe 或浏览器<b>拒绝指针锁定</b>时会自动降级为“按住左键拖动”，<span class="w">这是正常回退，不是故障</span>。</li>
+      <li><b>结局静音</b>：城市/森林结局应立即无引擎、雨声、胎噪、底噪与人物声，等待 10 秒仍静音；点“再开一次”后声音恢复。</li>
+      <li><b>路面</b>：1200–1580 米路段连续行驶 10 秒，远景不应出现黑色棋盘格或跳黑颗粒（近处保留像素颗粒质感属正常）。</li>
+      <li><b>文件校验</b>：随包“文件校验.json”覆盖全部文件，除自身外 SHA-256 应全部通过。GLTFLoader 的 “Custom UV sets” 是原有模型提示，非错误。</li>
+    </ul>
+  </div>
+
+  <footer>MILKFROG DEMO v4.4 · 回归检查入口 · 原始 v4.2 包未改动 · 未上传 GitHub</footer>
+</div>
+</body>
+</html>
