@@ -341,6 +341,17 @@ function interact(e) {
   if (active) { if (interactHook) interactHook(active); active.action(); }
 }
 function getActive() { return active; }
+/* v4.5：准星射线交互的覆盖入口——由渲染层的屏幕中心 Raycaster 调用，
+   命中带代理的道具时强制把 active 切到该道具（提示贴准星，不依赖地板圈） */
+function setActive(p) {
+  if (!p || locked || (inputGuard && inputGuard() === false)) return;
+  if (!props.includes(p)) return;
+  if (dialogOpen() || confirmOpen() || dancing() || els.ending.classList.contains("on")) { active = null; hint(null); return; }
+  const lb = p.label();
+  if (!lb || (p.enabled && !p.enabled()) || (visibilityTest && visibilityTest(p) === false)) { active = null; hint(null); return; }
+  active = p; p._lb = lb;
+  hint("<b>[E]</b> " + lb);
+}
 
 /* ===== 状态面板（实验台用，场景可隐藏） ===== */
 let panelEl = null;
@@ -416,7 +427,7 @@ return {
   getUnlocked, allMainUnlocked, clearUnlocked,
   initUI, toast, hint, dialog, dialogOpen, advanceDialog, closeDialog, createTypewriter, confirm, closeConfirm, confirmOpen, ending,
   startDance, dancing,
-  register, getProp, unregister, clearProps, update, interact, getActive, setLock, setVisibilityTest, setInputGuard, setAimTest, setInteractHook,
+  register, getProp, unregister, clearProps, update, interact, getActive, setActive, setLock, setVisibilityTest, setInputGuard, setAimTest, setInteractHook,
   bindPanel, refreshPanel,
 };
 })();

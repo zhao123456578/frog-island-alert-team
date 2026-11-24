@@ -281,6 +281,7 @@
 <script src="vendor/three.min.js"></script>
 <script src="vendor/GLTFLoader.js"></script>
 <script src="assets/shift.js"></script>
+<script src="assets/sprite_fix.js"></script>
 <script>
 'use strict';
 /* __TEMP_DBG__ */
@@ -2932,24 +2933,19 @@ function setSunFrame(i){
 }
 function initSunSprite(){
   const h=2.34,w=h*SUN_ATLAS.fw/SUN_ATLAS.fh;
+  /* v4.5 黑边修复：纹理经 alpha bleed 处理；材质 alpha discard + 预乘修正。 */
   const mat=new THREE.MeshBasicMaterial({
-    map:sunTextures[0],transparent:true,alphaTest:0.36,
+    map:sunTextures[0],transparent:true,alphaTest:0.28,
     side:THREE.DoubleSide,depthWrite:true,color:0x3a302a
   });
+  window.MFSpriteFix&&MFSpriteFix.patch(mat,0.30);
   sunBillboard=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
   sunBillboard.position.y=h/2;
   sunBillboard.renderOrder=4;
   sunChaser.add(sunBillboard);
 
-  /* 背后偏移 1.5 cm 的暗色轮廓，侧看时保留纸片厚度。 */
-  const outMat=new THREE.MeshBasicMaterial({
-    map:sunTextures[0],transparent:true,alphaTest:0.36,
-    side:THREE.DoubleSide,depthWrite:false,color:0x4a120c
-  });
-  sunOutline=new THREE.Mesh(new THREE.PlaneGeometry(w*1.018,h*1.014),outMat);
-  sunOutline.position.set(0,h/2,-0.015);
-  sunOutline.renderOrder=3;
-  sunChaser.add(sunOutline);
+  /* v4.5：删除背后 1.8% 放大的暗色轮廓网格——它就是"黑色涂边/黑框"的主因之一。
+     纸片厚度感改由极弱的病态绿背光 aura 承担（下方），不再叠任何深色 outline shell。 */
 
   /* 黑西装在夜路里容易和背景糊成一团。给他一层很薄的病态绿背光，
      远处先看到轮廓，靠近后才看清白衬衫和脸。 */
@@ -2973,8 +2969,9 @@ function initSunSprite(){
       tex.magFilter=THREE.NearestFilter;
       tex.minFilter=THREE.LinearFilter;
       tex.generateMipmaps=false;
-      sunTextures[i]=tex;
-      if(--left===0)initSunSprite();
+      /* v4.5：alpha bleed 后再入库（crowd/副驾驶克隆同一 image，自动继承修复） */
+      const done=()=>{sunTextures[i]=tex;if(--left===0)initSunSprite();};
+      window.MFSpriteFix?MFSpriteFix.process(tex).then(done).catch(done):done();
     },undefined,()=>{
       failed=true;
       console.error('[chaser] 孙笑川贴图加载失败，继续使用剪影 fallback：'+src);
@@ -3606,7 +3603,7 @@ const cones=[];
 }
 works.position.set(0,0,-100);scene.add(works);
 
-/* ---------- 沿途的生活：限速牌/测速、加油站、坏在路边的车、烤串摊、一只猫 ---------- */
+/* ---------- 沿途的生活：限速牌/测速、加油站、坏在路边的车、烤串摊 ---------- */
 const limitSign=new THREE.Group();
 {
   const limTex=mkTex(128,128,(x,w,h)=>{
@@ -3643,7 +3640,12 @@ const speedCam=new THREE.Group();
   const lens=new THREE.Mesh(new THREE.PlaneGeometry(0.14,0.14),
     new THREE.MeshBasicMaterial({color:0x8fb8e0}));
   lens.position.set(2.95,5.03,0.27);speedCam.add(lens);
+  /* v4.5：常亮的小红色指示灯（替代全屏白闪的"拍摄感"） */
+  const camLamp=new THREE.Mesh(new THREE.SphereGeometry(0.035,6,5),
+    new THREE.MeshBasicMaterial({color:0xc23a2e}));
+  camLamp.position.set(3.08,5.31,0.20);speedCam.add(camLamp);
   const flash=glowSprite(0xffffff,0.85,0);flash.position.set(2.95,5.12,0.32);
+  flash.scale.setScalar(0.5);   /* v4.5：局部微闪，尺寸压到相机盒级别 */
   speedCam.userData.flash=flash;speedCam.add(flash);
 }
 scene.add(speedCam);
@@ -3847,27 +3849,8 @@ const bbqStall=new THREE.Group();
   bbqStall.userData.smoke=smoke;
 }
 scene.add(bbqStall);
-/* 猫：夜里只看得见两只反光的眼睛 */
-const cat=new THREE.Group();
-{
-  const fur=new THREE.MeshLambertMaterial({color:0x16181c,emissive:0x040507});
-  const body=new THREE.Mesh(new THREE.SphereGeometry(0.17,10,8),fur);
-  body.scale.set(1.5,0.85,0.8);body.position.y=0.20;cat.add(body);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,6),fur);
-  head.position.set(-0.24,0.30,0);cat.add(head);
-  const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.03,0.3,5),fur);
-  tail.position.set(0.26,0.33,0);tail.rotation.z=0.9;cat.add(tail);
-  const eyeMat=new THREE.MeshBasicMaterial({color:0xffd27a});
-  [-0.045,0.045].forEach(z=>{
-    const e=new THREE.Mesh(new THREE.SphereGeometry(0.016,6,5),eyeMat);
-    e.position.set(-0.31,0.32,z);cat.add(e);
-  });
-  /* 车灯打上去，猫眼是两点反光——二三十米外也能看见 */
-  const eyeGlow=glowSprite(0xffd27a,0.5,0.55);
-  eyeGlow.position.set(-0.31,0.32,0);cat.add(eyeGlow);
-  cat.visible=false;
-}
-scene.add(cat);
+/* v4.5：正常公路上的猫事件已按需求整体删除（模型/事件/碰撞/音效/电台/小票/统计/调试入口）。
+   室内或停车场里的非公路猫装饰不受影响；驾驶路段 0–1590 m 不再生成任何猫。 */
 
 /* ============================================================
    场外场景美术重制（面向比赛演示）
@@ -4842,7 +4825,7 @@ const overpass=new THREE.Group();
 }
 scene.add(overpass);overpass.visible=false;
 
-/* ---------- ~1005 m：猫路段的"不对劲"前兆（异常只占 10%） ---------- */
+/* ---------- ~1005 m：路段的"不对劲"暗示（荧光图腾，异常只占 10%） ---------- */
 const oddZone=new THREE.Group();
 {
   /* 路面荧光图腾：一只简笔蛙脸 + 13 号，像有人用荧光漆喷在路上。
@@ -4876,9 +4859,7 @@ const oddZone=new THREE.Group();
     bx(oddZone,1.4,0.1,0.1,artSteel,side*5.9-side*0.6,6.15,2);
     bx(oddZone,0.4,0.12,0.22,artDark,side*5.9-side*1.3,6.05,2);
   });
-  /* 猫出现前半秒的反光剪影：草丛里两点荧光绿，先于猫本体亮起 */
-  const omen=glowSprite(0x9fe8a8,0.7,0);omen.position.set(6.4,0.5,-3);oddZone.add(omen);
-  oddZone.userData.omen=omen;
+  /* v4.5：猫相关的前兆反光（omen）随猫事件一并删除 */
 }
 scene.add(oddZone);oddZone.visible=false;
 
@@ -5159,7 +5140,7 @@ const S={
   parked:false,parkTries:0,parkTold:false,overTold:false,reverse:false,
   /* P0 终点：一次性冲线状态（替代旧版 1660 m 隐藏停车墙） */
   finishTriggered:false,finishTold150:false,finishTold60:false,finishCrossKmh:0,
-  distPrev:0,fines:0,gasStop:false,bbq:false,catOn:false,catT:0,catDone:false,catHit:false,
+  distPrev:0,fines:0,gasStop:false,bbq:false,
   brokenHit:false,
   glitchT:0,             /* 撞击后的画面故障剩余时间 */
   chaserPin:false,       /* 截图取证：锁定追逐距离 */
@@ -5206,8 +5187,6 @@ const S={
   dmgN:0,             /* 受损次数与最近一次接触信息：驱动保险杠/后视镜/刮痕外观 */
   dmgSide:'',dmgTag:'',dmgT:0,
   coneSound:0,        /* 压锥回声计时 */
-  catReact:'',        /* 猫事件结果：seen/avoid/hit */
-  catSeen:false,
   _windWas:false
 };
 /* ===== 步行阶段（walking phase）=====
@@ -5650,7 +5629,7 @@ function chime(base){
 function refreshFx(){
   S.recover=2.2;chime(520);
 }
-/* 通用短音：猫叫、撞杆、过站提示，一次性的小音效，不占常驻节点 */
+/* 通用短音：撞杆、过站提示，一次性的小音效，不占常驻节点 */
 function tone(freq,dur,type,vol,slideTo){
   if(!actx)return;
   const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
@@ -5661,8 +5640,13 @@ function tone(freq,dur,type,vol,slideTo){
   g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
   o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+dur+0.02);
 }
-function meow(){tone(760,0.28,'sawtooth',0.06,420);}
-function thud(){tone(90,0.22,'sine',0.16,45);}
+/* 撞击闷响：一次性的低频小音效 */function thud(){tone(90,0.22,'sine',0.16,45);}
+/* v4.5 测速快门：短促两声咔哒，配相机局部微闪，不再有全屏白闪 */
+function shutter(){
+  if(!actx||actx.state!=='running')return;
+  tone(2200,0.03,'square',0.05);
+  setTimeout(()=>tone(1450,0.05,'square',0.04),65);
+}
 /* 鸣笛 + 双闪：轿车的高低双音喇叭（两声短促），同时四角琥珀灯闪 2.4 s */
 function carHorn(){
   if(!actx||actx.state!=='running'||S.hornCool>0)return;
@@ -6202,7 +6186,7 @@ function walkLook(dx,dy){
 }
 /* ===== E 拉门上车过场（移植 yard updateYard 的 approach→open→step→seat→close→black）=====
    车恒在原点，故 yard 的 carWorld(v) 就是场景坐标 v。门锚点/时长与 yard 一致。 */
-const BOARD_DUR={approach:1.1,open:0.9,step:2.4,seat:1.2,close:0.9,black:0.35};
+const BOARD_DUR={approach:1.1,open:0.9,step:2.4,seat:1.2,close:0.9,black:0.3};
 const BOARD_DOOR={wait:new THREE.Vector3(-1.65,0,0.20),step:new THREE.Vector3(-1.65,0.34,-1.10),
   seat:new THREE.Vector3(-0.44,0.34,-1.10),eye:new THREE.Vector3(-0.44,1.50,-1.13),
   handle:new THREE.Vector3(-0.96,1.02,-0.65)};
@@ -6300,8 +6284,8 @@ function walkBoard(dt){
     const lookDoor=new THREE.Vector3(-1.8,1.2,-1.7);
     if(u<0.5)W.camLook.lerpVectors(W.boardLook,lookDoor,walkSmooth(u/0.5));
     else W.camLook.lerpVectors(lookDoor,new THREE.Vector3(-0.44,1.42,-8),walkSmooth((u-0.5)/0.5));
-    /* 黑场只在最后 0.22 段淡入，不提前盖住关门动作 */
-    if(u>0.78){fadeInEl.style.display='block';fadeInEl.style.opacity=String(walkSmooth((u-0.78)/0.22));}
+    /* 黑场只在最后 0.15 段淡入 + black 0.3s：黑场总量 ≈0.3s，不吞关门动作 */
+    if(u>0.85){fadeInEl.style.display='block';fadeInEl.style.opacity=String(walkSmooth((u-0.85)/0.15));}
     walkLabel('上车 5/5 · 关好车门');
     if(u>=0.999){thud();W.boardPhase='black';W.boardT=0;}
   }else if(W.boardPhase==='black'){
@@ -6868,7 +6852,7 @@ function update(dt){
   /* 四盏点光源挪到最近的灯头：远处路灯靠光晕+地面光斑，省下六盏的逐片元开销 */
   lampOrder=lamps.slice().sort((a,b)=>
     Math.abs(a.grp.position.z+6)-Math.abs(b.grp.position.z+6));
-  /* 猫路段前后的路灯集体熄灭：从 950 m 渐暗、1005 m 最黑、1060 m 恢复，
+  /* 1005 m 前后的路灯集体熄灭：从 950 m 渐暗、1005 m 最黑、1060 m 恢复，
      制造"这一段不对劲"的落差——不是靠文字，是靠光突然没了。 */
   const darkZone=Math.max(0,1-Math.abs(S.dist-1005)/55);
   lampLights.forEach((l,i)=>{
@@ -7021,15 +7005,12 @@ function update(dt){
     sl.material.opacity=0.45+0.35*(Math.sin(tnow*2.2)>0?1:-1);
     overpass.userData.smoke.position.y=29+Math.sin(tnow*0.6)*1.2;
   }
-  /* 猫路段异常：荧光图腾在车灯扫过时亮起；猫出现前，草丛里先闪两点绿光 */
+  /* 荧光图腾异常：在车灯扫过时亮起（保留"不对劲"氛围，猫事件已删除） */
   placeRoad(oddZone,1005,0,0);
   oddZone.visible=S.dist>930&&S.dist<1075;
   if(oddZone.visible){
     const near=Math.max(0,1-Math.abs(S.dist-1005)/70);
     oddZone.userData.totem.material.opacity=0.18+0.55*near*(0.75+0.25*Math.sin(tnow*3));
-    /* 猫本体出现前 0.5 s（dist 约 995→1005）先给一点反光前兆 */
-    const omen=oddZone.userData.omen;
-    omen.material.opacity=S.catOn&&!S.catDone?0.35+0.45*Math.sin(tnow*6):0;
   }
   /* 施工区：右侧车道被雪糕筒吃了 */
   placeRoad(works,450,0,0);
@@ -7045,7 +7026,7 @@ function update(dt){
   if(!S._workPass&&S.dist>536){S._workPass=true;
     toast(S.cones>0?'雪糕筒压了 '+S.cones+' 个——修路的师傅看见了要摇头。'
       :'绕过去了，这段路年年修。');}
-  /* 沿途的生活：限速牌、测速、加油站、坏车、猫、烤串摊 */
+  /* 沿途的生活：限速牌、测速、加油站、坏车、烤串摊 */
   placeRoad(limitSign,620,0,0);
   limitSign.visible=S.dist>520&&S.dist<672;
   placeRoad(speedCam,700,0,0);
@@ -7077,10 +7058,12 @@ function update(dt){
   if(!S._camPass&&S.distPrev<=700&&S.dist>700){
     S._camPass=true;
     if(S.speed*3.6>72){
-      S.fines++;flash(0.5,false);
-      speedCam.userData.flash.material.opacity=0.85;
+      /* v4.5：删除全屏白闪——只保留相机模型上的小红灯/局部微闪 + HUD 文字 + 快门声 */
+      S.fines++;
+      speedCam.userData.flash.material.opacity=0.45;
       S.drowsy=Math.min(100,S.drowsy+2);
-      toast('白光一闪——测速拍照，你开了 '+Math.round(S.speed*3.6)+'。刚那下有点快。');
+      shutter();
+      toast('测速拍照：你开了 '+Math.round(S.speed*3.6)+'。刚那下有点快。');
       radioSay('刚那个测速闪了，罚单回头寄家里。');
     }else{
       toast('过了测速点，脚底下还算稳。');
@@ -7089,44 +7072,8 @@ function update(dt){
   if(!S._gasTold&&S.dist>winOf('gas')[0]-60){S._gasTold=true;
     toast('前方可以靠边休息——加油站还开着。');
     radioSay('下个加油站要不要进去缓一口？');}
-  /* 猫：看得见、躲得开、也撞得到——三种结果各有动作和声音，不只靠文字。
-     车头灯扫到它先照亮（发现），玩家刹车/变道算“躲”，撞上算“撞”。 */
-  if(!S.catDone&&driveStory.route==='home'&&S.dist>SUN_ROAD_S+35){
-    if(!S.catOn&&S.dist>975&&S.dist<1012){S.catOn=true;S.catT=0;S.catReact='';}
-    if(S.catOn){
-      S.catT+=dt;
-      const ct=S.catT;
-      let cl;
-      if(ct<0.85)cl=6.2-4.0*(ct/0.85);
-      else if(ct<1.75)cl=2.2;
-      else cl=2.2-8.4*Math.min(1,(ct-1.75)/0.6);
-      const cz=placeRoad(cat,1005,cl,0);
-      cat.visible=true;
-      /* 发现：猫进入灯光范围时喵一声 + 电台提一句，让玩家有反应时间 */
-      if(!S.catSeen&&cz>-22&&cz<-8){
-        S.catSeen=true;meow();radioSay('……前面车道里有东西，一只猫。');
-      }
-      /* 躲：玩家在猫车前明显减速或往左打方向 */
-      if(!S.catReact&&cz>-9&&cz<-2&&(S.brk>0.45||S.steer<-0.25)){
-        S.catReact='avoid';
-      }
-      if(cz>-4.6&&cz<-1.2&&Math.abs(S.lateral+LANE_LAT-cl)<0.9){
-        S.catDone=true;S.catHit=true;S.catReact='hit';cat.visible=false;
-        /* 猫是极轻物体：只给一点横向推挤和短震，不再固定打七折掉速 */
-        S.bumpT=0.35;meow();metalScrape(0,0.18);
-        S.slipV+=(S.lateral+LANE_LAT>cl?1:-1)*0.45;
-        toast('蹭到了');
-      }else if(ct>2.7){
-        S.catDone=true;cat.visible=false;
-        if(S.catReact==='avoid'){
-          meow();toast('一脚刹住——猫回头看了你一眼，慢悠悠过了马路。');
-          radioSay('躲得好。这种夜里，猫比人金贵。');
-        }else{
-          meow();toast('一只猫从车前蹿过去，一眨眼就没影了。');
-        }
-      }
-    }
-  }else cat.visible=false;
+  /* v4.5：正常公路猫事件已整体删除——不再有生成/推进/回收逻辑、
+     猫叫音效、电台与 toast 提示。驾驶 0–1590 m 全程无猫。 */
   /* 旧的双闪故障车已下线（荒野路线里它并不显示），静止废车统一由 wrecks
      提供并登记动态盒；这里不再有隐藏的 speed*0.25 结算。 */
   if(!S._brokenTold&&S.dist>1338){S._brokenTold=true;
@@ -7823,7 +7770,7 @@ function finish(kind){
   document.body.classList.remove('plocked');
   updateLockHint();
   const mins=Math.max(1,Math.round((performance.now()-S.startTime)/60000*10)/10);
-  const risk=S.bumps*2+S.cones*2+S.parkTries+S.fines*2+(S.catHit?1:0)+(S.peakDrowsy>=85?2:0)+S.severe*4;
+  const risk=S.bumps*2+S.cones*2+S.parkTries+S.fines*2+(S.peakDrowsy>=85?2:0)+S.severe*4;
   const rating=kind==='冲线'?(risk<=2?'干净冲线':risk<=6?'有惊无险':'一路磕碰，总算冲线')
     :kind!=='到家'?'——':(risk<=1?'安全到家':risk<=4?'有点惊险':'勉强到家');
   const bumpLine=S.bumps===0?'一路稳':(S.bumps>=3?'保险要涨了':'蹭了点漆');
@@ -7846,7 +7793,7 @@ function finish(kind){
     '烤串　<b>'+(S.bbq?'吃了两串':'没停')+'</b>'+
     (S.fines?'<br>超速　<b>被拍 '+S.fines+' 次</b>':'')+
     '<br>评价　<b>'+rating+'</b>';
-  ticketEl.innerHTML+='<br>路线　<b>'+(driveStory.route==='forest'?'直行 · 森林小路':'右弯 · 正常道路')+'</b><br>路口　<b>'+(driveStory.hit?'撞过了孙笑川':driveStory.route==='forest'?'避开了孙笑川':'驶过右弯')+'</b>';
+  ticketEl.innerHTML+='<br>路线　<b>'+(driveStory.route==='forest'?'直行 · 森林小路':'右弯 · 正常道路')+'</b><br>路口　<b>'+(driveStory.sunDefeated?'撞倒了孙笑川':driveStory.route==='forest'?'避开了孙笑川':driveStory.sunEncounterHit?'撞到了孙笑川（他又爬了起来）':driveStory.hit?'撞过了孙笑川':'驶过右弯')+'</b>';
   const endSub=document.getElementById('endSub');
   if(kind==='睡着了'){
     document.getElementById('end').querySelector('h2').textContent='在路边睡着了';
@@ -7862,7 +7809,7 @@ function finish(kind){
     endSub.textContent='你没有右转。避开那个人以后，沥青变成了泥土。森林尽头，只有一栋熄灯的旧楼。';
   }else{
     document.getElementById('end').querySelector('h2').textContent='到家了';
-    endSub.textContent=driveStory.hit?'你沿右弯撞过了孙笑川，继续顺着正常道路回家。后视镜里再也没有人。':'你沿着右弯的正常道路，回到了家。';
+    endSub.textContent=driveStory.sunDefeated?'你沿右弯撞倒了孙笑川，继续顺着正常道路回家。后视镜里再也没有人。':'你沿着右弯的正常道路，回到了家。';
   }
   /* 重新开始 / 返回停车场：两个按钮都可见（结束界面不再只有一个按钮） */
   const back=document.getElementById('btnBack');
@@ -7910,7 +7857,7 @@ window.__game={
     wiperPhase:+S.wiperPhase.toFixed(2),
     tollPassed:S.tollPassed,bumps:S.bumps,parked:S.parked,parkTries:S.parkTries,
     reverse:S.reverse,cones:S.cones,
-    fines:S.fines,gasStop:S.gasStop,bbq:S.bbq,catHit:S.catHit,brokenHit:S.brokenHit,
+    fines:S.fines,gasStop:S.gasStop,bbq:S.bbq,brokenHit:S.brokenHit,
     psi:+S.psi.toFixed(3),steer:+S.steer.toFixed(3),gear:S.gear,rpm:+S.rpm.toFixed(2),
     severe:S.severe,noAccelT:+S.noAccelT.toFixed(2),graceT:+S.graceT.toFixed(2),openPhase:S.openPhase,
     elapsed:+(S.startTime?(performance.now()-S.startTime)/1000:0).toFixed(1),
@@ -7930,7 +7877,6 @@ window.__game={
     chaserOn:S.chaserOn,chaserGap:+S.chaserGap.toFixed(1),chaserEye:+S.chaserEye.toFixed(2),
     chaserVisual:chaserVisualReady(),chaserGlbOK,sunSpriteOK,
     chaserLowT:+S.chaserLowT.toFixed(2),chaserStage:S.chaserStage,
-    catOn:S.catOn,catDone:S.catDone,catReact:S.catReact,catSeen:S.catSeen,
     camMode:S.camMode,lowSpeedT:+lowSpeedT.toFixed(2),glitchT:+S.glitchT.toFixed(2),
     phase:S.phase,brakeSlam:+S.brakeSlam.toFixed(2),recover:+S.recover.toFixed(2),
     rollVis:+S.rollVis.toFixed(3),camLagYaw:+S.camLagYaw.toFixed(3),windRush:+S.windRush.toFixed(3),
@@ -8003,7 +7949,7 @@ window.__game={
   input(){return {...keys};},
   camX(){return +camera.position.x.toFixed(2);},
   scene,camera,traffic,
-  props:{limitSign,speedCam,gasStation,broken,bbqStall,cat,yardProps,yardLot,gateNarrow,introShell},
+  props:{limitSign,speedCam,gasStation,broken,bbqStall,yardProps,yardLot,gateNarrow,introShell},
   trafficAt(i,z){const c=traffic[i];if(!c)return null;
     c.z=z;return {lane:c.lane,dir:c.dir};},
   tick(dt){if(S.started&&!S.ended){const d=dt||0.016;update(d);

@@ -6,9 +6,10 @@ window.createNightShift=function(ctx){
     hp:2,ehp:5,punchT:0,punchCd:0,punchHit:false,flashT:0,hurtT:0,dead:false,hearT:0,knockT:0,
     pumpOff:false,unplugged:false,escapeTime:0,leaving:false,foam:0,caught:0,capturing:false,arcadeChase:false,
     askedToilet:false,toiletDone:false,toiletExitSeen:false,factoryArrivalSeen:false,
-    spawnGrace:0,pressureT:0,pressureTier:0};
+    spawnGrace:0,pressureT:0,pressureTier:0,inv:0,closeT:0};
   const npc={pos:new THREE.Vector3(-15.3,0,-4.17),yaw:0,state:'PATROL',zone:0,route:0,path:[],pathAt:0,
-    last:new THREE.Vector3(),lost:0,search:0,stun:0,wait:1,repath:0,seen:false,cooldown:0,travel:0,goal:null,detour:null,direct:false,stuckT:0};
+    last:new THREE.Vector3(),lost:0,search:0,stun:0,wait:1,repath:0,seen:false,cooldown:0,travel:0,goal:null,detour:null,direct:false,stuckT:0,
+    atkT:0,atkHit:false};
   const events=[];let elapsed=0,work=false,workT=0,cursor=0,breathT=0,noiseT=0,officeHum=null,footAt=0;
   let hiddenCabinet=null,capturePose=null,coworkerModel=null,coworkerMode='WAIT',coworkerPath=[],coworkerAt=0;
   /* v4.4：NO.07 寻路防卡死状态。分段目标 + no-progress 检测 + 侧移/备用路线/安全重置。 */
@@ -449,6 +450,13 @@ window.createNightShift=function(ctx){
   shootEl.onclick=shoot;
   /* ===== 近战：左键出拳 · 孙笑川 5 血 · 主角 2 血 ===== */
   function npcFlash(dur){st.flashT=Math.max(st.flashT,dur||0.1);}
+  /* v4.5：出招开始——0.20s 抬手蓄力，0.20–0.28s 有效帧在 updateNPC 状态机里结算 */
+  function startAttack(){
+    npc.atkT=0.0001;npc.atkHit=false;st.closeT=0;
+    npc.last.copy(camera.position);npc.lost=0;
+    const swing=audio.play('sfx_punch_whoosh',0.30);
+    if(swing)swing.playbackRate=0.78;
+  }
   function combatReady(){
     return st.started&&!st.dead&&!S.pause&&!document.hidden&&!st.hidden&&!st.capturing&&!work&&!(arcade&&arcade.isOpen())&&!uiBusy()&&!cinematic;
   }
@@ -518,12 +526,14 @@ window.createNightShift=function(ctx){
     }
   }
   function playerHurt(){
-    if(st.dead)return;
-    /* v4.4：红边≤0.3s，方向性击退镜头（远离攻击者），2.4s 冷却保证不连续掉血 */
-    st.hp=Math.max(0,st.hp-1);st.hurtT=0.28;npc.cooldown=2.4;
+    if(st.dead||st.inv>0)return;
+    /* v4.5：红边≤0.3s，方向性击退镜头（远离攻击者），0.65s 无敌帧保证一击只扣一格 */
+    st.hp=Math.max(0,st.hp-1);st.hurtT=0.28;st.inv=0.65;
+    npc.cooldown=Math.max(npc.cooldown,0.95);   /* 出招冷却由攻击状态机管理，这里只兜底 */
     const hx=camera.position.x-npc.pos.x,hz=camera.position.z-npc.pos.z,hl=Math.max(0.01,Math.hypot(hx,hz));
     if(ctx.shake)ctx.shake(0.72,0.18,hx/hl,hz/hl);
     audio.play('sfx_stinger',0.35);
+    const thud=audio.play('sfx_jelly_drop',0.5);if(thud)thud.playbackRate=0.6;
     refreshCombatHud();
     if(st.hp<=0){
       st.dead=true;st.hurtT=0.9;npc.state='CAPTURE';npc.path=[];
@@ -609,7 +619,9 @@ window.createNightShift=function(ctx){
       const u=i/n,x=a.x+(b.x-a.x)*u,z=a.z+(b.z-a.z)*u,y=(a.y||1.35)+((b.y||1.35)-(a.y||1.35))*u;
       if(wallSegments.some(w=>w.h>y&&pointSegment(x,z,w)<0.1))return false;
       for(const c of solid){if(c===skipCol||c.off||c.type==='seg'||c.sight===false||(c.h||2)<y||(c.yMin||0)>y)continue;
-        if(interact&&inShape(b.x,b.z,c,0.12)&&!c.wall)continue;
+        /* v4.5：交互射线的终点容差不再区分 wall——门本体作为交互目标时不被自身碰撞体挡住；
+           路径中段的墙体/关门仍然照常阻断。 */
+        if(interact&&inShape(b.x,b.z,c,0.12))continue;
         if(inShape(x,z,c,0))return false;}
     }
     return true;
@@ -803,10 +815,14 @@ window.createNightShift=function(ctx){
   let npcMesh=null,frame=-1,sheets=[];
   const atlas=window.PAPERBOT_ATLAS;
   const ready=Promise.all(atlas.sheets.map(src=>new Promise(resolve=>new THREE.TextureLoader().load(src,t=>{
-    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.LinearFilter;t.generateMipmaps=false;resolve(t);
+    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.LinearFilter;t.generateMipmaps=false;
+    /* v4.5 黑边修复：alpha bleed + 材质 discard/预乘修正，所有动画帧共享处理后的图集 */
+    const done=()=>resolve(t);
+    window.MFSpriteFix?MFSpriteFix.process(t).then(done).catch(done):done();
   },undefined,()=>resolve(null))))).then(loaded=>{
     sheets=loaded;if(sheets.some(t=>!t)){MF.toast('孙笑川贴图加载失败，请刷新页面。');return;}
-    const mat=new THREE.MeshBasicMaterial({map:sheets[0],alphaTest:0.42,side:THREE.DoubleSide,color:0xc3c9bd});
+    const mat=new THREE.MeshBasicMaterial({map:sheets[0],alphaTest:0.28,side:THREE.DoubleSide,color:0xc3c9bd});
+    if(window.MFSpriteFix)MFSpriteFix.patch(mat,0.30);
     npcMesh=new THREE.Mesh(new THREE.PlaneGeometry(2.3*atlas.fw/atlas.fh,2.3),mat);npcMesh.position.y=1.15;actor.add(npcMesh);setFrame(0);
   });
   function setFrame(i){if(!npcMesh||i===frame)return;frame=i;
@@ -979,7 +995,29 @@ window.createNightShift=function(ctx){
     if(st.arcadeChase&&!st.hidden&&!inSafe(camera.position)&&npc.cooldown<=0){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
     else if(see&&st.anger>=60&&npc.cooldown<=0&&(!MF.state.dead||st.anger>=80)){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
     else if(npc.state==='CHASE'){npc.lost+=dt;if(npc.lost>1.5){npc.state='INVESTIGATE';npc.repath=0;}}
-    if(npc.state==='CHASE'&&d<1.5&&see&&npc.cooldown<=0&&Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7){playerHurt();return;}
+    /* ===== v4.5 近距离攻击状态机 =====
+       是否攻击不再只依赖 CHASE/see：有效距离内、与玩家之间没有墙、玩家未进入
+       安全/躲藏状态就出招——背对、低头、侧站都不能让近距离伤害失效。
+       0–0.20s 抬手前倾蓄力 → 0.20–0.28s 攻击有效帧（只结算一次伤害）
+       → 0.28–0.70s 收手空窗 → 结束进入 1.0–1.2s 冷却。
+       INVESTIGATE 状态接近到 1.5m 并持续 0.35s 后也会主动出招。 */
+    const losWall=lineClear({x:npc.pos.x,y:npc.pos.y+1.5,z:npc.pos.z},{x:camera.position.x,y:camera.position.y,z:camera.position.z},false,npcCol);
+    const heightOK=Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7;
+    const canStrike=!st.hidden&&!inSafe(camera.position)&&!st.dead&&!st.capturing&&st.spawnGrace<=0&&npc.state!=='STUNNED'&&npc.state!=='CAPTURE';
+    if(npc.atkT>0){
+      npc.atkT+=dt;
+      npc.yaw=Math.atan2(dx,dz);                       /* 出招时面向玩家 */
+      if(!npc.atkHit&&npc.atkT>=0.20){
+        npc.atkHit=true;
+        /* 有效帧内仍要求：距离 ≤2.0m、无墙、高度接近、玩家不在无敌帧 */
+        if(canStrike&&d<2.0&&losWall&&heightOK&&st.inv<=0)playerHurt();
+      }
+      if(npc.atkT>=0.70){npc.atkT=0;npc.atkHit=false;npc.cooldown=1.0+Math.random()*0.2;}
+    }else if(canStrike&&npc.cooldown<=0&&d<2.2&&losWall&&heightOK){
+      if(npc.state==='CHASE'&&d<1.8){startAttack();}
+      else if((npc.state==='INVESTIGATE'||npc.state==='SEARCH')&&d<1.5){st.closeT+=dt;if(st.closeT>=0.35)startAttack();}
+      else st.closeT=0;
+    }else st.closeT=0;
     if(st.hidden&&st.exposed&&d<2.6){npc.search+=dt;if(npc.search>3){caught();return;}}
     let target;
     if(npc.state==='TRANSFER'){target={x:4.5,z:-56};if(distance(npc.pos,target)<1.2){npc.state=st.valve?'INVESTIGATE':'PATROL';npc.repath=0;}}
@@ -1003,13 +1041,58 @@ window.createNightShift=function(ctx){
     npc.goal=target?{x:target.x,z:target.z}:null;
     if(target&&npc.repath<=0&&!npc.direct){npc.path=findPath(npc.pos,target,npcCol);npc.pathAt=0;npc.repath=npc.state==='CHASE'?0.8:(npc.state==='INVESTIGATE'?1.2:3);
       if(!npc.path.length&&npc.state==='PATROL'){npc.route++;npc.repath=0.5;}}
-    walkNPC(dt);
+    if(npc.atkT<=0)walkNPC(dt);   /* v4.5：出招期间站定不移动，只保留前倾演出 */
   }
 
   const door=MF.getProp('door'),oldDoorAction=door.action;
   door.label=()=>!st.shiftDone?'员工出口（先完成三瓶合格品）':'员工出口 · 前往停车场';
   door.action=()=>{if(!st.shiftDone){MF.toast('NO.07：先做完三瓶合格品，我会把钥匙给你。');return;}oldDoorAction();};
   const lock=box('厂2夜班门',-3.3,-46,3.2,0.18,2.65,0x536259,true);solid.push(lock.col);
+  /* ===== v4.5 交互代理：门/柜/通风格栅本体可被准星射线对准 ===== */
+  const aimTools=(window.__v45aim&&window.__v45aim.tagInteract)?window.__v45aim:null;
+  if(aimTools){
+    aimTools.tagInteract(lock.mesh,'factory2door');
+    cabinets.forEach(c=>aimTools.tagInteract(c.root,c.id));
+    const vg=ctx.built[1]&&ctx.built[1].props.ventGrille;
+    if(vg)aimTools.tagInteract(vg,'vent-listen');
+  }
+  /* ===== v4.5 通风管环境层：独立 ambientClock（真实时间），与玩家移速彻底解耦 =====
+     - 移动速度只影响位移与步频，绝不影响音频计时、playbackRate、冷却；
+     - 被动底噪：0.05 音量的低频环境层，只在通风管附近渐入；
+     - 被动事件：20–35s 真实时间冷却，同一区域不连续刷；
+     - 主动交互：一次性 ~2.5s 响应 + 15–20s 冷却，playbackRate 固定 0.97–1.03。 */
+  const VENT_POINTS=[{x:3.39,z:-101.02},{x:-15.0,z:-16.8},{x:-15.0,z:-66.8}];
+  const ventAmb={hum:null,nextEvent:0,coolUntil:0,rate:0.97+Math.random()*0.06,lastScene:-1,acc:0};
+  const ventRealClock=()=>performance.now()/1000;
+  function ventNear(){
+    for(const v of VENT_POINTS)if(Math.hypot(camera.position.x-v.x,camera.position.z-v.z)<11)return v;
+    return null;}
+  function ventListen(){
+    const now=ventRealClock();
+    if(now<ventAmb.coolUntil){MF.toast('管道这会儿很安静。');return;}
+    ventAmb.coolUntil=now+15+Math.random()*5;
+    const a=audio.play('amb_ventilation',0.3);
+    if(a){a.playbackRate=ventAmb.rate;   /* 固定速率，绝不随移速变化 */
+      setTimeout(()=>{try{a.pause();audio.playing&&audio.playing.delete(a);}catch(e){}},2500);}
+    MF.toast('你把耳朵凑近通风管……里面有很轻的动静。');}
+  function ventAmbTick(){
+    const now=ventRealClock();
+    if(S.scene!==ventAmb.lastScene){   /* 切幕：清理冷却与正在播放的通风声 */
+      ventAmb.lastScene=S.scene;ventAmb.nextEvent=now+6+Math.random()*8;
+      if(ventAmb.hum){audio.fadeOut(ventAmb.hum);ventAmb.hum=null;}}
+    const v=ventNear();
+    if(v&&!ventAmb.hum){ventAmb.hum=audio.loop('amb_ventilation',0.001);
+      if(ventAmb.hum)ventAmb.hum.a.playbackRate=ventAmb.rate;}
+    if(ventAmb.hum){
+      const a=ventAmb.hum.a;
+      a.volume=Math.max(0,Math.min(0.05,a.volume+(v?0.01:-0.008)));
+      if(!v&&a.volume<=0.005){audio.fadeOut(ventAmb.hum);ventAmb.hum=null;}}
+    if(v&&now>=ventAmb.nextEvent){
+      ventAmb.nextEvent=now+20+Math.random()*15;
+      if(now>=ventAmb.coolUntil){const a=audio.play('amb_pipe_drip',0.12);
+        if(a)a.playbackRate=0.98+Math.random()*0.04;}}
+  }
+  prop('vent-listen',3.39,-99.9,'在通风管边静听',ventListen,2.8);
   sign(['02 发酵厂','下班后解除门禁'], -3.3,2,-45.87,0,2);
   prop('factory2door',-3.3,-45.45,()=>st.shiftDone?'打开厂2门 / 调查异响':'厂2门禁 · 先完成夜班',()=>{
     if(!st.shiftDone){MF.toast('先回操作椅完成三瓶合格品。');return;}lock.mesh.visible=false;lock.col.off=true;MF.toast('厂2的声音更近了。可以随时原路返回停车场。');},2.1);
@@ -1109,6 +1192,7 @@ window.createNightShift=function(ctx){
       st.anger=0;st.hidden=false;st.exposed=false;st.capturing=false;st.gun=false;st.ammo=0;
       st.spawnGrace=0;
       st.hp=2;st.ehp=5;st.dead=false;st.hurtT=0;st.flashT=0;st.punchT=0;st.punchCd=0;st.hearT=0;
+      st.inv=0;st.closeT=0;npc.atkT=0;npc.atkHit=false;   /* v4.5：攻击/无敌状态一并重置 */
       if(st.hidden)exitHide();
       if(arcade&&arcade.isOpen())arcade.close();
     }
@@ -1165,6 +1249,7 @@ window.createNightShift=function(ctx){
     if(cinematic){updateCinematic(dt);NightMusic.setDucked(true);return;}
     /* 战斗演出：出拳判定 / 枪口后坐 / 命中闪白 / 受伤红边 */
     st.hurtT=Math.max(0,st.hurtT-dt);
+    st.inv=Math.max(0,st.inv-dt);   /* v4.5：受击无敌帧 */
     updatePunch(dt);
     gunKick=Math.max(0,gunKick-dt*7);
     flashT=Math.max(0,flashT-dt);
@@ -1185,7 +1270,12 @@ window.createNightShift=function(ctx){
       if(st.shiftDone&&st.good>=3&&!st.askedToilet&&S.scene===0&&directionWorker&&directionWorker.actor&&near('directions')){startCinematic('directions');return;}
       if(st.toiletDone&&!st.toiletExitSeen&&S.scene===0&&near('toiletExit')){startCinematic('toiletExit');return;}
       if(!st.factoryArrivalSeen&&S.scene===1&&near('factoryArrival')){startCinematic('factoryArrival');return;}
-      if(!ventSeen&&ventFrog&&S.scene===1&&distance(camera.position,ventTrigger)<=ventTrigger.radius){startCinematic('vent');return;}
+      if(!ventSeen&&ventFrog&&S.scene===1&&distance(camera.position,ventTrigger)<=ventTrigger.radius){
+        /* v4.5：通风管剧情只在"真的看着通风口"时触发——不再靠贴地板圆圈 */
+        const v=ctx.getView(),vdx=ventTarget.x-v.x,vdy=ventTarget.y-v.y,vdz=ventTarget.z-v.z,vl=Math.hypot(vdx,vdy,vdz)||1;
+        const cp=Math.cos(v.pitch),fx=-Math.sin(v.yaw)*cp,fy=Math.sin(v.pitch),fz=-Math.cos(v.yaw)*cp;
+        if((vdx*fx+vdy*fy+vdz*fz)/vl>0.45){startCinematic('vent');return;}
+      }
     }
     for(let i=events.length-1;i>=0;i--)if(events[i].at<=elapsed&&!uiBusy()){const event=events.splice(i,1)[0];event.fn();}
     NightMusic.setDucked(uiBusy()||npc.state==='CHASE');
@@ -1212,6 +1302,13 @@ window.createNightShift=function(ctx){
       if(!uiBusy())updateNPC(dt);
     }
     actor.position.copy(npc.pos);npcCol.x=npc.pos.x;npcCol.z=npc.pos.z;
+    /* v4.5：出招前倾演出——0.20s 蓄力前倾、0.28s 达峰、随后 0.42s 收回 */
+    if(npc.atkT>0){
+      const at=npc.atkT;
+      const lunge=at<0.28?Math.sin(at/0.28*Math.PI)*0.26:Math.max(0,0.26*(1-(at-0.28)/0.42));
+      actor.position.x+=Math.sin(npc.yaw)*lunge;actor.position.z+=Math.cos(npc.yaw)*lunge;
+      actor.rotation.x=-0.16*lunge/0.26;
+    }else actor.rotation.x=0;
     /* v4.4：地面投影跟随；倒地时投影拉长变淡 */
     npcShadow.position.set(npc.pos.x,npc.pos.y+0.02,npc.pos.z);
     const down=hitFx.knockPhase>0||hitFx.recover>0;
@@ -1249,10 +1346,16 @@ window.createNightShift=function(ctx){
     setFrame(hitFx.knockPhase>0?0:Math.floor(npc.travel*7)%atlas.count);
     breathT+=dt;if(breathT>0.35){breathT=0;refreshHint();}
     if(st.shiftDone&&!st.eavesdrop&&!st.visited2){noiseT+=dt;if(noiseT>24){noiseT=0;audio.play('amb_distant_whispers',0.15);MF.toast('西侧厕所通风管又响了一声。');}}
+    /* v4.5：通风管环境层以 2Hz 调度（真实时间时钟），与移速/游戏 dt 彻底解耦 */
+    ventAmb.acc+=dt;if(ventAmb.acc>=0.5){ventAmb.acc=0;ventAmbTick();}
     if(officeHum){const d=distance(camera.position,S.scene===0?{x:-16.12,z:-4.17}:{x:0,z:-106});officeHum.a.volume=Math.max(0,1-d/22)*(work?0.18:0.12);}
     if(npc.travel-footAt>1.1){footAt=npc.travel;const d=distance(npc.pos,camera.position);if(d<18)audio.play('sfx_sticky_step',(1-d/18)*0.23);}
   }
   return {start,update,refreshHint,resetPose,leave,pullValve,setAnger,findPath,lineClear,blocked,setupScene,tryPunch,punchInRange,
+    /* v4.5 验收钩子：把孙笑川摆到指定点/状态（回归测试用，不改玩法） */
+    debugSetSun:(x,z,state)=>{npc.pos.set(x,0,z);npc.last.set(x+1.2,0,z);npc.state=state||'INVESTIGATE';
+      npc.path=[];npc.pathAt=0;npc.repath=0;npc.cooldown=0;npc.stun=0;npc.atkT=0;npc.yaw=Math.atan2(camera.position.x-x,camera.position.z-z);
+      npcCol.x=x;npcCol.z=z;actor.position.copy(npc.pos);},
     combat:()=>({hp:st.hp,ehp:st.ehp,dead:st.dead,punchCd:st.punchCd,anger:st.anger,npcY:+npc.pos.y.toFixed(2),state:npc.state,npcX:+npc.pos.x.toFixed(2),npcZ:+npc.pos.z.toFixed(2),stun:+(npc.stun||0).toFixed(2),started:!!st.started,ready:combatReady(),grace:+st.spawnGrace.toFixed(2)}),
     ready:Promise.all([ready,frogReady,population.ready]),
     nearNPC:(x,z)=>distance(npc.pos,{x,z}),

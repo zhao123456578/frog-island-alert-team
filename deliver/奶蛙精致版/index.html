@@ -142,6 +142,8 @@
   #cross{position:fixed;left:50%;top:50%;width:5px;height:5px;margin:-3px 0 0 -3px;z-index:24;display:none;
     background:rgba(230,226,207,.92);border:1px solid rgba(28,29,36,.7);box-shadow:0 0 3px rgba(0,0,0,.8);pointer-events:none;}
   #cross.on{display:block;}
+  /* v4.5：准星对准可交互本体时变绿 */
+  #cross.aim{background:#8fe06a;border-color:#2f5a1e;box-shadow:0 0 6px #86c24b;width:7px;height:7px;margin:-4px 0 0 -4px;}
   /* 点击画面继续（Pointer Lock 提示遮罩） */
   #plHint{position:fixed;inset:0;z-index:29;display:none;pointer-events:none;
     background:none;}
@@ -379,6 +381,7 @@
 <script src="assets/interaction.js?v=nightshift-20261120"></script>
 <script src="assets/audio/manifest.js"></script>
 <script src="assets/paperbot/paperbot_sheet.js"></script>
+<script src="assets/sprite_fix.js"></script>
 <script src="assets/night_music.js"></script>
 <script src="assets/night_arcade.js"></script>
 <script src="assets/milkfrog_halfbody_data.js"></script>
@@ -2917,6 +2920,58 @@ const GAME={
 };
 
 /* ===== 音效引擎：环境音按幕切换 + 事件 SFX（首次点击进入时初始化） ===== */
+/* ===== v4.5 准星射线交互：交互代理注册表 =====
+   交互入口从"地板圆圈 + 距离"改为"屏幕中心 Raycaster 对准物体本体"。
+   带 userData.mfInteract 的代理网格（门把手/柜门/通风格栅/门牌等）由
+   updateAimRay 每帧以 ≤30Hz 检测；墙体/关门用 nightShift.lineClear 阻断。
+   代理可以挂在可见网格上，也可以是看不见的小盒子（门把手级别）。 */
+window.MF_PROXIES=[];
+function tagInteract(obj,id){if(!obj||!id)return;
+  obj.traverse?obj.traverse(o=>{if(o.isMesh){o.userData.mfInteract=id;MF_PROXIES.push(o);}}):0;}
+function makeInteractProxy(x,y,z,w,h,d,id,visible){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshBasicMaterial({visible:!!visible,transparent:true,opacity:0,depthWrite:false}));
+  m.position.set(x,y,z);m.userData.mfInteract=id;MF_PROXIES.push(m);scene.add(m);return m;}
+const _aimRay=new THREE.Raycaster(),_aimCenter=new THREE.Vector2(0,0);
+let aimHitProp=null,aimRayAcc=0;
+const _aimFrom={x:0,y:0,z:0},_aimTo={x:0,y:0,z:0};
+/* 主脚本在 IIFE 内：把交互代理工具挂到 window，供 night_shift.js 与验收脚本使用 */
+window.__v45aim={updateAimRay,tagInteract,makeInteractProxy,losClearTo,get hit(){return aimHitProp;},camera:()=>camera};
+function losClearTo(x,y,z){
+  if(nightShift&&nightShift.lineClear)return nightShift.lineClear(
+    {x:camera.position.x,y:camera.position.y,z:camera.position.z},{x,y,z},true);
+  return true;}
+function updateAimRay(){
+  aimHitProp=null;
+  if(!S.started||inputBlocked()||!MF_PROXIES.length)return;
+  camera.updateMatrixWorld(true);   /* 相机可能不在场景图内，显式更新矩阵再发射线 */
+  scene.updateMatrixWorld(false);
+  _ray: {
+    _aimRay.setFromCamera(_aimCenter,camera);_aimRay.far=2.9;
+    const hits=_aimRay.intersectObjects(MF_PROXIES,false);
+    if(hits.length){
+      const h=hits[0],id=h.object.userData.mfInteract,p=id&&MF.getProp(id);
+      if(p&&losClearTo(h.point.x,h.point.y,h.point.z)){aimHitProp=p;break _ray;}
+    }
+  }
+  /* 12–15° 瞄准辅助：中心没命中时，在小锥内找角度最近的代理 */
+  if(!aimHitProp){
+    const fwd=new THREE.Vector3();camera.getWorldDirection(fwd);
+    let best=null,bestAng=0.24;
+    const wp=new THREE.Vector3();
+    for(const o of MF_PROXIES){
+      o.getWorldPosition(wp);
+      const dir=wp.sub(camera.position),d=dir.length();
+      if(d>2.9||d<0.3)continue;
+      const ang=Math.acos(Math.max(-1,Math.min(1,dir.normalize().dot(fwd))));
+      if(ang<bestAng){bestAng=ang;best=o;}
+    }
+    if(best){
+      const id=best.userData.mfInteract,p=id&&MF.getProp(id);
+      if(p&&losClearTo(best.position.x,best.position.y,best.position.z))aimHitProp=p;
+    }
+  }
+}
 const AudioSys={
   ready:false,muted:false,zone:-1,amb:[],playing:new Set(),
   srcOf(id){const e=(window.SFX_DATA||[]).find(s=>s.id===id);return e?"assets/audio/"+e.src:null;},
@@ -3809,10 +3864,12 @@ let frames=0,acc=0,panelAcc=0;
 function stepFrame(dt){
   const realDt=dt; /* 顿帧只冻结游戏时间，震屏/计时仍按真实时间走 */
   const frozen=S.pause||!S.started||document.hidden||document.getElementById('mf-ending').classList.contains('on');
-  /* 光标只在指针真正锁定时隐藏（锁定本身也会藏光标，这里是兜底）。
-     未锁定就藏光标会出现"没光标又拖不动"的死状态。 */
+  /* 光标可见性（v4.5）：只有真正需要拿鼠标点 UI 的状态才显示系统光标。
+     对话 / 工位 / 躲藏 / 字幕 / 通风管倾听 / 过场期间即使 Pointer Lock 被浏览器
+     系统性释放，也保持 body.hidecursor，避免状态切换时闪出光标；
+     下一次按键或点击会立即重新 requestPointerLock。 */
   {
-    const needCursor=!plActive||pauseOpen()||bagOpen()||MF.confirmOpen()||recPlay||
+    const needCursor=pauseOpen()||bagOpen()||MF.confirmOpen()||recPlay||
       document.body.classList.contains("dev-open")||
       document.getElementById("mf-ending").classList.contains("on")||!S.started;
     if(needCursor!==(document.body.dataset.cur==="1")){
@@ -3973,14 +4030,18 @@ function stepFrame(dt){
   lampU.uFlashOn.value=ms.flashOn?1:0;
   lampU.uFlashPos.value.copy(camera.position);
   camera.getWorldDirection(lampU.uFlashDir.value);
-  // 交互检测 + 标记环 + 准星
+  // 交互检测 + 准星（v4.5：地板绿色触发圈已删除，改为准星射线对准物体本体）
   if(S.started&&!recPlay&&!cinematicActive()&&!frozen){
     MF.update(camera.position.x,camera.position.z);
+    /* v4.5：屏幕中心 Raycaster 优先命中交互代理（门把手/柜门/格栅），覆盖距离圈选择 */
+    aimRayAcc+=realDt;
+    if(aimRayAcc>=1/30){aimRayAcc=0;updateAimRay();}
+    if(aimHitProp)MF.setActive(aimHitProp);
     const ap=MF.getActive();
-    document.getElementById('cross').classList.toggle('on',!!ap&&!uiLock&&!MF.state.dead);
-    if(ring){ring.visible=!!ap;
-      if(ap){ring.position.set(ap.pos.x,0.04,ap.pos.z);const k=1+Math.sin(t*5)*0.08;ring.scale.set(k,k,1);}}
-  }else if(ring)ring.visible=false;
+    const crossEl=document.getElementById('cross');
+    crossEl.classList.toggle('on',!!ap&&!uiLock&&!MF.state.dead);
+    crossEl.classList.toggle('aim',!!(aimHitProp&&ap===aimHitProp));
+  }
   updatePlHint();
   if(danceAudio&&!MF.dancing()){AudioSys.fadeOut(danceAudio);danceAudio=null;}
   panelAcc+=dt;if(panelAcc>0.3){panelAcc=0;MF.refreshPanel();}
@@ -4188,6 +4249,8 @@ window.__game={
   pose(p){if(p===undefined){punchHold=false;handPunchT=0;return this.hand();}
     punchHold=true;handPunchT=PUNCH_DUR*(1-Math.max(0,Math.min(1,p)));return this.hand();},
   combat(){return nightShift&&nightShift.combat?nightShift.combat():null;},
+  sun(x,z,st){if(nightShift&&nightShift.debugSetSun)nightShift.debugSetSun(x,z,st);return this.combat();},
+  unblock(){if(nightShift&&nightShift.resetPose)nightShift.resetPose();},
   hand(){return {t:+handPunchT.toFixed(3),
     pos:[+handR.position.x.toFixed(3),+handR.position.y.toFixed(3),+handR.position.z.toFixed(3)],
     rot:[+handR.rotation.x.toFixed(3),+handR.rotation.y.toFixed(3),+handR.rotation.z.toFixed(3)],
@@ -4267,9 +4330,12 @@ function setupProps(){
   const addObj=(n,o)=>{scene.add(o);actObjects.push({name:n,obj:o});return o;};
   const bas=(c,opt)=>new THREE.MeshBasicMaterial(Object.assign({color:c},opt||{}));
 
-  /* 交互标记环 */
-  ring=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.035,6,24),bas(0x86c24b));
-  ring.rotation.x=-Math.PI/2;ring.position.y=0.04;ring.visible=false;scene.add(ring);
+  /* v4.5：地板交互标记环已删除——交互入口全部改为准星对准物体本体 */
+  ring=null;
+
+  /* ---------- v4.5 交互代理：门本体 / 门牌 / 厕所隔间（看不见的小盒子，射线可命中） ---------- */
+  makeInteractProxy(19.84,1.25,-17.64,2.0,2.5,0.6,"door");        /* 员工出口门本体 */
+  makeInteractProxy(-14.5,1.25,-16.55,1.9,2.4,0.5,"toilet-think");/* 厕所隔间门+门牌 */
 
   /* ---------- 可交互道具：推车让路 / 拉帘露影（食品厂"可读可交互"） ---------- */
   function pushProp(grp,dz,dx,dzz,label){

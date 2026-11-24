@@ -2,7 +2,10 @@
 
 const ROADSIDE_S=286, HORDE_START_S=1070, HORDE_COUNT=14;
 const driveStory={phase:'roadside',route:'undecided',hit:false,hitT:0,maxDist:0,previousPose:null,models:{},audioError:null,
-  passedRoadside:false,forestPhase:'quiet',hordeTime:0,crowdGap:88,capture:false,captureSide:'',endingTime:0,doorOpened:false,doorClosed:false,knock1:false,knock2:false};
+  passedRoadside:false,forestPhase:'quiet',hordeTime:0,crowdGap:88,capture:false,captureSide:'',endingTime:0,doorOpened:false,doorClosed:false,knock1:false,knock2:false,
+  /* v4.5 正常公路追逐状态：sunEncounterHit=路口碰过孙笑川；sunDefeated=有效车速撞倒（彻底摆脱）；
+     roadChaserSpawned=后方追逐者单例守卫；grazeGetUp=低速轻碰后的爬起倒计时；junctionT=过路口计时 */
+  sunEncounterHit:false,sunDefeated:false,roadChaserSpawned:false,grazeGetUp:0,junctionT:0};
 if(!q.has('intro'))document.body.classList.add('immersive-drive');
 
 function projectRoadPoint(point,route,guess){
@@ -360,6 +363,7 @@ function storyStage(phase){
   if(driveStory.phase===phase)return;
   driveStory.phase=phase;
   if(phase==='rear'){S.chaserGap=Math.max(9,S.dist-ROADSIDE_S);playChaser('run');}
+  if(phase==='roadrear'){playChaser('run');}   /* v4.5：后方追逐者，gap 由调用方先设好 */
   if(phase==='ahead'||phase==='roadside')playChaser('idle');
 }
 function updateDriveStory(dt,tnow){
@@ -371,7 +375,7 @@ function updateDriveStory(dt,tnow){
   let envelope=0;
   if(!NOCHASER&&!S.ended){
     if(progress>ROADSIDE_S+3)driveStory.passedRoadside=true;
-    if(!driveStory.hit&&driveStory.phase!=='passed'){
+    if(!driveStory.hit&&!driveStory.roadChaserSpawned&&driveStory.phase!=='passed'){
       if(progress>=800)storyStage('ahead');
       else if(progress>=755)storyStage('silence');
       else if(progress>=625)storyStage('fading');
@@ -381,7 +385,7 @@ function updateDriveStory(dt,tnow){
     if(driveStory.phase==='roadside'){
       placeRoad(chaserRoot,ROADSIDE_S,4.65,0,'main');playChaser('idle');envelope=.75;
     }
-    if(driveStory.phase==='rear'||driveStory.phase==='fading'){
+    if(driveStory.phase==='rear'||driveStory.phase==='roadrear'||driveStory.phase==='fading'){
       S.chaserOn=true;
       /* 难度：默认 1.1×；从工厂带着 80+ 愤怒出来时 1.8×，追得更凶 */
       const chaseScale=(HANDOFF&&Number(HANDOFF.anger)>=80)?1.8:1.1;
@@ -389,7 +393,7 @@ function updateDriveStory(dt,tnow){
       if(driveStory.phase==='fading')S.chaserGap=Math.min(210,S.chaserGap+dt*16);
       if(S.chaserPin)S.chaserGap=13;
       /* 分叉前被追上：他会从右侧上车，坐进副驾驶，游戏结束 */
-      if(driveStory.phase==='rear'&&S.chaserGap<=1.7&&S.dist<FORK_S-25&&!S.ended){
+      if((driveStory.phase==='rear'||driveStory.phase==='roadrear')&&S.chaserGap<=1.7&&!S.ended){
         beginRoadsideCapture();return;
       }
       S.chaserStage=S.chaserGap<20?3:2;S.chaserEye=Math.max(0,(38-S.chaserGap)/30);
@@ -398,8 +402,8 @@ function updateDriveStory(dt,tnow){
       envelope=driveStory.phase==='fading'?1-sm01(625,755,progress):1;
       /* v4.4 追逐三层压迫：远(>8)低频围拢、中(3~8)呼吸低语、近(<3)心跳。
          合成心跳只在 3~18m 兜底，近处改用 sfx_heartbeat，避免两种心跳叠加。 */
-      heartbeatTick(dt,driveStory.phase==='rear'&&S.chaserGap>=3&&S.chaserGap<18);
-      if(driveStory.phase==='rear'){
+      heartbeatTick(dt,(driveStory.phase==='rear'||driveStory.phase==='roadrear')&&S.chaserGap>=3&&S.chaserGap<18);
+      if(driveStory.phase==='rear'||driveStory.phase==='roadrear'){
         if(S.chaserGap>8)storySfxPlay('amb_factory_drone',.05+.07*Math.max(0,1-(S.chaserGap-8)/40),1,9);
         else if(S.chaserGap>3)storySfxPlay('sfx_breath',.10+.10*(8-Math.max(3,S.chaserGap))/5,1,3.2);
         else{storySfxPlay('sfx_heartbeat',.16+.10*(3-Math.max(0,S.chaserGap))/3,1,1.15);
@@ -418,10 +422,49 @@ function updateDriveStory(dt,tnow){
       const forward=rx*Math.sin(pose.phi)-rz*Math.cos(pose.phi),side=rx*Math.cos(pose.phi)+rz*Math.sin(pose.phi);
       if(driveStory.route==='home'&&Math.abs(forward)<carHalfL+.3&&Math.abs(side)<carHalfW+.42){
         driveStory.hit=true;driveStory.hitT=.8;driveStory.phase='passed';
-        S.headShakeT=.45;S.rollImpact=.03;S.bobV-=.26;thud();playChaser('stumble');
+        S.headShakeT=.45;S.rollImpact=.03;S.bobV-=.26;thud();
         if(window.carBloodImpact)window.carBloodImpact();
+        /* v4.5 路口撞击分档：
+           - 有效车速（≥8 m/s ≈ 29 km/h）正面撞上 → sunDefeated，彻底摆脱，全程不再有追逐者；
+           - 低速轻碰（2–8 m/s）→ 孙笑川倒地 1.2–1.8s 后爬起，8–12s 内从后方追车，不算摆脱；
+           - 贴着蹭过（<2 m/s，没有真正接触判定）→ 也从后方追来。 */
+        if(S.speed>=8){
+          driveStory.sunDefeated=true;driveStory.sunEncounterHit=true;
+          playChaser('stumble');
+          toast('你把那个人撞翻在了路口。后视镜里只剩下雨。');
+        }else if(S.speed>=2){
+          driveStory.sunEncounterHit=true;
+          driveStory.grazeGetUp=1.2+Math.random()*0.6;
+          playChaser('stumble');
+          toast('撞到了一个人——他倒下了，但好像还在动。');
+        }else{
+          toast('刚才路边站着一个人，直勾勾地盯着你。');
+        }
       }else if((driveStory.route==='forest'&&S.dist>FORK_S+115)||(driveStory.route==='home'&&S.dist>SUN_ROAD_S+20)){
         driveStory.phase='passed';
+      }
+    }
+    /* ===== v4.5 正常公路后方追逐（单例守卫） =====
+       - 路口没撞倒（sunDefeated=false）：过路口 8–12 秒后、或里程超过 980 m，
+         从后方 55–75 m 处生成唯一追逐者（roadrear 阶段）；
+       - 低速轻碰：倒地计时结束即生成；
+       - 撞倒（sunDefeated=true）：杀死所有排队生成，不再有追逐者/心跳/后方车灯。 */
+    if(!NOCHASER&&!S.ended&&!driveStory.capture&&driveStory.route==='home'&&
+       driveStory.phase==='passed'&&!driveStory.sunDefeated&&!driveStory.roadChaserSpawned){
+      if(driveStory.grazeGetUp>0){
+        driveStory.grazeGetUp-=dt;
+        if(driveStory.grazeGetUp<=0){
+          driveStory.roadChaserSpawned=true;S.chaserGap=55+Math.random()*20;
+          storyStage('roadrear');
+          radioSay('……他又站起来了。他在往这边跑。快加速。');
+        }
+      }else if(S.dist>SUN_ROAD_S+6){
+        driveStory.junctionT+=dt;
+        if(driveStory.junctionT>=8+Math.random()*4||S.dist>980){
+          driveStory.roadChaserSpawned=true;S.chaserGap=55+Math.random()*20;
+          storyStage('roadrear');
+          radioSay('后面有人贴着路灯追车——别让他靠近车尾。');
+        }
       }
     }
     if(driveStory.hitT>0){
@@ -439,8 +482,7 @@ function updateDriveStory(dt,tnow){
 }
 function singleSunVisible(){
   return !S.ended&&!NOCHASER&&(S.chaserOn||driveStory.phase==='ahead'||driveStory.phase==='roadside'||driveStory.hitT>0);
-}
-function updateStoryScene(){
+}function updateStoryScene(){
   const forest=driveStory.route==='forest';
   placeRoad(forkLight,FORK_S+44,1.8,0,'main');
   forkLight.visible=Math.abs(S.dist-FORK_S)<155;
@@ -525,6 +567,7 @@ function updateRoadsideCapture(dt){
   if(t>=3.8){driveStory.forestPhase='done';finish('同乘');}
 }
 window.__outdoor.story=()=>({phase:driveStory.phase,route:driveStory.route,reference:driveRoute,hit:driveStory.hit,
+  sunDefeated:driveStory.sunDefeated,sunEncounterHit:driveStory.sunEncounterHit,roadChaserSpawned:driveStory.roadChaserSpawned,
   fork:FORK_S,sun:SUN_ROAD_S,roadside:ROADSIDE_S,passedRoadside:driveStory.passedRoadside,
   forestPhase:driveStory.forestPhase,gap:driveStory.crowdGap,capture:driveStory.capture,side:driveStory.captureSide,endingTime:driveStory.endingTime,
   crowd:horde.map(a=>({visible:a.g.visible,position:a.g.position.toArray(),voice:a.voice?{distance:a.voice.distance,clip:SUN_VOICES[a.voice.last],gain:a.voice.gain.gain.value}:null})),
