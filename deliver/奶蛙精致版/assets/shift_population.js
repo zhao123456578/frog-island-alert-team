@@ -160,12 +160,17 @@
     const ready = Promise.all([roomReady, halfReady]).then(() => status());
 
     const voices = [
-      { id: "sfx_frog_laugh_raw", loop: true, rate: 0.81, offset: 0.18, gain: 0.087, x: -18.4, z: -77.0, zone: "room" },
-      { id: "sfx_breath", loop: true, rate: 0.73, offset: 0.53, gain: 0.052, nearest: true, x: -18.6, z: -74.4, zone: "room" },
-      { id: "amb_distant_whispers", loop: true, rate: 0.94, offset: 0.37, gain: 0.048, x: -15.6, z: -71.8, zone: "room" },
-      { id: "sfx_frog_laugh_raw", loop: false, rate: 1.14, offset: 0.61, gain: 0.096, nearest: true, x: -19.0, z: -72.4, zone: "room", wait: 2.4 }
+      { id: "sfx_frog_laugh_raw", loop: false, rate: 0.78, offset: 0.12, gain: 0.082, x: -19.55, z: -79.55, zone: "room", wait: 0.4 },
+      { id: "sfx_frog_laugh_raw", loop: false, rate: 0.88, offset: 0.31, gain: 0.074, x: -14.85, z: -77.15, zone: "room", wait: 2.7 },
+      { id: "sfx_frog_laugh_raw", loop: false, rate: 0.97, offset: 0.47, gain: 0.086, x: -18.15, z: -72.85, zone: "room", wait: 5.1 },
+      { id: "sfx_frog_laugh_raw", loop: false, rate: 1.07, offset: 0.63, gain: 0.072, x: -19.45, z: -69.85, zone: "room", wait: 7.6 },
+      { id: "sfx_frog_laugh_raw", loop: false, rate: 1.16, offset: 0.76, gain: 0.078, x: -15.05, z: -71.15, zone: "room", wait: 10.2 },
+      { id: "sfx_breath", loop: true, rate: 0.73, offset: 0.53, gain: 0.022, x: -18.6, z: -74.4, zone: "room" }
     ];
-    voices.forEach((v, i) => Object.assign(v, { a: null, volume: 0, retry: 0, pending: false, seek: null, age: 0, length: 0, serial: i }));
+    voices.forEach((v, i) => Object.assign(v, { a: null, volume: 0, retry: 0, pending: false, seek: null,
+      age: 0, length: 0, serial: i, pan: 0, spatial: null }));
+    const MAX_VOICE_GAIN = 0.16, listenDirection = new THREE.Vector3();
+    let spatialFailed = false,audioAcc = 0,audioSuspended = false;
     function held() { return !started || S.started === false || !!S.pause || !!document.hidden || !audio || !!audio.muted; }
     function tracked(a, on) {
       if (!audio || !audio.playing) return;
@@ -174,6 +179,14 @@
     function seekVoice(v) {
       if (v.seek === null || !v.a || !Number.isFinite(v.a.duration) || v.a.duration <= 0) return;
       try { v.a.currentTime = clamp(v.seek, 0, 0.92) * v.a.duration; v.seek = null; } catch (_) { /* Metadata may still be pending. */ }
+    }
+    function bindSpatial(v, a) {
+      if (v.spatial || spatialFailed) return;
+      if (global.MFAudio) {
+        const n = MFAudio.attach(a, "voice", 0);
+        if (n) { v.spatial = n; MFAudio.setGain(a, 0); a.volume = 1; return; }
+      }
+      spatialFailed = true;
     }
     function createVoice(v) {
       if (v.a || !audio || !audio.ready || v.retry > 0) return;
@@ -184,6 +197,7 @@
       if (!a) return;
       v.a = a; v.retry = 0; a.volume = 0; a.loop = v.loop; a.playbackRate = v.rate;
       a.preservesPitch = false; a.webkitPreservesPitch = false;
+      bindSpatial(v, a);
       a.muted = held(); v.seek = v.offset;
       a.addEventListener("loadedmetadata", () => seekVoice(v));
       a.addEventListener("error", () => { v.retry = 8; });
@@ -201,10 +215,20 @@
         }, () => { v.pending = false; v.retry = 2; tracked(a, false); });
       } catch (_) { v.pending = false; v.retry = 2; tracked(a, false); }
     }
+    function applyVoice(v) {
+      if (!v.a) return;
+      if (v.spatial && global.MFAudio) {
+        MFAudio.setGain(v.a, clamp(v.volume, 0, v.gain));
+        MFAudio.setPan(v.a, v.pan);
+        v.a.volume = 1;
+      } else v.a.volume = clamp(v.volume, 0, v.gain);
+    }
     function suspendAudio() {
       voices.forEach(v => {
         v.volume = 0;
-        if (v.a) { v.a.volume = 0; v.a.muted = true; v.a.pause(); tracked(v.a, false); }
+        if (v.a) {
+          applyVoice(v); v.a.muted = true; v.a.pause(); tracked(v.a, false);
+        }
       });
     }
     function attenuation(v, p) {
@@ -224,35 +248,42 @@
     }
     function updateAudio(dt) {
       if (held() || dt <= 0) { suspendAudio(); return; }
+      camera.getWorldDirection(listenDirection);
+      const forwardLength = Math.hypot(listenDirection.x, listenDirection.z) || 1;
+      const rightX = -listenDirection.z / forwardLength, rightZ = listenDirection.x / forwardLength;
       voices.forEach((v, i) => {
         v.retry = Math.max(0, v.retry - dt);
         const spatial = attenuation(v, camera.position);
-        let envelope = 0.76 + 0.14 * Math.sin(clock * (0.31 + i * 0.09) + i * 2.1)
-          + 0.10 * Math.sin(clock * (0.77 + i * 0.13));
+        const dx = v.x - camera.position.x, dz = v.z - camera.position.z;
+        v.pan = clamp((dx * rightX + dz * rightZ) / (Math.hypot(dx, dz) || 1), -0.85, 0.85);
+        let envelope = 0.82 + 0.10 * Math.sin(clock * (0.29 + i * 0.07) + i * 2.1);
         if (!v.loop) {
           if (v.length <= 0) {
             v.wait -= dt;
             if (v.wait <= 0 && spatial > 0.035 && audio.ready) {
-              v.age = 0; v.length = 2.8 + random() * 2.2; v.serial++;
-              v.offset = 0.12 + (v.serial * 0.173 % 0.68);
-              createVoice(v); v.seek = v.offset; seekVoice(v);
+              v.age = 0; v.length = 1.7 + random() * 1.7; v.serial++;
+              v.offset = 0.10 + (v.serial * 0.137 % 0.72);
+              createVoice(v); v.seek = v.offset; seekVoice(v); resumeVoice(v);
             }
           } else {
             v.age += dt;
-            if (v.age >= v.length) { v.length = 0; v.wait = 4.5 + random() * 7; }
+            if (v.age >= v.length) {
+              v.length = 0; v.wait = 4.8 + random() * 8.5;
+              if (v.a) { v.a.pause(); tracked(v.a, false); }
+            }
           }
-          envelope = v.length > 0 ? smooth(0, 0.55, v.age) * (1 - smooth(v.length - 0.9, v.length, v.age)) : 0;
+          envelope = v.length > 0 ? smooth(0, 0.35, v.age) * (1 - smooth(v.length - 0.65, v.length, v.age)) : 0;
         } else createVoice(v);
         const target = v.gain * spatial * envelope;
-        v.volume += (target - v.volume) * (1 - Math.exp(-dt * (target > v.volume ? 2.8 : 5)));
+        v.volume += (target - v.volume) * (1 - Math.exp(-dt * (target > v.volume ? 3.2 : 6)));
         if (!v.a) return;
         v.a.muted = false;
-        v.a.volume = clamp(v.volume, 0, v.gain);
-        if (v.volume < 0.0005 && target < 0.0005) { v.a.volume = 0; v.a.pause(); tracked(v.a, false); }
-        else { tracked(v.a, true); resumeVoice(v); }
+        if ((v.loop || v.length <= 0) && v.volume < 0.0005 && target < 0.0005) {
+          applyVoice(v); v.a.pause(); tracked(v.a, false);
+        } else { tracked(v.a, true); resumeVoice(v); }
       });
-      const total = voices.reduce((sum, v) => sum + (v.a ? v.a.volume : 0), 0);
-      if (total > 0.3) voices.forEach(v => { if (v.a) v.a.volume *= 0.3 / total; });
+      const total = voices.reduce((sum, v) => sum + v.volume, 0), scale = total > MAX_VOICE_GAIN ? MAX_VOICE_GAIN / total : 1;
+      voices.forEach(v => { v.volume *= scale; applyVoice(v); });
     }
     document.addEventListener("visibilitychange", () => { if (document.hidden) suspendAudio(); });
     global.addEventListener("pagehide", suspendAudio);
@@ -260,7 +291,13 @@
     function update(t, dt) {
       dt = Number.isFinite(dt) ? clamp(dt, 0, 0.25) : 0;
       if (!S.pause && !document.hidden && S.started !== false) clock += dt;
-      updateAudio(dt);
+      audioAcc += dt;
+      if (held()) {
+        if (!audioSuspended) { updateAudio(0); audioSuspended = true; }
+      } else {
+        audioSuspended = false;
+        if (audioAcc >= 0.05) { updateAudio(audioAcc); audioAcc = 0; }
+      }
       group.visible = S.showChar !== false;
       roomUpdates = 0;
       if (S.pause || document.hidden) return;
@@ -314,10 +351,11 @@
           source: "assets/milkfrog_halfbody_data.js", ...modelInfo,
           positions: fallen.map(f => [f.x, 0.014, f.z]), fade: downFade.value },
         audio: { held: held(), muted: !!(audio && audio.muted),
-          volume: voices.reduce((sum, v) => sum + (v.a && !v.a.paused && !v.a.muted ? v.a.volume : 0), 0),
-          maxGain: 0.3, layers: voices.map(v => ({ id: v.id, loop: v.loop, rate: v.rate, zone: v.zone,
+          volume: voices.reduce((sum, v) => sum + (v.a && !v.a.paused && !v.a.muted ? v.volume : 0), 0),
+          maxGain: MAX_VOICE_GAIN, spatial: !!global.MFAudio, layers: voices.map(v => ({ id: v.id, loop: v.loop,
+            rate: v.rate, zone: v.zone, source: [v.x, v.z], pan: v.pan, active: v.length > 0,
             loaded: !!v.a, playing: !!(v.a && !v.a.paused), tracked: !!(v.a && audio.playing && audio.playing.has(v.a)),
-            volume: v.a ? v.a.volume : 0, time: v.a ? v.a.currentTime : 0, error: v.a && v.a.error ? v.a.error.code : null })) }
+            volume: v.volume, time: v.a ? v.a.currentTime : 0, error: v.a && v.a.error ? v.a.error.code : null })) }
       };
     }
     return { ready, start, update, status };

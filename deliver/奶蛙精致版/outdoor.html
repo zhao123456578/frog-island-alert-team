@@ -2,9 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,interactive-widget=resizes-content,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest?v=mobile-landscape-20261126d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-orientation" content="landscape">
+<meta name="apple-mobile-web-app-title" content="奶蛙 V6">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="assets/icons/icon-180.png">
 <link rel="icon" href="data:,">
-<title>奶蛙：午夜奶厂 + 夜班归途 · 夜班归途 v4.4</title>
+<title>奶蛙：午夜奶厂 + 夜班归途 · v6.0 性能优化版</title>
 <style>
   :root{--milk:#e6e2cf;--warm:#ffc27a;--dim:#8b929c;}
   *{box-sizing:border-box;}
@@ -17,9 +24,7 @@
     touch-action:none;cursor:grab;}
   #view.grabbing{cursor:grabbing;}
   body.plocked,body.plocked #view{cursor:none;}
-  #scan{position:fixed;inset:0;pointer-events:none;
-    background:repeating-linear-gradient(0deg,rgba(0,0,0,.06) 0 1px,transparent 1px 3px);
-    mix-blend-mode:multiply;opacity:.5;}
+  #scan{display:none;}
   #vig{position:fixed;inset:0;pointer-events:none;opacity:0;
     background:radial-gradient(ellipse at center,transparent 42%,rgba(2,4,8,.95) 100%);}
   #lid{position:fixed;inset:0;pointer-events:none;opacity:0;
@@ -124,20 +129,14 @@
     user-select:none;-webkit-user-select:none;touch-action:none;pointer-events:auto;
     transition:background .12s;}
   .tbtn.act{background:rgba(255,156,20,.78);color:#180a04;}
-  #tGas{left:20px;bottom:100px;}
-  #tBrake{left:20px;bottom:18px;}
-  #tLeft{right:102px;bottom:18px;}
-  #tRight{right:20px;bottom:18px;}
   #tE{right:20px;bottom:104px;display:none;font-size:13px;}
   #tF{right:102px;bottom:104px;display:none;font-size:12px;}
+  .tbtn.mini{width:54px;height:54px;font-size:11px;line-height:50px;}
+  #tCam{right:20px;bottom:188px;}
+  #tWiper{right:102px;bottom:188px;}
+  #tWindow{left:104px;bottom:18px;}
   #touch.on ~ #hud #hKeys{display:none;}
   #touch.on ~ #hud #hDrow{left:210px;}
-  #rotateHint{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:6;
-    display:none;font-size:11px;color:var(--dim);background:rgba(8,12,16,.6);
-    border:1px solid rgba(230,226,207,.16);padding:4px 10px;letter-spacing:.1em;}
-  @media (orientation:portrait){
-    #touch.on ~ #rotateHint{display:block;}
-  }
   /* ---- 场外开场：贴近场景的交互提示，出现才显示，不长期浮屏 ---- */
   #introHint{position:fixed;left:50%;bottom:20%;transform:translateX(-50%);z-index:6;
     padding:9px 18px;font-size:13px;letter-spacing:.14em;color:#0e1013;white-space:nowrap;
@@ -220,19 +219,22 @@
   padding:7px 12px;cursor:pointer;text-decoration:none;line-height:1;}
 #toMenu:hover{border-color:#86c24b;color:#eaffd0;}
 </style>
+<script src="assets/mobile.js?v=mobile-landscape-20261126d"></script>
+<link rel="stylesheet" href="assets/mobile.css?v=mobile-landscape-20261126d">
 </head>
-<body>
+<body data-page="drive">
 <div id="wrap"><canvas id="view"></canvas></div>
-<div id="scan"></div><div id="vig"></div><div id="lid"></div><div id="flash"></div>
+<div id="vig"></div><div id="lid"></div><div id="flash"></div>
 <div id="touch">
-  <div class="tbtn" id="tGas">油门</div>
-  <div class="tbtn" id="tBrake">刹车</div>
-  <div class="tbtn" id="tLeft">◀</div>
-  <div class="tbtn" id="tRight">▶</div>
+  <div id="mfJoystick" aria-label="移动摇杆"></div>
   <div class="tbtn" id="tE">停</div>
   <div class="tbtn" id="tF">咖啡</div>
+  <div class="tbtn mini" id="tCam">镜头</div>
+  <div class="tbtn mini" id="tWiper">雨刷</div>
+  <div class="tbtn mini" id="tWindow">开窗</div>
+  <div class="tbtn mini" id="tHorn">喇叭</div>
+  <div class="tbtn mini" id="tRadio">电台</div>
 </div>
-<div id="rotateHint">建议横屏，视野更宽</div>
 <div id="lockHint">点击画面锁定鼠标环视 · Esc 释放 · 无法锁定时按住左键拖动</div>
 <a id="toMenu" href="start.html" title="返回封面主菜单" style="bottom:auto;top:12px;">← 主菜单</a>
 
@@ -241,7 +243,7 @@
   <div class="pill" id="hSpeed">0 km/h</div>
   <div class="pill" id="hRadio">电台 <b>深夜交通台</b><br><span id="hRadioLine"></span></div>
   <div class="pill" id="hDrow">困意 10%<div id="drowBar"><div id="drowFill"></div></div></div>
-  <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · 滚轮 / [ ] 调镜头高度 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · C 切换镜头 · H 喇叭/双闪 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 变道 · 拖动 环视</span></div>
+  <div class="pill" id="hKeys"><span class="kbdHelp">拖动画面 环视 · 滚轮 / [ ] 调镜头高度 · W 油门 · S 刹车 · A/D 变道 · E 停车<br>SPACE 开窗 · R 雨刷 · C 切换镜头 · H 喇叭/双闪 · F 喝咖啡</span><span class="touchHelp" style="display:none">左下 油门/刹车/开窗 · 右下 变道 · 右上 镜头/雨刷 · 拖动 环视</span></div>
   <div id="hGuide"></div>
   <div id="rHud" aria-hidden="true">
     <div id="rArrow">↑</div>
@@ -262,7 +264,7 @@
   <div class="shotline">NIGHT RALLY · 不要停</div>
   <h1>不要停</h1>
   <div class="sub">奶蛙 · 午夜荒野拉力赛</div>
-  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 转向 · C 切换驾驶舱/追车<br>低于 54 KM/H 持续数秒 · 它会追上来<br><span style="opacity:.72">跟着橙色箭头走，别停。</span></span><span class="touchHelp" style="display:none">左下 油门 / 刹车 · 右下 转向<br>跟着橙色箭头走，别停。</span></div>
+  <div class="keys"><span class="kbdHelp">W 油门 · S 刹车 · A/D 转向 · C 切换驾驶舱/追车<br>低于 54 KM/H 持续数秒 · 它会追上来<br><span style="opacity:.72">跟着橙色箭头走，别停。</span></span><span class="touchHelp" style="display:none">左下 油门/刹车/开窗 · 右下 转向 · 右上 镜头/雨刷<br>跟着橙色箭头走，别停。</span></div>
   <div id="diffPick">难度：<span class="dopt" data-d="easy">轻松</span> / <span class="dopt" data-d="normal">标准</span></div>
   <button id="btnStart">发动引擎 →</button>
 </div>
@@ -281,6 +283,7 @@
 <script src="vendor/three.min.js"></script>
 <script src="vendor/GLTFLoader.js"></script>
 <script src="assets/shift.js"></script>
+<script src="assets/audio_engine.js?v=audio-spatial-20261124"></script>
 <script src="assets/sprite_fix.js"></script>
 <script>
 'use strict';
@@ -333,9 +336,24 @@ scene.fog=new THREE.FogExp2(0x141410,0.0135);
 
 const camera=new THREE.PerspectiveCamera(62,16/9,0.1,600);
 camera.rotation.order='YXZ';
-/* 左舵：驾驶位在车身中心左侧 0.42 m，摄像机跟着驾驶位走 */
-const DRIVER_X=-0.42;
-camera.position.set(DRIVER_X,1.26,0.22);
+function resizeGameView(){
+  const vp=window.MFMobile?MFMobile.viewport():{width:window.innerWidth,height:window.innerHeight};
+  if(window.MFMobile&&MFMobile.isTouch){
+    const w=vp.width>=vp.height?640:360;
+    renderer.setSize(w,Math.round(w*vp.height/vp.width),false);
+    camera.aspect=vp.width/vp.height;
+  }else{
+    renderer.setSize(640,360,false);camera.aspect=16/9;
+  }
+  camera.updateProjectionMatrix();
+}
+resizeGameView();
+window.addEventListener('resize',resizeGameView,{passive:true});
+window.addEventListener('orientationchange',resizeGameView,{passive:true});
+window.addEventListener('mf:viewportchange',resizeGameView,{passive:true});
+/* 左舵：与 yard.html 使用同一驾驶位和同一辆 Buhanka 救护车 */
+const DRIVER_X=-0.42,DRIVER_EYE_Y=1.26,DRIVER_Z=0.22;
+camera.position.set(DRIVER_X,DRIVER_EYE_Y,DRIVER_Z);
 
 /* ---------- 纹理 ---------- */
 function mkTex(w,h,draw){
@@ -343,11 +361,11 @@ function mkTex(w,h,draw){
   draw(c.getContext('2d'),w,h);
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  /* PSX 像素硬边：默认 NearestFilter / 无 mipmap。
-     路面 roadTex 下面单独开 mipmap，解决远景缩小采样跳黑；其余纹理不动。 */
+  /* 近景保留像素硬边；2 的幂纹理启用 mipmap，避免远景树叶/立面逐帧跳色。 */
+  const pot=(w&(w-1))===0&&(h&(h-1))===0;
   t.magFilter=THREE.NearestFilter;
-  t.minFilter=THREE.NearestFilter;
-  t.generateMipmaps=false;
+  t.minFilter=pot?THREE.NearestMipmapLinearFilter:THREE.NearestFilter;
+  t.generateMipmaps=pot;
   t.anisotropy=1;
   return t;
 }
@@ -591,14 +609,14 @@ function elevOf(s){
   const y=v=>1.5*Math.sin(v/205+0.9)+0.8*Math.sin(v/93+3.1);
   return y(880)+(y(s)-y(880))*flat*flat*(3-2*flat);
 }
-function mainRoadAt(s){
+function mainRoadAt(s,out){
   const i=Math.max(0,Math.min(ROAD_N-1.001,s-ROAD_S0));
-  const i0=i|0,f=i-i0,j=Math.min(i0+1,ROAD_N-1);
-  return {th:roadTh[i0]+(roadTh[j]-roadTh[i0])*f,
-          x:roadX[i0]+(roadX[j]-roadX[i0])*f,
-          z:roadZ[i0]+(roadZ[j]-roadZ[i0])*f,
-          k:roadK[i0]+(roadK[j]-roadK[i0])*f,
-          y:elevOf(s)};
+  const i0=i|0,f=i-i0,j=Math.min(i0+1,ROAD_N-1),r=out||{};
+  r.th=roadTh[i0]+(roadTh[j]-roadTh[i0])*f;
+  r.x=roadX[i0]+(roadX[j]-roadX[i0])*f;
+  r.z=roadZ[i0]+(roadZ[j]-roadZ[i0])*f;
+  r.k=roadK[i0]+(roadK[j]-roadK[i0])*f;
+  r.y=elevOf(s);return r;
 }
 const forestRoad=[];
 {
@@ -609,16 +627,13 @@ const forestRoad=[];
     forestRoad.push({x,z,th:a,k});x+=Math.sin(a);z-=Math.cos(a);a+=k;
   }
 }
-function roadAt(s,route=driveRoute){
-  if(route==='main'||s<FORK_S)return mainRoadAt(s);
-  if(route==='junction'){
-    const p=mainRoadAt(FORK_S),d=s-FORK_S;
-    return {x:p.x+Math.sin(p.th)*d,z:p.z-Math.cos(p.th)*d,th:p.th,k:0,y:elevOf(s)};
-  }
+function roadAt(s,route=driveRoute,out){
+  const r=out||{};
+  if(route==='main'||s<FORK_S)return mainRoadAt(s,r);
   const i=Math.max(0,Math.min(forestRoad.length-1.001,s-FORK_S));
   const a=forestRoad[i|0],b=forestRoad[(i|0)+1],f=i%1;
-  return {x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f,th:a.th+(b.th-a.th)*f,
-    k:a.k+(b.k-a.k)*f,y:elevOf(s)};
+  r.x=a.x+(b.x-a.x)*f;r.z=a.z+(b.z-a.z)*f;r.th=a.th+(b.th-a.th)*f;
+  r.k=a.k+(b.k-a.k)*f;r.y=elevOf(s);return r;
 }
 /* 车道：咱们走右边那条，lateral=0 就是右车道正中间，不再骑着中线开。
    右车道 = 黄色中线(0) 到右侧白线内缘(≈3.60)，中心 = 1.80 m。 */
@@ -979,18 +994,23 @@ function makeRibbon(latA,latB,yA,yB,mat,vertical,shade,vcol){
   geo.setIndex(new THREE.BufferAttribute(idx,1));
   const mesh=new THREE.Mesh(geo,mat);
   mesh.frustumCulled=false;scene.add(mesh);
-  const rb={mesh,geo,pos,uv,nor,col,N,latA,latB,yA,yB,vertical:!!vertical,vcol:vcol||null};
+  const rb={mesh,geo,pos,uv,nor,col,N,latA,latB,yA,yB,vertical:!!vertical,vcol:vcol||null,
+    road:{th:0,x:0,z:0,k:0,y:0},lastDist:NaN,lastX:NaN,lastY:NaN,lastZ:NaN,lastPhi:NaN,lastRoute:""};
   roadRibbons.push(rb);
   return rb;
 }
 const ribVal=(v,arc)=>typeof v==='function'?v(arc):v;
 function updateRibbon(rb){
+  if(!rb.mesh.visible)return;
+  const route=rb.route||driveRoute;
+  if(rb.lastDist===S.dist&&rb.lastX===pose.x&&rb.lastY===pose.y&&rb.lastZ===pose.z&&rb.lastPhi===pose.phi&&rb.lastRoute===route)return;
+  rb.lastDist=S.dist;rb.lastX=pose.x;rb.lastY=pose.y;rb.lastZ=pose.z;rb.lastPhi=pose.phi;rb.lastRoute=route;
   const {N,pos,uv,nor,col}=rb;
   const step=(RIB_BEHIND+RIB_AHEAD)/N;
   const c=Math.cos(pose.phi),sn=Math.sin(pose.phi);
   for(let j=0;j<=N;j++){
     const arc=Math.max(rb.start==null?ROAD_S0:rb.start,S.dist-RIB_BEHIND+j*step);
-    const r=roadAt(arc,rb.route||'main');
+    const r=roadAt(arc,route,rb.road);
     const ca=Math.cos(r.th),sa=Math.sin(r.th);
     for(let e=0;e<2;e++){
       const lat=ribVal(e?rb.latB:rb.latA,arc),y=ribVal(e?rb.yB:rb.yA,arc);
@@ -1417,7 +1437,6 @@ const silTex=mkTex(128,256,(x,w,h)=>{
 const blds=[],blinkLights=[];
 const bldKinds=['res','ind','off'];
 const bldTints=[0x9da4a2,0x7f8985,0x81888a];
-const bldDarkMat=new THREE.MeshBasicMaterial({color:0x070b10});
 /* 中景地标复用的两张脸（仓库 / 塔楼） */
 const facadeIndMat=facadeMaterial('ind',0,0x7f8985);
 const facadeOffMat=facadeMaterial('off',0,0x81888a);
@@ -1538,7 +1557,6 @@ for(let i=0;i<12;i++){
   scene.add(g);farBlds.push(g);
 }
 const FAR_SPAN=760;
-let blackT=8,blackHold=0,blackPick=null;
 /* 高速指示牌：每隔 620 m 从头顶掠过，给长直路一个节奏点 */
 const signTex=mkTex(512,160,(x,w,h)=>{
   x.fillStyle='#1f5d3c';x.fillRect(0,0,w,h);
@@ -1583,28 +1601,28 @@ hoodEdge.position.set(0,0.8075,-2.495);car.add(hoodEdge);
 const grille=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.06,0.02),
   new THREE.MeshLambertMaterial({color:0x2a2b26}));
 grille.position.set(0,0.72,-2.515);car.add(grille);
-[-1.0,1.0].forEach(x=>{
-  const f=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.24,0.9),
+[-0.88,0.88].forEach(x=>{
+  const f=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.24,0.9),
     new THREE.MeshLambertMaterial({color:0x3b3c34}));
   f.position.set(x,0.67,-1.83);car.add(f);
 });
 /* 仪表台 + A 柱 + 地台：把座舱围成一体，方块不再浮在路上 */
 /* 暗红 / 酒红 / 黑红内饰：80 年代破旧拉力赛座舱 */
-const dash=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.26,0.38),
+const dash=new THREE.Mesh(new THREE.BoxGeometry(1.82,0.26,0.38),
   new THREE.MeshLambertMaterial({color:0x3a1512,emissive:0x1a0806}));
-dash.position.set(0,0.79,-0.97);car.add(dash);
-const dashPad=new THREE.Mesh(new THREE.BoxGeometry(2.06,0.03,0.34),
+dash.name='dashboard';dash.position.set(0,0.79,-0.97);car.add(dash);
+const dashPad=new THREE.Mesh(new THREE.BoxGeometry(1.72,0.03,0.34),
   new THREE.MeshLambertMaterial({color:0x511e19,emissive:0x26100a}));
 dashPad.position.set(0,0.935,-0.97);car.add(dashPad);
-[-0.78,0.78].forEach(x=>{
+[-0.64,0.64].forEach(x=>{
   const vent=new THREE.Mesh(new THREE.PlaneGeometry(0.10,0.05),
     new THREE.MeshBasicMaterial({color:0x0b0c0e}));
   vent.position.set(x,0.85,-0.779);car.add(vent);
 });
-const floorPan=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.05,1.7),
+const floorPan=new THREE.Mesh(new THREE.BoxGeometry(1.72,0.05,1.7),
   new THREE.MeshLambertMaterial({color:0x1c0d0c}));
 floorPan.position.set(0,0.35,-0.55);car.add(floorPan);
-[-1.06,1.06].forEach((x,i)=>{
+[-0.86,0.86].forEach((x,i)=>{
   /* A 柱：黑红 */
   const ap=new THREE.Mesh(new THREE.BoxGeometry(0.085,0.85,0.085),
     new THREE.MeshLambertMaterial({color:0x2a1110}));
@@ -1629,7 +1647,7 @@ hub.rotation.x=Math.PI/2;wheelG.add(hub);
 const column=new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.032,0.36,8),
   new THREE.MeshLambertMaterial({color:0x2c1512}));
 column.rotation.x=Math.PI/2;column.position.set(0,0,-0.18);wheelG.add(column);
-wheelG.position.set(-0.40,0.86,-0.62);wheelG.rotation.x=-0.75;wheelG.scale.setScalar(0.7);car.add(wheelG);
+wheelG.name='steeringWheel';wheelG.position.set(-0.40,0.86,-0.62);wheelG.rotation.x=-0.75;wheelG.scale.setScalar(0.7);car.add(wheelG);
 /* 仪表台收音机小屏：跟着电台换台 */
 const radioCanvas=document.createElement('canvas');
 radioCanvas.width=128;radioCanvas.height=48;
@@ -1673,28 +1691,7 @@ const headRefl=[];
   m.rotation.x=-Math.PI/2;m.position.set(x,0.016,-13.5);
   m.visible=false;car.add(m);headRefl.push(m);
 });
-/* 车灯体积光：雨幕里能看见的两道光锥，晴天几乎透明 */
-const coneTex=mkTex(64,256,(x,w,h)=>{
-  /* 画布顶=锥尖（贴在车头前）：两端都收进 0，离车头 30% 处才最亮。
-     原来锥尖 alpha 0.9，加色叠在最近处直接溢出成白 */
-  const g=x.createLinearGradient(0,0,0,h);
-  g.addColorStop(0,'rgba(255,244,220,0)');
-  g.addColorStop(0.30,'rgba(255,240,208,0.46)');
-  g.addColorStop(0.62,'rgba(255,236,200,0.18)');
-  g.addColorStop(1,'rgba(255,232,190,0)');
-  x.fillStyle=g;x.fillRect(0,0,w,h);
-});
-coneTex.wrapS=coneTex.wrapT=THREE.ClampToEdgeWrapping;
-const beamCones=[];
-[-0.62,0.62].forEach(x=>{
-  const geo=new THREE.ConeGeometry(3.1,22,18,1,true);
-  geo.translate(0,-11,0);geo.rotateX(Math.PI/2);
-  const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:coneTex,color:0xffe6bc,
-    transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,
-    side:THREE.DoubleSide,fog:false}));
-  m.position.set(x,0.72,-2.5);m.visible=false;car.add(m);beamCones.push(m);
-});
-/* 光锥里被照亮的雨丝：一小团加色粒子，只在雨里亮 */
+/* 车灯光晕里被照亮的雨丝：一小团加色粒子，只在雨里亮 */
 const sprayN=160;
 const sprayPos=new Float32Array(sprayN*3),sprayV=new Float32Array(sprayN);
 function resetSpray(i){
@@ -1720,7 +1717,7 @@ const spray=new THREE.Points(sprayGeo,new THREE.PointsMaterial({
   blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
 spray.frustumCulled=false;spray.visible=false;car.add(spray);
 const noBeam=q.has('nobeam');
-if(noBeam){beamPool.visible=false;beamCones.forEach(m=>{m.visible=false;});spray.visible=false;}
+if(noBeam){beamPool.visible=false;spray.visible=false;}
 if(q.has('nospot'))spots.forEach(s=>{s.intensity=0;});
 if(q.has('nolamp'))lamps.forEach(L=>{L.base=0;});
 if(q.has('nohemi')){hemi.intensity=0;amb.intensity=0;}
@@ -1766,23 +1763,23 @@ car.add(doll);
 const cabinMat=new THREE.MeshLambertMaterial({color:0x3d1714,emissive:0x140504});
 const cabinDark=new THREE.MeshLambertMaterial({color:0x26100e,emissive:0x0d0303});
 /* 车顶 + 前风挡上沿，把“坐在车里”框出来（暗红酒红顶棚） */
-const roof=new THREE.Mesh(new THREE.BoxGeometry(2.24,0.05,2.35),
+const roof=new THREE.Mesh(new THREE.BoxGeometry(1.84,0.05,2.35),
   new THREE.MeshLambertMaterial({color:0x331513,emissive:0x100404}));
-roof.position.set(0,1.725,0.10);car.add(roof);
-const header=new THREE.Mesh(new THREE.BoxGeometry(2.24,0.06,0.10),cabinDark);
-header.position.set(0,1.685,-1.045);car.add(header);
-const rearHeader=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.08,0.12),cabinDark);
+roof.name='cabinRoof';roof.position.set(0,1.725,0.10);car.add(roof);
+const header=new THREE.Mesh(new THREE.BoxGeometry(1.84,0.06,0.10),cabinDark);
+header.name='windshieldHeader';header.position.set(0,1.685,-1.045);car.add(header);
+const rearHeader=new THREE.Mesh(new THREE.BoxGeometry(1.78,0.08,0.12),cabinDark);
 rearHeader.position.set(0,1.685,1.25);car.add(rearHeader);
 /* B / C 柱 */
-[[-1.06,0.86],[1.06,0.86],[-1.05,1.20],[1.05,1.20]].forEach(([x,z])=>{
-  const p=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.68,0.10),cabinDark);
+[[-0.86,0.86],[0.86,0.86],[-0.85,1.20],[0.85,1.20]].forEach(([x,z])=>{
+  const p=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.68,0.08),cabinDark);
   p.position.set(x,1.36,z);car.add(p);
 });
 /* 门板、窗台、侧窗玻璃 */
-[-1.10,1.10].forEach(x=>{
-  const door=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.44,1.78),cabinMat);
-  door.position.set(x,0.79,-0.10);car.add(door);
-  const sill=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.03,1.78),
+[-0.90,0.90].forEach(x=>{
+  const door=new THREE.Mesh(new THREE.BoxGeometry(0.045,0.44,1.78),cabinMat);
+  door.position.set(x,0.79,-0.10);door.userData.cabinSide=Math.sign(x);car.add(door);
+  const sill=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.03,1.78),
     new THREE.MeshLambertMaterial({color:0x4a1f18}));
   sill.position.set(x,1.018,-0.10);car.add(sill);
   const glass=new THREE.Mesh(new THREE.PlaneGeometry(1.62,0.50),
@@ -1805,35 +1802,35 @@ rearHeader.position.set(0,1.685,1.25);car.add(rearHeader);
 [-1,1].forEach(s=>{
   const housing=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.085,0.17),
     new THREE.MeshLambertMaterial({color:0x1b1d20,emissive:0x060708}));
-  housing.position.set(s*1.19,0.95,-0.78);car.add(housing);
+  housing.position.set(s*1.06,0.95,-0.78);car.add(housing);
   const stalk=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.03,0.06),
     new THREE.MeshLambertMaterial({color:0x17191c}));
-  stalk.position.set(s*1.14,0.94,-0.72);car.add(stalk);
+  stalk.position.set(s*0.98,0.94,-0.72);car.add(stalk);
   const glassUp=new THREE.Mesh(new THREE.PlaneGeometry(0.075,0.058),
     new THREE.MeshBasicMaterial({color:0x0d1116}));
-  glassUp.position.set(s*1.19,0.952,-0.694);car.add(glassUp);
+  glassUp.position.set(s*1.06,0.952,-0.694);car.add(glassUp);
 });
 /* 车顶侧梁，把侧窗上沿收住 */
-[-1.10,1.10].forEach(x=>{
-  const rail=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.06,2.35),cabinDark);
+[-0.90,0.90].forEach(x=>{
+  const rail=new THREE.Mesh(new THREE.BoxGeometry(0.075,0.06,2.35),cabinDark);
   rail.position.set(x,1.715,0.10);car.add(rail);
 });
 /* 后窗 + 后排座椅 */
-const rearGlass=new THREE.Mesh(new THREE.PlaneGeometry(1.92,0.34),
+const rearGlass=new THREE.Mesh(new THREE.PlaneGeometry(1.70,0.34),
   new THREE.MeshBasicMaterial({color:0x0a0f16,transparent:true,opacity:0.26,
     side:THREE.DoubleSide,depthWrite:false}));
 rearGlass.position.set(0,1.48,1.245);car.add(rearGlass);
 const seatMat=new THREE.MeshLambertMaterial({color:0x3a1613,emissive:0x0d0403});
 {
-  const cush=new THREE.Mesh(new THREE.BoxGeometry(1.85,0.16,0.54),seatMat);
+  const cush=new THREE.Mesh(new THREE.BoxGeometry(1.58,0.16,0.54),seatMat);
   cush.position.set(0,0.60,0.92);car.add(cush);
-  const back=new THREE.Mesh(new THREE.BoxGeometry(1.85,0.55,0.14),seatMat);
+  const back=new THREE.Mesh(new THREE.BoxGeometry(1.58,0.55,0.14),seatMat);
   back.position.set(0,0.95,1.15);back.rotation.x=-0.10;car.add(back);
   /* 副驾座椅：往右看一眼就能看见，靠背带两侧护翼，别是一块板 */
   const pc=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.13,0.52),seatMat);
   pc.position.set(0.46,0.585,0.26);car.add(pc);
   const pb=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.60,0.14),seatMat);
-  pb.position.set(0.46,0.92,0.52);pb.rotation.x=-0.10;car.add(pb);
+  pb.position.set(0.46,0.92,0.52);pb.rotation.x=-0.10;pb.userData.cabinSide=1;car.add(pb);
   [-0.17,0.17].forEach(ox=>{
     const bo=new THREE.Mesh(new THREE.BoxGeometry(0.11,0.50,0.08),seatMat);
     bo.position.set(0.46+ox,0.89,0.462);bo.rotation.x=-0.10;car.add(bo);
@@ -1963,14 +1960,13 @@ const doorHandleGlow=glowSprite(0xffc27a,0.26,0);
 doorHandleGlow.position.set(-0.14,1.02,0.62);driverDoor.add(doorHandleGlow);
 
 /* ===== 车辆模型接入 =====
-   默认主角车换成 assets/ps1_vehicles 里的 GGBot PS1 轿车（已转成本地 GLB）：
-   深蓝小轿车，比救护车更贴近"下班回家"的私人车。
-   ?carglb=路径 仍可切换其他 GLB；?carglb=0 强制回退程序化车壳。
-   ?carobj=路径 可以改回 OBJ（例如 buhanka_ambulance.obj）；?carobj=0 禁用。 */
+   默认与 yard.html 共用 buhanka_ambulance.obj，尺寸 1.94 × 2.06 × 4.42 m。
+   ?carglb=路径 可临时切换其它 GLB；?carobj=0 禁用 OBJ；?carglb=0 强制程序化回退。 */
 const CAR_PROCEDURAL_ONLY=q.get('carglb')==='0';
 const CAR_MODEL_URL=CAR_PROCEDURAL_ONLY?null:
-  (q.has('carglb')&&q.get('carglb')?q.get('carglb'):'assets/vehicle/player_sedan.glb');
-const CAR_OBJ_URL=q.has('carobj')?(q.get('carobj')==='0'?null:q.get('carobj')):null;
+  (q.has('carglb')&&q.get('carglb')?q.get('carglb'):null);
+const CAR_OBJ_URL=q.has('carobj')?(q.get('carobj')==='0'?null:q.get('carobj')):
+  (CAR_MODEL_URL?null:'assets/vehicle/buhanka_ambulance.obj');
 const CAR_TEXTURE_URL='assets/vehicle/buhanka_skoraya_albedo.png';
 const CAR_TARGET_W=1.94;                 /* 车宽：窄门净宽 2.86 时单侧余量 0.46 m */
 const carModel=new THREE.Group();carModel.name='carModel';car.add(carModel);
@@ -2233,10 +2229,7 @@ if(!CAR_PROCEDURAL_ONLY){
   }
 }
 /* 外观层：模型到位后，程序化车壳彻底让位——两者永不同时可见，绝不重叠。
-   车内视角只留现有内舱（仪表台/方向盘/风挡框），车外视角只留 GLB 整车。
-   Kenney / GGBot 主角车都没有独立的前门网格（门画在贴图上），
-   所以开场上车不再演"拉门"，改成贴近驾驶侧→淡出到驾驶位的一镜，
-   这样 GLB 从开场到行驶全程是唯一的那辆车。 */
+   车内视角只留按外模尺寸重建的内舱，车外视角只留整车；OBJ 驾驶门继续参与上车过场。 */
 function applyCarAppearance(){
   /* 开场 phase 0-2 人还站在车外，phase 3-4 镜头已经钻进驾驶室——
      这两段必须分开判，否则点火时玩家是在钣金里看路。
@@ -2275,7 +2268,7 @@ const damageScuffs=[];
   const mat=new THREE.MeshBasicMaterial({map:damageScuffTex,transparent:true,
     opacity:0,depthWrite:false,side:THREE.DoubleSide,color:side<0?0xe7d7c4:0xd8e1dc});
   const m=new THREE.Mesh(new THREE.PlaneGeometry(1.55,0.34),mat);
-  m.position.set(side*1.17,0.76,0.45);
+  m.position.set(side*0.985,0.76,0.45);
   m.rotation.y=side>0?Math.PI/2:-Math.PI/2;
   carDamageRoot.add(m);
   damageScuffs.push({mesh:m,side,mat});
@@ -2306,7 +2299,7 @@ carDamageRoot.add(tailCrack);
 const damageMirrors=[];
 [-1,1].forEach(side=>{
   const g=new THREE.Group();
-  g.position.set(side*1.19,1.17,-0.82);
+  g.position.set(side*1.06,1.17,-1.55);
   const arm=new THREE.Mesh(new THREE.BoxGeometry(0.20,0.035,0.035),
     new THREE.MeshLambertMaterial({color:0x2a2f32}));
   arm.position.x=side*-0.10;g.add(arm);
@@ -2330,6 +2323,7 @@ function updateCarDamage(dt){
     const hitSide=(S.dmgSide==='L'&&o.side<0)||(S.dmgSide==='R'&&o.side>0);
     const want=S.dmgN>0&&hitSide?Math.min(0.92,0.45+S.dmgN*0.12):0;
     o.mat.opacity+=(want-o.mat.opacity)*Math.min(1,dt*7);
+    o.mesh.position.x=o.side*(carHalfW-0.015);
     o.mesh.position.y=0.70+(i?0.025:0);
   });
   rearScuff.material.opacity+=(Math.min(0.8,S.dmgN*0.28)-rearScuff.material.opacity)*Math.min(1,dt*7);
@@ -2350,10 +2344,11 @@ function updateCarDamage(dt){
   damageBumper.position.z=carHalfL+0.09;
   const pulse=0.5+0.5*Math.sin(performance.now()*0.009);
   emergencyLamps.forEach((o,i)=>{
+    o.spr.visible=outside;
     o.spr.position.set(o.x,carTop+0.03,-0.62+i*0.22);
     const on=i?pulse:1-pulse;
-    o.spr.material.opacity=0.06+0.30*on;
-    const s=0.35+0.25*on;o.spr.scale.set(s,s,1);
+    o.spr.material.opacity=0.04+0.18*on;
+    const s=0.30+0.18*on;o.spr.scale.set(s,s,1);
   });
   /* 双闪 + 喇叭冷却：H 触发后四角琥珀灯按真车频率闪，熄灭后完全透明 */
   if(S.hornCool>0)S.hornCool=Math.max(0,S.hornCool-dt);
@@ -2376,20 +2371,13 @@ function tagOccluder(mesh,sign){
   mesh.userData.baseOp=(mesh.material.opacity!==undefined)?mesh.material.opacity:1;
   cabinOccluders.push({mesh,sign});
 }
-/* A 柱 / 门板 / 窗台 / 侧窗 / 扶手 / 喇叭 / 后视镜壳：侧视时正对相机的整片板件都要能透出去。
-   范围放宽到 |x| 1.0~1.22（含后视镜 1.19），但排除车头翼子板(z=-1.83)和仪表台(x≈0)。
-   另外把副驾座椅(seatMat=0x24262b，x≈0.3~0.6)也算作右侧遮挡：向右看到它同样是一大块灰板。
-   注意都是"随环视角淡出"，正面看 fade=0 保持不透明，不会让座舱穿帮。*/
 car.children.forEach(m=>{
   if(!m.isMesh||!m.geometry)return;
-  const p=m.position;
-  const side=(Math.abs(p.x)>1.0 && Math.abs(p.x)<1.22 && p.y>0.5 && p.y<1.5 && p.z>-1.3 && p.z<1.4);
-  const seat=(m.material&&m.material.color&&m.material.color.getHex()===0x24262b
-              && p.x>0.24 && p.x<0.72 && p.z>0.18 && p.z<0.72);
-  if(side||seat)tagOccluder(m,Math.sign(p.x)||1);
+  const side=m.userData.cabinSide;
+  if(side)tagOccluder(m,side);
 });
 /* 内后视镜：真的把车后画面渲染一遍再贴上去 */
-const mirrorRT=new THREE.WebGLRenderTarget(768,192,
+const mirrorRT=new THREE.WebGLRenderTarget(512,128,
   {minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,generateMipmaps:false});
 mirrorRT.texture.wrapS=THREE.RepeatWrapping;
 mirrorRT.texture.repeat.x=-1;mirrorRT.texture.offset.x=1;
@@ -2398,19 +2386,23 @@ const mirrorCam=new THREE.PerspectiveCamera(20,4,0.05,600);
    物理镜面仍在车内，看到的是车后道路；第三人称后视屏使用同一张画面。 */
 mirrorCam.position.set(0.02,2.18,3.08);mirrorCam.rotation.set(-0.07,Math.PI,0);car.add(mirrorCam);
 /* 后视镜放大一档：荒野夜路里必须看得清后面那团黑影和两点车灯 */
+const rearViewMirror=new THREE.Group();
+rearViewMirror.name='interiorRearView';
+rearViewMirror.position.set(0.02,1.55,-0.888);
 const mirrorFrame=new THREE.Mesh(new THREE.BoxGeometry(0.64,0.195,0.035),
   new THREE.MeshLambertMaterial({color:0x1a0d0a}));
-mirrorFrame.position.set(0.02,1.55,-0.888);car.add(mirrorFrame);
+mirrorFrame.name='interiorRearViewFrame';rearViewMirror.add(mirrorFrame);
 const mirrorMesh=new THREE.Mesh(new THREE.PlaneGeometry(0.64,0.16),
-  new THREE.MeshBasicMaterial({map:mirrorRT.texture,color:0xffffff}));
-mirrorMesh.position.set(0.02,1.55,-0.869);car.add(mirrorMesh);
+  new THREE.MeshBasicMaterial({map:mirrorRT.texture,color:0xffffff,toneMapped:false}));
+mirrorMesh.name='interiorRearViewGlass';mirrorMesh.position.z=0.019;rearViewMirror.add(mirrorMesh);
 const mirrorStem=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.10,0.09),cabinDark);
 mirrorStem.position.set(0.02,1.65,-0.95);car.add(mirrorStem);
+car.add(rearViewMirror);
 /* 低速 / 贴近时后视镜里那团黑影必须看得见：mirrorRT 是真实后视渲染，
    雨夜浓雾里几乎全黑，所以在镜面上再叠一层低清剪影 + 两点车灯。
    显形程度只由 chaserEye 与距离驱动，不做正面完整怪物展示。 */
 const mirrorGhostGrp=new THREE.Group();
-mirrorGhostGrp.position.set(0.02,1.55,-0.861);
+rearViewMirror.add(mirrorGhostGrp);mirrorGhostGrp.position.z=0.023;
 const mirrorGhostMat=new THREE.MeshBasicMaterial({color:0x060302,transparent:true,
   opacity:0,depthTest:false,depthWrite:false});
 const mirrorGhostBody=new THREE.Mesh(new THREE.PlaneGeometry(0.23,0.125),mirrorGhostMat);
@@ -2423,7 +2415,7 @@ for(let i=0;i<2;i++){
   m.position.set((i?1:-1)*0.062,-0.018,0.001);m.renderOrder=93;
   mirrorGhostGrp.add(m);mirrorGhostLamps.push(m);
 }
-mirrorGhostGrp.visible=false;car.add(mirrorGhostGrp);
+mirrorGhostGrp.visible=false;
 /* 第三人称没有实体车内后视镜，给它一块固定在镜头上的后视屏。
    平时隐藏，孙笑川出现时才亮起；画面来自同一张 mirrorRT，不增加渲染 pass。 */
 const chaseRearFrame=new THREE.Group();
@@ -2699,20 +2691,24 @@ function addPropSlot(parent,x,y,z,name,opts){
   const slot={h,name,opts:opts||{},done:false};
   propSlots.push(slot);fillPropSlot(slot);return h;
 }
-Promise.all(Object.keys(PROP_URLS).map(n=>new Promise(res=>{
-  propLoader.load(PROP_URLS[n],g=>{
-    PROP_MODELS[n]=prepProp(g.scene);
-    /* 停车场模块在夜里有独立的"可读"亮度：只抬 lot* 的自发光，
-       车/树仍保持原来的暗部，不改变公路段的曝光。 */
-    if(n.indexOf('lot')===0)PROP_MODELS[n].root.traverse(o=>{
-      if(!o.isMesh)return;
-      const ms=Array.isArray(o.material)?o.material:[o.material];
-      ms.forEach(m=>{if(m&&m.isMeshLambertMaterial){
-        m.emissive.setHex(0x3c4034);m.color.setHex(0xd2d6c8);}});
-    });
-    res();
-  },undefined, err=>{ console.error('[prop] '+n,err); res(); });
-}))).then(()=>propSlots.forEach(fillPropSlot));
+const propNames=Object.keys(PROP_URLS);
+let propCursor=0,propActive=0;
+function pumpPropLoads(){
+  while(propActive<4&&propCursor<propNames.length){
+    const n=propNames[propCursor++];propActive++;
+    propLoader.load(PROP_URLS[n],g=>{
+      PROP_MODELS[n]=prepProp(g.scene);
+      if(n.indexOf('lot')===0)PROP_MODELS[n].root.traverse(o=>{
+        if(!o.isMesh)return;
+        const ms=Array.isArray(o.material)?o.material:[o.material];
+        ms.forEach(m=>{if(m&&m.isMeshLambertMaterial){
+          m.emissive.setHex(0x3c4034);m.color.setHex(0xd2d6c8);}});
+      });
+      propSlots.forEach(fillPropSlot);propActive--;pumpPropLoads();
+    },undefined,err=>{console.error('[prop] '+n,err);propActive--;pumpPropLoads();});
+  }
+}
+pumpPropLoads();
 
 function buildTrafficCar(kind,dir){
   const g=new THREE.Group();
@@ -2913,7 +2909,7 @@ sunShadow.rotation.x=-Math.PI/2;
 sunShadow.position.y=0.018;
 sunShadow.visible=false;
 sunChaser.add(sunShadow);
-let sunBillboard=null,sunOutline=null;
+let sunBillboard=null;
 function setSunFrame(i){
   if(!sunSpriteOK||!sunBillboard)return;
   const frame=((i%SUN_ATLAS.count)+SUN_ATLAS.count)%SUN_ATLAS.count;
@@ -2927,21 +2923,18 @@ function setSunFrame(i){
   );
   tex.repeat.set(SUN_ATLAS.fw/tex.image.width,SUN_ATLAS.fh/tex.image.height);
   sunBillboard.material.map=tex;
-  sunBillboard.material.needsUpdate=true;
-  if(sunOutline){sunOutline.material.map=tex;sunOutline.material.needsUpdate=true;}
   sunFrame=frame;
 }
 function initSunSprite(){
   const h=2.34,w=h*SUN_ATLAS.fw/SUN_ATLAS.fh;
   /* v4.5 黑边修复：纹理经 alpha bleed 处理；材质 alpha discard + 预乘修正。 */
   const mat=new THREE.MeshBasicMaterial({
-    map:sunTextures[0],transparent:true,alphaTest:0.28,
-    side:THREE.DoubleSide,depthWrite:true,color:0x3a302a
+    map:sunTextures[0],alphaTest:0.28,
+    side:THREE.DoubleSide,depthTest:true,depthWrite:true,color:0x3a302a
   });
   window.MFSpriteFix&&MFSpriteFix.patch(mat,0.30);
   sunBillboard=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
   sunBillboard.position.y=h/2;
-  sunBillboard.renderOrder=4;
   sunChaser.add(sunBillboard);
 
   /* v4.5：删除背后 1.8% 放大的暗色轮廓网格——它就是"黑色涂边/黑框"的主因之一。
@@ -3096,6 +3089,7 @@ for(let i=0;i<300;i++)drops.push({
   r:0.5+Math.random()*0.75,v:8+Math.random()*22,clean:0
 });
 const DROP_PIVOT_Y=141,WIPE_LEN=[0.60,0.57];
+let dropT=0;
 function drawDrops(dt){
   /* 刮片在画布上的投影：枢轴在画布下沿外一点，长度按刮臂折算后再放宽一点，盖住刮痕 */
   const segs=wipers.map((wp,k)=>{
@@ -4901,7 +4895,7 @@ window.MFTree=(function(){
       x.beginPath();x.ellipse(S/2+Math.cos(a)*r,S/2+Math.sin(a)*r,2.4,1.8,0,0,Math.PI*2);x.fill();
     }
     const t=new THREE.CanvasTexture(c);
-    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;t.generateMipmaps=false;
+    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestMipmapLinearFilter;t.generateMipmaps=true;
     leafCache[tone]=t;return t;
   }
   function rand(seed){let s=seed>>>0;return function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
@@ -4965,7 +4959,8 @@ window.MFTree=(function(){
       geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
       geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));
       if(o2)geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
-      const m=new THREE.Mesh(geo,b.mat);m.frustumCulled=false;out.add(m);
+      geo.computeBoundingSphere();
+      const m=new THREE.Mesh(geo,b.mat);m.frustumCulled=true;out.add(m);
     });
     return out;
   }
@@ -5219,6 +5214,7 @@ const PARK_SPEED=22;   /* km/h */
 const PARK_LAT=1.0;    /* 米，向右离开车道中心。原来 1.5 太深，正常靠边根本够不到 */
 const keys={};
 addEventListener('keydown',e=>{
+  if(window.__mfOrientationBlocked)return;
   if(WALK.active){walkKeyDown(e);return;}
   keys[e.key.toLowerCase()]=true;
   if(S.started&&!S.ended)initAudio();
@@ -5259,32 +5255,58 @@ addEventListener('keyup',e=>{if(WALK.active){delete WALK.keys[e.key.toLowerCase(
 }
 
 /* ---------- 触屏：左下油门/刹车，右下左右，停/咖啡按需出现 ---------- */
-const isTouch=('ontouchstart' in window)||navigator.maxTouchPoints>0||q.has('touch');
+const isTouch=window.MFMobile?MFMobile.isTouch:(('ontouchstart' in window)||navigator.maxTouchPoints>0||q.has('touch'));
 if(isTouch){
+  document.body.classList.add('mf-touch');
   document.getElementById('touch').classList.add('on');
-  /* 触控设备绝不显示 W/S/A/D 教学，只显示触控说明 */
   document.querySelectorAll('.kbdHelp').forEach(el=>el.style.display='none');
   document.querySelectorAll('.touchHelp').forEach(el=>el.style.display='');
+  document.querySelector('#doze .wake').textContent='点击画面醒来';
+  document.getElementById('introSkip').textContent='点击跳过';
+  if(q.has('walk'))document.getElementById('btnStart').textContent='开始步行 →';
 }
+function requestLandscape(){if(window.MFMobile)return MFMobile.requestLandscape();}
+const driveAxis={x:0,y:0};
+let driveStick=null;
+function resetDriveInput(){
+  driveAxis.x=driveAxis.y=0;
+  ['w','s','a','d'].forEach(k=>{keys[k]=false;if(WALK.active)delete WALK.keys[k];});
+  if(driveStick)driveStick.reset();
+}
+window.addEventListener('mf:orientationchange',resetDriveInput);
 function bindHold(id,key){
   const el=document.getElementById(id);if(!el)return;
-  const on=e=>{e.preventDefault();el.classList.add('act');
-    if(S.started&&!S.ended)keys[key]=true;};
-  const off=e=>{e.preventDefault();el.classList.remove('act');keys[key]=false;};
+  const target=()=>WALK.active?WALK.keys:keys;
+  const on=e=>{e.preventDefault();if(window.__mfOrientationBlocked)return;el.classList.add('act');
+    if(S.started&&!S.ended)target()[key]=true;try{el.setPointerCapture(e.pointerId);}catch(err){}};
+  const off=e=>{e.preventDefault();el.classList.remove('act');target()[key]=false;};
   el.addEventListener('pointerdown',on);
-  ['pointerup','pointercancel','pointerleave'].forEach(t=>el.addEventListener(t,off));
+  ['pointerup','pointercancel','lostpointercapture'].forEach(t=>el.addEventListener(t,off));
 }
 function bindTap(id,fn){
   const el=document.getElementById(id);if(!el)return;
-  el.addEventListener('pointerdown',e=>{e.preventDefault();
+  el.addEventListener('pointerdown',e=>{e.preventDefault();if(window.__mfOrientationBlocked)return;
     if(S.started&&!S.ended)fn();});
 }
 if(isTouch){
-  bindHold('tGas','w');bindHold('tBrake','s');
-  bindHold('tLeft','a');bindHold('tRight','d');
-  bindTap('tE',()=>{if(S.intro.active)introInteract();else tryPark();});
+  if(window.MFMobile)driveStick=MFMobile.createJoystick({element:document.getElementById('mfJoystick'),
+    enabled:()=>S.started&&!S.ended&&!S.intro.active&&!S.dozing&&!(WALK.active&&WALK.mode==='board'),
+    onChange:v=>{
+      driveAxis.x=v.x;driveAxis.y=v.y;
+      const target=WALK.active?WALK.keys:keys;
+      target.w=v.y<-.14;target.s=v.y>.14;target.a=v.x<-.14;target.d=v.x>.14;
+    }});
+  bindTap('tE',()=>{if(WALK.active){
+    if(WALK.mode==='free'&&walkAtDoor()&&WALK.boardHook)WALK.boardHook();
+    else if(WALK.mode==='free'){toast('请走到左侧驾驶门旁');walkLabel('走到小轿车左侧驾驶门，再点“上车”');}
+  }else if(S.intro.active)introInteract();else tryPark();});
   bindTap('tF',drinkCoffee);
-  /* 开场期间把"停"按钮当"上车"用 */
+  bindTap('tCam',()=>{S.camMode=S.camMode==='cockpit'?'chase':'cockpit';
+    toast(S.camMode==='cockpit'?'驾驶舱。':'车外镜头。');});
+  bindTap('tWiper',()=>{S.wiperOn=!S.wiperOn;toast(S.wiperOn?'雨刷 开。':'雨刷 关。');});
+  bindTap('tHorn',carHorn);
+  bindTap('tRadio',()=>{setStation((S.station+1)%4);toast('电台 '+STATIONS[S.station].name);});
+  bindHold('tWindow',' ');
 }
 
 /* 输入设置：设置页写入的 mf_input_v1 {sens,invY,invX,bob}，缺失时用默认值。
@@ -5329,7 +5351,6 @@ function lookByDelta(dx,dy){
   const s=inputCfg.sens;
   look.ty=Math.max(-Math.PI,Math.min(Math.PI,look.ty-dx*0.0026*s*(inputCfg.invX?-1:1)));
   look.tp=Math.max(-1.05,Math.min(0.80,look.tp-dy*0.0021*s*(inputCfg.invY?-1:1)));
-  look.px+=dx;look.py+=dy;
 }
 /* 追车镜头现场微调，页面内持续生效（不刷新）：
    lift = 相机高出车顶多少米（默认 1.0，落在要求的 0.9~1.1 区间；
@@ -5390,7 +5411,8 @@ canvas.addEventListener('pointerdown',e=>{
   if(!S.started||S.ended)return;
   /* v4.3：驾驶段点击先请求 Pointer Lock；拒绝则下面这套拖拽继续工作。 */
   if(document.pointerLockElement!==canvas)requestDriveLock();
-  look.drag=true;look.released=false;look.px=e.clientX;look.py=e.clientY;
+  const p=window.MFMobile?MFMobile.point(e):{x:e.clientX,y:e.clientY};
+  look.drag=true;look.released=false;look.px=p.x;look.py=p.y;
   canvas.classList.add('grabbing');
   try{if(canvas.setPointerCapture)canvas.setPointerCapture(e.pointerId);}catch(err){}
 });
@@ -5398,13 +5420,19 @@ canvas.addEventListener('pointerdown',e=>{
    增量都是连续的。锁定状态由下面的 document 级监听处理，避免同一帧转两次。 */
 canvas.addEventListener('pointermove',e=>{
   if(WALK.active){
-    if(WALK.drag&&!WALK.plock){const dx=e.movementX||0,dy=e.movementY||0;
-      if(dx||dy)walkLook(dx,dy);}
+    if(WALK.drag&&!WALK.plock&&e.isPrimary!==false){
+      const p=window.MFMobile?MFMobile.point(e):{x:e.clientX,y:e.clientY};
+      const dx=p.x-WALK.px,dy=p.y-WALK.py;
+      if(dx||dy){WALK.px=p.x;WALK.py=p.y;walkLook(dx,dy);}
+    }
     return;
   }
   if(look.plock)return;
   if(!look.drag)return;
-  lookByDelta(e.movementX||0,e.movementY||0);
+  const p=window.MFMobile?MFMobile.point(e):{x:e.clientX,y:e.clientY};
+  const dx=p.x-look.px,dy=p.y-look.py;
+  look.px=p.x;look.py=p.y;
+  lookByDelta(dx,dy);
 });
 /* 松手 / 失焦 / 指针捕获丢失都要结束拖拽，否则鼠标已经抬起，视角还在跟着动 */
 function endLookDrag(){
@@ -5433,7 +5461,8 @@ document.addEventListener('pointerlockchange',()=>{
   updateLockHint();
 });
 document.addEventListener('pointermove',e=>{
-  const dx=e.movementX||0,dy=e.movementY||0;
+  const m=window.MFMobile?MFMobile.motion(e):{x:e.movementX||0,y:e.movementY||0};
+  const dx=m.x,dy=m.y;
   if(!dx&&!dy)return;
   if(WALK.active){
     if(!WALK.plock||performance.now()<WALK.lockGrace)return;
@@ -5448,7 +5477,7 @@ document.addEventListener('pointermove',e=>{
 ['pointerup','pointercancel','lostpointercapture'].forEach(t=>window.addEventListener(t,()=>{
   if(!WALK.drag)return;WALK.drag=false;canvas.classList.remove('grabbing');
 }));
-window.addEventListener('blur',()=>{if(WALK.active){WALK.drag=false;WALK.keys={};canvas.classList.remove('grabbing');}});
+window.addEventListener('blur',()=>{resetDriveInput();endLookDrag();if(WALK.active){WALK.drag=false;canvas.classList.remove('grabbing');}});
 
 
 canvas.addEventListener('wheel',e=>{
@@ -5498,19 +5527,21 @@ let engineOn=false;   /* 步行/开场未点火时引擎静音，点火着车后
 let windGain=null,rumbleGain=null;
 let wiperCycle=-1;
 const audioLoopNodes=[];   /* v4.3：常驻循环源，结局统一 stop/disconnect */
+function audioOut(bus){return window.MFAudio?MFAudio.input(bus||'effects'):(actx&&actx.destination);}
 function initAudio(){
-  if(actx){if(actx.state==='suspended')actx.resume();return;}
+  if(actx){if(actx.state==='suspended')actx.resume().catch(()=>{});return;}
   /* 旧 AudioContext 已关闭时绝不复用：所有增益引用必须为 null 才能重建 */
   if(noiseGain||engGain||rainGain||tireGain||windGain||rumbleGain)stopAllAudio();
   try{
-    actx=new (window.AudioContext||window.webkitAudioContext)();
+    actx=window.MFAudio?MFAudio.init():new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended')actx.resume().catch(()=>{});
     const len=actx.sampleRate*2,buf=actx.createBuffer(1,len,actx.sampleRate);
     const d=buf.getChannelData(0);
     for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*0.35;
     const src=actx.createBufferSource();src.buffer=buf;src.loop=true;
     const lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;
     noiseGain=actx.createGain();noiseGain.gain.value=0.012;
-    src.connect(lp);lp.connect(noiseGain);noiseGain.connect(actx.destination);src.start();
+    src.connect(lp);lp.connect(noiseGain);noiseGain.connect(audioOut('ambience'));src.start();
     /* 引擎：锯齿打底，底下再垫一层低八度的三角波，过一只低通把毛刺磨掉 */
     engOsc=actx.createOscillator();engOsc.type='sawtooth';engOsc.frequency.value=52;
     engOsc2=actx.createOscillator();engOsc2.type='triangle';engOsc2.frequency.value=26;
@@ -5519,32 +5550,32 @@ function initAudio(){
     engLp.frequency.value=210;engLp.Q.value=0.8;
     engGain=actx.createGain();engGain.gain.value=0;
     engOsc.connect(engLp);engOsc2.connect(eng2g);eng2g.connect(engLp);
-    engLp.connect(engGain);engGain.connect(actx.destination);
+    engLp.connect(engGain);engGain.connect(audioOut('ambience'));
     engOsc.start();engOsc2.start();
     /* 雨声：同一段噪声换到 1.8 kHz 带通，雨大才抬起来 */
     const rsrc=actx.createBufferSource();rsrc.buffer=buf;rsrc.loop=true;
     const bp=actx.createBiquadFilter();bp.type='bandpass';
     bp.frequency.value=1800;bp.Q.value=0.6;
     rainGain=actx.createGain();rainGain.gain.value=0;
-    rsrc.connect(bp);bp.connect(rainGain);rainGain.connect(actx.destination);
+    rsrc.connect(bp);bp.connect(rainGain);rainGain.connect(audioOut('ambience'));
     rsrc.start();
     /* 胎噪：压在底下的低频滚动声，速度越快越响 */
     const tsrc=actx.createBufferSource();tsrc.buffer=buf;tsrc.loop=true;
     const tbp=actx.createBiquadFilter();tbp.type='bandpass';
     tbp.frequency.value=520;tbp.Q.value=0.5;
     tireGain=actx.createGain();tireGain.gain.value=0;
-    tsrc.connect(tbp);tbp.connect(tireGain);tireGain.connect(actx.destination);
+    tsrc.connect(tbp);tbp.connect(tireGain);tireGain.connect(audioOut('ambience'));
     tsrc.start();
     /* 开窗风声：带通噪声，开度越高、车越快越响（暗处也能“听出速度”） */
     const wsrc=actx.createBufferSource();wsrc.buffer=buf;wsrc.loop=true;
     const wbp=actx.createBiquadFilter();wbp.type='bandpass';wbp.frequency.value=780;wbp.Q.value=0.4;
     windGain=actx.createGain();windGain.gain.value=0;
-    wsrc.connect(wbp);wbp.connect(windGain);windGain.connect(actx.destination);wsrc.start();
+    wsrc.connect(wbp);wbp.connect(windGain);windGain.connect(audioOut('ambience'));wsrc.start();
     /* 低频路噪：路面传进底盘的闷响，随速度抬起，开窗时更明显 */
     const rsrc2=actx.createBufferSource();rsrc2.buffer=buf;rsrc2.loop=true;
     const rlp=actx.createBiquadFilter();rlp.type='lowpass';rlp.frequency.value=110;
     rumbleGain=actx.createGain();rumbleGain.gain.value=0;
-    rsrc2.connect(rlp);rlp.connect(rumbleGain);rumbleGain.connect(actx.destination);rsrc2.start();
+    rsrc2.connect(rlp);rlp.connect(rumbleGain);rumbleGain.connect(audioOut('ambience'));rsrc2.start();
     audioLoopNodes.push(src,engOsc,engOsc2,rsrc,tsrc,wsrc,rsrc2);
     wiperBuf=buf;
   }catch(e){}
@@ -5568,7 +5599,8 @@ function stopAllAudio(){
   actx=null;noiseGain=null;engOsc=null;engOsc2=null;engLp=null;engGain=null;
   rainGain=null;tireGain=null;windGain=null;rumbleGain=null;wiperBuf=null;
   engineOn=false;wiperCycle=-1;heartT=0;
-  if(old&&old.state!=='closed'){
+  if(window.MFAudio)MFAudio.shutdown();
+  else if(old&&old.state!=='closed'){
     try{const p=old.close();if(p&&p.catch)p.catch(()=>{});}catch(e){}
   }
 }
@@ -5601,7 +5633,7 @@ function wiperSqueak(){
   g.gain.setValueAtTime(0.0001,t);
   g.gain.exponentialRampToValueAtTime(0.045,t+0.03);
   g.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
-  src.connect(bp);bp.connect(g);g.connect(actx.destination);
+  src.connect(bp);bp.connect(g);g.connect(audioOut());
   src.start(t);src.stop(t+0.24);
 }
 function staticBurst(t){
@@ -5622,7 +5654,7 @@ function chime(base){
     g.gain.setValueAtTime(0.0001,t+dtv);
     g.gain.exponentialRampToValueAtTime(0.085,t+dtv+0.02);
     g.gain.exponentialRampToValueAtTime(0.0001,t+dtv+0.42);
-    o.connect(g);g.connect(actx.destination);
+    o.connect(g);g.connect(audioOut());
     o.start(t+dtv);o.stop(t+dtv+0.44);
   });
 }
@@ -5638,7 +5670,7 @@ function tone(freq,dur,type,vol,slideTo){
   g.gain.setValueAtTime(0.0001,t);
   g.gain.exponentialRampToValueAtTime(vol||0.08,t+0.015);
   g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+dur+0.02);
+  o.connect(g);g.connect(audioOut());o.start(t);o.stop(t+dur+0.02);
 }
 /* 撞击闷响：一次性的低频小音效 */function thud(){tone(90,0.22,'sine',0.16,45);}
 /* v4.5 测速快门：短促两声咔哒，配相机局部微闪，不再有全屏白闪 */
@@ -5660,7 +5692,7 @@ function carHorn(){
       g.gain.exponentialRampToValueAtTime(0.055,at+0.012);
       g.gain.setValueAtTime(0.055,at+dur-0.03);
       g.gain.exponentialRampToValueAtTime(0.0001,at+dur);
-      o.connect(g);g.connect(actx.destination);o.start(at);o.stop(at+dur+0.02);
+      o.connect(g);g.connect(audioOut());o.start(at);o.stop(at+dur+0.02);
     });
   }
   beep(t+0.02,392,494,0.16);
@@ -5670,8 +5702,8 @@ function carHorn(){
 function metalKnock(pan){
   if(!actx)return;
   const t=actx.currentTime,p=actx.createStereoPanner?actx.createStereoPanner():null;
-  if(p){p.pan.value=Math.max(-1,Math.min(1,pan==null?.9:pan));p.connect(actx.destination);}
-  const out=p||actx.destination;
+  if(p){p.pan.value=Math.max(-1,Math.min(1,pan==null?.9:pan));p.connect(audioOut());}
+  const out=p||audioOut();
   const len=Math.floor(actx.sampleRate*.085),buf=actx.createBuffer(1,len,actx.sampleRate),d=buf.getChannelData(0);
   for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
   const src=actx.createBufferSource();src.buffer=buf;
@@ -5721,7 +5753,7 @@ function heartbeatTick(dt,on){
   g.gain.setValueAtTime(0.0001,t);
   g.gain.linearRampToValueAtTime(0.17,t+0.02);
   g.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
-  o.connect(g);g.connect(actx.destination);
+  o.connect(g);g.connect(audioOut());
   o.start(t);o.stop(t+0.24);
 }
 
@@ -5740,7 +5772,7 @@ const rearCamHud=document.getElementById('rearCamHud');
 const rearCamCanvas=document.getElementById('rearCamCanvas');
 const rearCamCtx=rearCamCanvas.getContext('2d');
 let toastT=0,flashT=0,flashTint=0;
-let rearCamAcc=0;
+let rearCamAcc=0,hudAcc=0;
 
 /* ---- 不要停：极简拉力赛 HUD + 低速危险警告 ---- */
 const rArrowEl=document.getElementById('rArrow');
@@ -6098,6 +6130,7 @@ function loadWalkFrog(){
         const inv=bone.getWorldQuaternion(new THREE.Quaternion()).invert();
         W.poseBones.push({name,bone,q:bone.quaternion.clone(),rest:bone.quaternion.clone(),
           axis:new THREE.Vector3(1,0,0).applyQuaternion(inv),
+          turnAxis:new THREE.Vector3(0,1,0).applyQuaternion(inv),
           sideAxis:new THREE.Vector3(0,0,1).applyQuaternion(inv)});
       });
       W.frogState='ready';
@@ -6105,7 +6138,7 @@ function loadWalkFrog(){
     .catch(err=>{W.frogState='failed';console.error('[walk] 奶蛙模型加载失败，保留占位角色：',err);});
 }
 /* 每帧驱动角色姿态：先存上一帧四元数，update 设目标，再 slerp 平滑（移植 yard）。
-   pose='sit' 入座；boarding=腿部关键帧；openReach=拉门伸手臂。 */
+   pose='sit' 入座；boarding=全身上车关键帧；openReach=拉门伸手臂。 */
 function walkPose(dt,walking,pose,boarding,openReach){
   const W=WALK;if(!W.heroActor)return;
   W.poseBones.forEach(p=>p.q.copy(p.bone.quaternion));
@@ -6117,41 +6150,48 @@ function walkPose(dt,walking,pose,boarding,openReach){
     });
   }
   if(boarding){
-    /* 末帧内部 rig 偏移须与 sit 一致，避免入座瞬间身体跳动。 */
     W.heroActor.root.children[0].position.y=-1.5*0.13*boarding.settle;
     W.poseBones.forEach(p=>{
       const angle=boarding.angles[p.name];if(!angle)return;
       p.bone.quaternion.copy(p.rest)
         .multiply(new THREE.Quaternion().setFromAxisAngle(p.axis,angle[0]))
-        .multiply(new THREE.Quaternion().setFromAxisAngle(p.sideAxis,angle[1]));
+        .multiply(new THREE.Quaternion().setFromAxisAngle(p.turnAxis,angle[1]))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(p.sideAxis,angle[2]));
     });
   }
-  W.poseBones.forEach(p=>p.bone.quaternion.copy(p.q.slerp(p.bone.quaternion,1-Math.exp(-dt*14))));
+  W.poseBones.forEach(p=>p.bone.quaternion.copy(p.q.slerp(p.bone.quaternion,1-Math.exp(-dt*16))));
 }
-/* 上车腿部关键帧（移植 yard boardingKeys）：抬膝→跨门槛→收腿→坐稳 */
-const boardingKeys=[
-  {u:0,   l:[0,0,0,0],                r:[0,0,0,0],                lean:0},
-  {u:0.16,l:[1.06,-1.38,0.25,0.12],   r:[-0.18,-0.10,0.22,-0.18], lean:-0.14},
-  {u:0.34,l:[0.36,-0.42,0.06,0],      r:[0.28,-0.90,0.32,0.10],   lean:-0.22},
-  {u:0.52,l:[-0.10,-0.18,0.20,-0.16], r:[1.30,-1.52,0.34,0.16],   lean:-0.30},
-  {u:0.68,l:[1.05,-1.58,0.34,0.18],   r:[0.68,-0.70,0.02,0],      lean:-0.32},
-  {u:0.84,l:[1.52,-1.68,0.22,0.10],   r:[1.38,-1.36,0.03,0],      lean:-0.20},
-  {u:1,   l:[1.38,-1.32,0,0],         r:[1.38,-1.32,0,0],         lean:0}
+function boardPair(keys,u){
+  let i=1;while(i<keys.length-1&&u>keys[i][0])i++;
+  const a=keys[i-1],b=keys[i],t=walkSmooth((u-a[0])/(b[0]-a[0]));
+  return a.slice(1).map((v,j)=>v+(b[j+1]-v)*t);
+}
+/* 探身、左脚越门槛、髋部换重心、右脚入舱、收腿落座；腿姿为 大腿/膝/踝/脚尖/外展。 */
+const boardPoseKeys=[
+  {u:0,chest:[0,0,0],head:[0,-.16,0],ul:[0,0,-.06],ll:[.08,0,0],hl:[0,0,0],ur:[-.12,-.20,.08],lr:[.22,0,-.05],hr:[-.08,.08,0],l:[0,0,0,0,0],r:[0,0,0,0,0]},
+  {u:.10,chest:[-.06,-.12,-.04],head:[.10,-.30,0],ul:[-.12,.06,-.22],ll:[.46,0,-.08],hl:[.06,0,.10],ur:[.74,-.18,.14],lr:[.42,0,-.08],hr:[-.10,.12,0],l:[-.08,0,.12,-.04,-.03],r:[-.12,.03,.18,-.05,.03]},
+  {u:.26,chest:[-.28,-.16,-.08],head:[.22,-.12,.04],ul:[-.18,.08,-.26],ll:[.54,0,-.10],hl:[.08,0,.12],ur:[.46,.10,.24],lr:[.34,0,.12],hr:[-.08,.10,.06],l:[1.15,-1.42,.28,.12,.10],r:[-.16,.05,.20,-.06,-.04]},
+  {u:.38,chest:[-.34,-.28,-.12],head:[.28,-.20,.06],ul:[-.20,.10,-.28],ll:[.56,0,-.10],hl:[.08,0,.12],ur:[.42,.12,.25],lr:[.36,0,.12],hr:[-.08,.10,.06],l:[.40,-.55,.18,.06,.08],r:[-.18,.04,.24,-.06,-.04]},
+  {u:.52,chest:[-.30,.18,.14],head:[.20,-.08,-.06],ul:[-.12,.16,-.22],ll:[.48,0,-.08],hl:[.06,0,.10],ur:[.38,.20,.28],lr:[.40,0,.14],hr:[-.08,.12,.08],l:[.74,-1.06,.26,.12,-.10],r:[.16,-.18,.04,0,.06]},
+  {u:.66,chest:[-.24,.30,.10],head:[.22,.28,-.05],ul:[-.10,.20,-.18],ll:[.44,0,-.06],hl:[.06,0,.08],ur:[.44,.26,.30],lr:[.46,0,.16],hr:[-.08,.14,.10],l:[.90,-1.24,.28,.12,-.08],r:[1.34,-1.52,.34,.16,.14]},
+  {u:.80,chest:[-.14,.12,.04],head:[.12,.12,0],ul:[.16,.08,-.16],ll:[.42,0,-.04],hl:[.04,0,.06],ur:[.48,.14,.22],lr:[.48,0,.12],hr:[-.06,.10,.08],l:[1.18,-1.42,.22,.08,-.06],r:[.50,-.62,.18,.04,.10]},
+  {u:.90,chest:[0,0,0],head:[-.04,0,0],ul:[.54,.04,-.14],ll:[.56,0,-.08],hl:[-.04,0,.10],ur:[.54,-.04,.14],lr:[.56,0,.08],hr:[-.04,0,-.10],l:[1.38,-1.32,0,0,-.05],r:[1.38,-1.32,0,0,.05]},
+  {u:1,chest:[0,0,0],head:[-.04,0,0],ul:[.58,.04,-.14],ll:[.60,0,-.08],hl:[-.04,0,.10],ur:[.58,-.04,.14],lr:[.60,0,.08],hr:[-.04,0,-.10],l:[1.38,-1.32,0,0,-.05],r:[1.38,-1.32,0,0,.05]}
 ];
 function boardingPose(u){
-  let i=1;while(i<boardingKeys.length-1&&u>boardingKeys[i].u)i++;
-  const a=boardingKeys[i-1],b=boardingKeys[i],t=walkSmooth((u-a.u)/(b.u-a.u));
-  const settle=walkSmooth((u-0.76)/0.24),angles={};
+  let i=1;while(i<boardPoseKeys.length-1&&u>boardPoseKeys[i].u)i++;
+  const a=boardPoseKeys[i-1],b=boardPoseKeys[i],t=walkSmooth((u-a.u)/(b.u-a.u));
+  const mix=(x,y)=>x.map((v,j)=>v+(y[j]-v)*t),angles={};
   ['L','R'].forEach(side=>{
-    const leg=side==='L'?'l':'r';
-    ['Thigh','Shin','Foot','Toe'].forEach((name,j)=>{
-      angles[name+side]=[a[leg][j]+(b[leg][j]-a[leg][j])*t,name==='Thigh'?(side==='L'?-0.05:0.05)*settle:0];
-    });
-    angles['UpperArm'+side]=[0.26*settle,(side==='L'?-0.12:0.12)*settle];
-    angles['LowerArm'+side]=[0.38*settle,0];
+    const k=side==='L'?'l':'r',leg=mix(a[k],b[k]);
+    angles['Thigh'+side]=[leg[0],leg[4],side==='L'?-0.03:0.03];
+    angles['Shin'+side]=[leg[1],0,0];angles['Foot'+side]=[leg[2],0,0];angles['Toe'+side]=[leg[3],0,0];
+    angles['UpperArm'+side]=mix(a['u'+side.toLowerCase()],b['u'+side.toLowerCase()]);
+    angles['LowerArm'+side]=mix(a['l'+side.toLowerCase()],b['l'+side.toLowerCase()]);
+    angles['Hand'+side]=mix(a['h'+side.toLowerCase()],b['h'+side.toLowerCase()]);
   });
-  angles.Chest=[a.lean+(b.lean-a.lean)*t,0];angles.Head=[-0.10*Math.sin(u*Math.PI),0];
-  return {angles,settle};
+  angles.Chest=mix(a.chest,b.chest);angles.Head=mix(a.head,b.head);
+  return {angles,settle:walkSmooth((u-.72)/.28)};
 }
 function walkKeyDown(e){
   const key=e.key.toLowerCase();
@@ -6171,10 +6211,11 @@ function walkPointerDown(e){
   if(e.button!==0)return;
   if(WALK.mode==='board')return;   /* 过场不接受环视输入 */
   /* 点画面先尝试锁指针；锁不上就按住左键拖动环视（与工厂那套统一） */
-  if(document.pointerLockElement!==canvas){
+  if(!isTouch&&document.pointerLockElement!==canvas){
     try{const p=canvas.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(err){}
   }
-  WALK.drag=true;WALK.px=e.clientX;WALK.py=e.clientY;
+  const p=window.MFMobile?MFMobile.point(e):{x:e.clientX,y:e.clientY};
+  WALK.drag=true;WALK.px=p.x;WALK.py=p.y;
   canvas.classList.add('grabbing');
   try{if(canvas.setPointerCapture)canvas.setPointerCapture(e.pointerId);}catch(err){}
 }
@@ -6184,28 +6225,73 @@ function walkLook(dx,dy){
   WALK.ty-=dx*0.0024*s*(inputCfg.invX?-1:1);
   WALK.tp=Math.max(-0.18,Math.min(0.55,WALK.tp-dy*0.0014*s*(inputCfg.invY?-1:1)));
 }
-/* ===== E 拉门上车过场（移植 yard updateYard 的 approach→open→step→seat→close→black）=====
-   车恒在原点，故 yard 的 carWorld(v) 就是场景坐标 v。门锚点/时长与 yard 一致。 */
-const BOARD_DUR={approach:1.1,open:0.9,step:2.4,seat:1.2,close:0.9,black:0.3};
-const BOARD_DOOR={wait:new THREE.Vector3(-1.65,0,0.20),step:new THREE.Vector3(-1.65,0.34,-1.10),
-  seat:new THREE.Vector3(-0.44,0.34,-1.10),eye:new THREE.Vector3(-0.44,1.50,-1.13),
+/* ===== E 拉门上车过场：探身→左腿越门槛→拧髋→右腿入舱→落座 ===== */
+const BOARD_DUR={approach:1.15,open:1.05,step:3.6,seat:1.45,close:1.0,black:0.3};
+const BOARD_DOOR={wait:new THREE.Vector3(-1.65,0,0.20),
+  seat:new THREE.Vector3(DRIVER_X,0.34,DRIVER_Z),eye:new THREE.Vector3(DRIVER_X,DRIVER_EYE_Y,DRIVER_Z),
   handle:new THREE.Vector3(-0.96,1.02,-0.65)};
+const BOARD_PATH=new THREE.CatmullRomCurve3([
+  BOARD_DOOR.wait,new THREE.Vector3(-1.65,.02,.06),new THREE.Vector3(-1.52,.14,-.34),
+  new THREE.Vector3(-1.28,.26,-.86),new THREE.Vector3(-.90,.34,-.92),
+  new THREE.Vector3(-.69,.36,-.54),BOARD_DOOR.seat
+],false,'centripetal');
+const BOARD_TRAVEL=[[0,0],[.10,.08],[.36,.38],[.42,.42],[.62,.58],[.68,.64],[.90,.88],[1,1]];
+const BOARD_FACE=[[0,-.68],[.10,-.68],[.28,0],[.48,-.12],[.62,-.38],[.82,-.16],[1,0]];
+const BOARD_CAM=[
+  {u:0,x:-2.31,y:1.95,z:2.21,lx:-1.30,ly:1.05,lz:-.25},
+  {u:.12,x:-2.65,y:1.78,z:1.55,lx:-1.35,ly:1.02,lz:-.35},
+  {u:.32,x:-2.75,y:1.58,z:.65,lx:-1.30,ly:1.02,lz:-.65},
+  {u:.52,x:-2.65,y:1.50,z:-.45,lx:-.95,ly:1.03,lz:-.60},
+  {u:.72,x:-2.35,y:1.48,z:.10,lx:-.68,ly:1.04,lz:-.10},
+  {u:1,x:-1.65,y:1.50,z:-.15,lx:-.55,ly:1.00,lz:.15}
+];
+function boardRootAt(u){
+  const t=boardPair(BOARD_TRAVEL,u)[0];
+  return BOARD_PATH.getPoint(t);
+}
+function boardCameraAt(u){
+  let i=1;while(i<BOARD_CAM.length-1&&u>BOARD_CAM[i].u)i++;
+  const a=BOARD_CAM[i-1],b=BOARD_CAM[i],t=walkSmooth((u-a.u)/(b.u-a.u));
+  return {
+    pos:new THREE.Vector3(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t),
+    look:new THREE.Vector3(a.lx+(b.lx-a.lx)*t,a.ly+(b.ly-a.ly)*t,a.lz+(b.lz-a.lz)*t)
+  };
+}
 function boardDoor(){return objDriverDoor||driverDoor;}
 function boardAngle(){return objDriverDoor?OBJ_DOOR_ANGLE:-1.15;}
 function startBoarding(){
   const W=WALK;if(W.mode!=='free')return;
-  W.mode='board';W.boardPhase='approach';W.boardT=0;W.keys={};W.drag=false;
+  W.mode='board';W.boardPhase='approach';W.boardT=0;W.keys={};W.drag=false;resetDriveInput();
   W.boardFrom=new THREE.Vector3(W.player.x,W.player.y,W.player.z);
   W.boardCam=W.camPos.clone();W.boardLook=W.camLook.clone();
-  if(W.hero)W.hero.visible=true;
+  if(W.hero){W.hero.visible=true;walkHeroFade(1);}
   if(document.pointerLockElement===canvas){try{document.exitPointerLock();}catch(err){}}
   canvas.classList.remove('grabbing');
-  walkLabel('上车 1/5 · 靠近左侧门把手');
+  walkLabel('走近车门 · 探身握住把手');
+}
+function walkHeroFade(amount){
+  const W=WALK;if(!W.hero)return;
+  amount=Math.max(0,Math.min(1,amount));
+  W.hero.traverse(node=>{
+    if(!node.isMesh)return;
+    const materials=Array.isArray(node.material)?node.material:[node.material];
+    materials.forEach(mat=>{
+      if(mat.userData.boardBaseOpacity==null){
+        mat.userData.boardBaseOpacity=mat.opacity;
+        mat.userData.boardBaseTransparent=mat.transparent;
+        mat.userData.boardBaseDepthWrite=mat.depthWrite;
+      }
+      const transparent=amount<.999||mat.userData.boardBaseTransparent;
+      if(mat.transparent!==transparent){mat.transparent=transparent;mat.needsUpdate=true;}
+      mat.opacity=mat.userData.boardBaseOpacity*amount;
+      mat.depthWrite=amount<.999?false:mat.userData.boardBaseDepthWrite;
+    });
+  });
 }
 /* 过场结束：不跳转、不瞬移，内部接棒点火序列（intro phase4），dist 保持 0 从停车场开出 */
 function ignitionHandoff(){
   const W=WALK;
-  W.active=false;W.keys={};W.drag=false;W.mode='free';W.boardPhase='';W.boardT=0;
+  W.active=false;W.keys={};W.drag=false;W.mode='free';W.boardPhase='';W.boardT=0;resetDriveInput();
   if(W.hero)W.hero.visible=false;
   if(objDriverDoor)objDriverDoor.rotation.y=0;
   driverDoor.rotation.y=0;
@@ -6234,7 +6320,6 @@ function walkBoard(dt){
     p.x=v.x;p.y=v.y;p.z=v.z;
     if(u<0.75&&W.boardFrom.distanceTo(wait)>0.06)walkFaceToward(wait.x-W.boardFrom.x,wait.z-W.boardFrom.z,dt);
     else walkFaceToward(BOARD_DOOR.handle.x-BOARD_DOOR.wait.x,BOARD_DOOR.handle.z-BOARD_DOOR.wait.z,dt);
-    /* 镜头绕车外圆弧收近；半径下限保证不穿车壳，目标角保持在左侧门袋内不穿围墙 */
     const off=W.boardCam.clone(),a=Math.atan2(off.x,off.z),target=Math.atan2(-2.3,2.2);
     const turn=Math.atan2(Math.sin(target-a),Math.cos(target-a)),angle=a+turn*e;
     const safeR=Math.min((carHalfW+0.22)/Math.max(0.001,Math.abs(Math.sin(angle))),
@@ -6242,51 +6327,45 @@ function walkBoard(dt){
     const r=Math.max(safeR,Math.hypot(off.x,off.z)*(1-e)+3.2*e);
     W.camPos.set(Math.sin(angle)*r,W.boardCam.y+(1.95-W.boardCam.y)*e,Math.cos(angle)*r);
     W.camLook.lerpVectors(W.boardLook,new THREE.Vector3(-1.1,1.05,-0.8),e);
-    walkLabel('上车 1/5 · 靠近左侧门把手');
+    walkLabel('走近车门 · 探身握住把手');
     if(u>=0.999){W.boardPhase='open';W.boardT=0;tone(420,0.1,'square',0.04,260);}
   }else if(W.boardPhase==='open'){
     walkFaceToward(BOARD_DOOR.handle.x-BOARD_DOOR.wait.x,BOARD_DOOR.handle.z-BOARD_DOOR.wait.z,dt);
-    /* 手先伸到把手（前 0.2s 到位），门从 u=0.2 才跟着转 */
-    door.rotation.y=ang*walkSmooth((u-0.2)/0.8);
-    openReach=walkSmooth(W.boardT/0.2)*(1-walkSmooth((W.boardT-0.55)/0.30));
-    walkLabel('上车 2/5 · 拉开驾驶门');
-    if(W.boardT-dt<0.18&&W.boardT>=0.18)thud();
+    door.rotation.y=ang*walkSmooth((u-0.22)/0.60);
+    openReach=walkSmooth(W.boardT/0.22)*(1-walkSmooth((W.boardT-0.68)/0.22));
+    walkLabel('拉开车门 · 左手扶住门框');
+    if(W.boardT-dt<0.24&&W.boardT>=0.24)thud();
     if(u>=0.999){W.boardPhase='step';W.boardT=0;}
   }else if(W.boardPhase==='step'){
-    const wait=BOARD_DOOR.wait,step=BOARD_DOOR.step,seat=BOARD_DOOR.seat;
-    const v=u<0.42?new THREE.Vector3().lerpVectors(wait,step,walkSmooth(u/0.42)):
-      new THREE.Vector3().lerpVectors(step,seat,walkSmooth((u-0.42)/0.48));
-    if(u<0.42)v.y=wait.y+(step.y-wait.y)*walkSmooth((u-0.16)/0.26);
-    p.x=v.x;p.y=v.y;p.z=v.z;
-    const forward=u<0.30||u>0.82;walkFaceToward(forward?0:1,forward?-1:0,dt);
+    const v=boardRootAt(u),shot=boardCameraAt(u);
+    p.x=v.x;p.y=v.y;p.z=v.z;p.face=boardPair(BOARD_FACE,u)[0];
+    W.camPos.copy(shot.pos);W.camLook.copy(shot.look);
     boarding=boardingPose(u);
-    [0.34,0.64].forEach(c=>{if(W.boardT-dt<BOARD_DUR.step*c&&W.boardT>=BOARD_DUR.step*c)walkStepSound();});
-    if(W.hero)W.hero.visible=u<0.97;
-    walkLabel('上车 3/5 · '+(u<0.34?'左脚抬膝落脚':u<0.60?'右脚跨过门槛':u<0.84?'收进左腿，俯身进舱':'双脚落稳，坐进驾驶座'));
+    [0.38,0.68].forEach(c=>{if(W.boardT-dt<BOARD_DUR.step*c&&W.boardT>=BOARD_DUR.step*c)walkStepSound();});
+    if(W.hero)W.hero.visible=true;
+    walkLabel(u<.20?'探身稳住重心':u<.42?'左脚抬起 · 越过门槛':u<.62?'拧腰换重心 · 右脚跨进车厢':u<.82?'收起右腿 · 双脚落稳':'俯身落座 · 手扶方向盘');
     if(u>=0.999){W.boardCam=W.camPos.clone();W.boardLook=W.camLook.clone();W.boardPhase='seat';W.boardT=0;}
   }else if(W.boardPhase==='seat'){
-    pose='sit';walkFaceToward(0,-1,dt);
-    const outside=new THREE.Vector3(-1.28,1.53,-1.10),eye=BOARD_DOOR.eye;
-    /* 第一只脚跨过门槛后才挪机位：前 0.25 保持车外视角，别提前钻进车壳 */
+    if(u<.66){boarding=boardingPose(1);walkHeroFade(1-walkSmooth((u-.68)/.18));}
+    else pose='sit';
+    p.face=0;
+    const outside=new THREE.Vector3(-1.45,1.48,-.15),eye=BOARD_DOOR.eye;
     if(u<0.25)W.camPos.copy(W.boardCam);
     else if(u<0.66)W.camPos.lerpVectors(W.boardCam,outside,walkSmooth((u-0.25)/0.41));
     else W.camPos.lerpVectors(outside,eye,walkSmooth((u-0.66)/0.34));
     W.camLook.lerpVectors(W.boardLook,new THREE.Vector3(-1.8,1.2,-1.7),walkSmooth((u-0.25)/0.75));
-    /* 机位贴近后淡出角色即可；黑场推迟到 close 末尾，不在 seat 阶段吞动作 */
-    if(W.hero)W.hero.visible=false;
-    walkLabel('上车 4/5 · 坐进驾驶位');
+    if(W.hero)W.hero.visible=u<0.87;
+    walkLabel('坐稳驾驶位 · 镜头移入车厢');
     if(u>=0.999){W.boardLook=W.camLook.clone();W.boardPhase='close';W.boardT=0;}
   }else if(W.boardPhase==='close'){
     pose='sit';
-    /* 门在 u=0.15~0.70 关上；镜头前半仍盯着门，后半才转向前方 */
     door.rotation.y=ang*(1-walkSmooth((u-0.15)/0.55));
     W.camPos.copy(BOARD_DOOR.eye);
     const lookDoor=new THREE.Vector3(-1.8,1.2,-1.7);
     if(u<0.5)W.camLook.lerpVectors(W.boardLook,lookDoor,walkSmooth(u/0.5));
-    else W.camLook.lerpVectors(lookDoor,new THREE.Vector3(-0.44,1.42,-8),walkSmooth((u-0.5)/0.5));
-    /* 黑场只在最后 0.15 段淡入 + black 0.3s：黑场总量 ≈0.3s，不吞关门动作 */
+    else W.camLook.lerpVectors(lookDoor,new THREE.Vector3(DRIVER_X,1.42,-8),walkSmooth((u-0.5)/0.5));
     if(u>0.85){fadeInEl.style.display='block';fadeInEl.style.opacity=String(walkSmooth((u-0.85)/0.15));}
-    walkLabel('上车 5/5 · 关好车门');
+    walkLabel('关好车门 · 准备出发');
     if(u>=0.999){thud();W.boardPhase='black';W.boardT=0;}
   }else if(W.boardPhase==='black'){
     pose='sit';fadeInEl.style.display='block';fadeInEl.style.opacity='1';
@@ -6312,7 +6391,7 @@ function walkUpdate(dt){
     W.camLook.lerp(new THREE.Vector3(p.x,1.1,p.z),1-Math.exp(-dt*6));
     walkLabel('夜班结束 · 走出员工出口');
     if(W.t>=dur){W.mode='free';W.t=0;p.y=0;
-      walkLabel('WASD 移动 · 鼠标环视 · 走到小轿车左侧驾驶门按 E');}
+      walkLabel(isTouch?'左侧摇杆移动 · 拖动画面环视 · 到左侧驾驶门点“上车”':'WASD 移动 · 鼠标环视 · 走到小轿车左侧驾驶门按 E');}
   }else if(W.mode==='free'){
     const fx=-Math.sin(W.yaw),fz=-Math.cos(W.yaw);
     let mx=0,mz=0;const k=W.keys;
@@ -6325,7 +6404,7 @@ function walkUpdate(dt){
     walking=Math.hypot(p.x-ox,p.z-oz)>1e-4;
     if(walking){W.stepClock+=dt;if(W.stepClock>=0.46){W.stepClock=0;walkStepSound();}}
     else W.stepClock=0;
-    walkLabel(walkAtDoor()?'左侧驾驶门 · E 拉开车门并入座':'WASD 移动 · 鼠标环视 · 到小轿车左侧驾驶门按 E');
+    walkLabel(walkAtDoor()?(isTouch?'左侧驾驶门 · 点“上车”拉开车门并入座':'左侧驾驶门 · E 拉开车门并入座'):(isTouch?'左侧摇杆移动 · 拖动画面环视 · 到左侧驾驶门点“上车”':'WASD 移动 · 鼠标环视 · 到小轿车左侧驾驶门按 E'));
     W.camPos.lerp(walkCamTarget(dt),1-Math.exp(-dt*5));
     W.camLook.lerp(new THREE.Vector3(p.x,1.1,p.z),1-Math.exp(-dt*7));
   }
@@ -6343,7 +6422,7 @@ function walkStepSound(){
   noise.buffer=buf;filter.type='lowpass';filter.frequency.value=650;
   gain.gain.setValueAtTime(0.0001,now);gain.gain.exponentialRampToValueAtTime(0.05,now+0.012);
   gain.gain.exponentialRampToValueAtTime(0.0001,now+dur);
-  noise.connect(filter);filter.connect(gain);gain.connect(actx.destination);
+  noise.connect(filter);filter.connect(gain);gain.connect(audioOut());
   noise.start(now);noise.stop(now+dur);
   noise.onended=()=>{noise.disconnect();filter.disconnect();gain.disconnect();};
 }
@@ -6351,12 +6430,12 @@ function startWalking(){
   if(S.started)return;
   const W=WALK;
   engineOn=false;
-  W.active=true;W.mode='exit';W.t=0;W.keys={};W.stepClock=0;
+  W.active=true;W.mode='exit';W.t=0;W.keys={};W.stepClock=0;resetDriveInput();
   W.player.x=0.40;W.player.y=0.12;W.player.z=17.8;W.player.face=0;
   W.yaw=W.ty=0;W.pitch=W.tp=0.16;
   W.camPos.set(0.40,2.3,22.4);W.camLook.set(0.40,1.1,17.8);W.camOcclude=1;
   S.started=true;S.startTime=performance.now();S.speed=0;S.dist=0;S.lateral=0;S.psi=0;S.autoT=0;
-  S.intro.active=false;
+  S.intro.active=false;document.getElementById('mfJoystick').classList.add('on');
   updateLockHint();
   buildWalkHero();
   WALK.hero.visible=true;
@@ -6379,7 +6458,7 @@ function loop(now){
   requestAnimationFrame(loop);
   loopFrames++;
   const dt=Math.min(0.05,(now-last)/1000);last=now;
-  if(S.started&&!S.ended&&!dbgPause){
+  if(S.started&&!S.ended&&!dbgPause&&!window.__mfOrientationBlocked){
     /* 开场：世界照常按桩号布置(奶罐车/灯箱/厂区就位)、车速锁 0，
        随后相机由开场序列覆盖；开场结束自然交还给 update。 */
     update(dt);
@@ -6780,10 +6859,10 @@ function update(dt){
   }else{
     /* 驾驶舱：与追车共用同一套水平/垂直观察输入；机位固定在驾驶位头部，
        不随环视平移，因此不会穿入仪表台/门板/座椅（头部净空见座舱几何）。 */
-    camera.position.set(DRIVER_X+shakeX,1.26+S.bob+shakeY,0.22);
+    camera.position.set(DRIVER_X+shakeX,DRIVER_EYE_Y+S.bob+shakeY,DRIVER_Z);
     camera.rotation.y=look.yaw+S.camLagYaw;
-    /* 视线略低、略向下：仪表台和方向盘稳稳占住画面下方约 1/3 */
-    camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85-0.035;
+    /* 默认保持水平视线，不强行下压；仪表与方向盘自然落在画面下方。 */
+    camera.rotation.x=look.pitch+nod+nodBrake+S.accS*0.0045+grade*0.85;
     /* 车身侧倾：接触力矩给一记独立脉冲，和转向侧倾分开衰减 */
     camera.rotation.z=S.rollVis*0.0095+sway+Math.sin(tnow*39)*buzz*0.25
       +S.rollImpact*0.55+Math.sin(tnow*53)*hitShake*0.018;
@@ -6898,18 +6977,7 @@ function update(dt){
     placeRoad(b,S.dist-b.userData.z,b.userData.lat,0);});
   farBlds.forEach(b=>{b.userData.z+=scroll;if(b.userData.z>30)b.userData.z-=FAR_SPAN;
     placeRoad(b,S.dist-b.userData.z,b.userData.lat,0);});
-  /* 恐怖节拍①：前方某栋楼整面窗突然全黑半秒，再恢复。不闪红、不出声，
-     只是"刚才还亮着的那几户，没了"。每 23 s 一次，只挑车前 60–120 m 的楼。 */
-  blackT-=dt;
-  if(blackT<=0){
-    blackT=23;blackHold=0.5;
-    blackPick=null;
-    for(const b of blds){const ahead=b.userData.z;
-      if(ahead<-60&&ahead>-120){blackPick=b;break;}}
-    if(blackPick)blackPick.userData.box.material=bldDarkMat;
-  }
-  if(blackHold>0){blackHold-=dt;
-    if(blackHold<=0&&blackPick){blackPick.userData.box.material=blackPick.userData.mat;blackPick=null;}}
+  /* 建筑窗光保持稳定；远景闪烁由 mipmap 与空间抖动抑制，不再整面突然熄灭。 */
   signs.forEach(g=>{g.userData.z+=scroll;if(g.userData.z>12)g.userData.z-=SIGN_SPAN;
     placeRoad(g,S.dist-g.userData.z,0,0);});
   /* ---- 稀疏车流渲染 ----
@@ -6971,10 +7039,9 @@ function update(dt){
   placeRoad(yardLot,LOT_S,0,0);
   yardLot.visible=S.dist<120;
   if(yardLot.visible){
-    const tt=performance.now()*0.001;
     yardLot.userData.tubes.forEach(tb=>{
       if(tb.st!==2)return;
-      const f=(Math.sin(tt*6.1+tb.ph)+Math.sin(tt*11.7+tb.ph*2))>1.2?0.1:1;
+      const f=1;
       tb.tube.material.color.setRGB(f,f*0.88,f*0.69);
       tb.sp.material.opacity=0.34*f;
     });
@@ -6986,10 +7053,10 @@ function update(dt){
   placeRoad(gateNarrow,GATE_S,0,0);
   gateNarrow.visible=S.dist<170;
   if(gateNarrow.visible&&gateNarrow.userData.pumpLamp)
-    gateNarrow.userData.pumpLamp.material.opacity=0.28+0.22*(Math.sin(tnow*2.6)>0?1:0.2);
+    gateNarrow.userData.pumpLamp.material.opacity=0.42;
   /* C 段连接路：废弃公交站的灯管独自闪，站旁人形阴影淡入淡出 */
   if(cBus.visible){
-    const f=(Math.sin(tnow*5.7)+Math.sin(tnow*13.1+0.8))>1.15?0.08:1;
+    const f=1;
     cBus.userData.busTube.material.color.setRGB(f,f*0.88,f*0.69);
     cBus.userData.busSp.material.opacity=0.4*f;
     const shK=(S.dist>118&&S.dist<158)?0.30*(0.5+0.5*Math.sin(tnow*0.7)):0;
@@ -7002,7 +7069,7 @@ function update(dt){
   overpass.visible=S.dist>300&&S.dist<660;
   if(overpass.visible){
     const sl=overpass.userData.stackLamp;
-    sl.material.opacity=0.45+0.35*(Math.sin(tnow*2.2)>0?1:-1);
+    sl.material.opacity=0.55;
     overpass.userData.smoke.position.y=29+Math.sin(tnow*0.6)*1.2;
   }
   /* 荧光图腾异常：在车灯扫过时亮起（保留"不对劲"氛围，猫事件已删除） */
@@ -7010,13 +7077,13 @@ function update(dt){
   oddZone.visible=S.dist>930&&S.dist<1075;
   if(oddZone.visible){
     const near=Math.max(0,1-Math.abs(S.dist-1005)/70);
-    oddZone.userData.totem.material.opacity=0.18+0.55*near*(0.75+0.25*Math.sin(tnow*3));
+    oddZone.userData.totem.material.opacity=0.18+0.55*near;
   }
   /* 施工区：右侧车道被雪糕筒吃了 */
   placeRoad(works,450,0,0);
   works.visible=S.dist>330&&S.dist<530;
   if(works.visible){
-    works.userData.lamp.material.opacity=Math.sin(performance.now()*0.006)>0?0.85:0.2;
+    works.userData.lamp.material.opacity=0.55;
     /* 旧施工区路锥判定整体下线：那段锥子根本不显示，却会偷偷 speed*=0.55。
        现在所有可见轻障碍走 rallyProps 路锥的动态盒：轻质量、可撞飞、连续结算。 */
   }
@@ -7119,10 +7186,7 @@ function update(dt){
   }else{
     hemi.intensity=0.36;scene.fog.density=0.0140;
   }
-  /* 车灯体积光：雨里最明显，光锥里的雨丝一起提亮 */
-  const beamOn=S.rain?1:Math.min(1,S.wet*0.5);
-  beamCones.forEach(m=>{m.visible=!noBeam&&beamOn>0.02;
-    m.material.opacity=0.05+0.26*beamOn;});
+  /* 车灯光晕里的雨丝只在雨天显示 */
   spray.visible=!noBeam&&!!S.rain;
   if(spray.visible){
     const pa=sprayGeo.attributes.position.array;
@@ -7165,7 +7229,10 @@ function update(dt){
   }
   wetPlane.material.opacity=Math.min(0.52,S.wet*0.54)*glassPulse;
   wetPlane.visible=S.wet>0.02;
-  if(wetPlane.visible)drawDrops(dt);
+  if(wetPlane.visible){
+    dropT+=dt;
+    if(dropT>=1/30){drawDrops(dropT);dropT=0;}
+  }
   updateBlood(dt);
   /* 镜头雨滴：雨里慢慢挂上，雨停后逐渐干；10 Hz 重画就够 */
   lens.material.opacity+=((S.rain?0.44:0)-lens.material.opacity)*Math.min(1,dt*(S.rain?2.2:0.5));
@@ -7256,14 +7323,12 @@ function update(dt){
   lineTimer+=dt;
   if(lineTimer>8){lineTimer=0;lineIdx++;
     if(S.dist>1050&&Math.random()<0.5)setStation((S.station+1+((Math.random()*3)|0))%4);}
-  radioLineEl=document.getElementById('hRadioLine');
   if(radioLineEl){
-    if(S.radioSayT>0){S.radioSayT-=dt;radioLineEl.textContent=S.radioSayText;}
-    else{
-      const st=STATIONS[S.station];
-      const rainLine=S.rain&&st.rain?st.rain:null;
-      radioLineEl.textContent=rainLine&&lineIdx%2?rainLine:st.lines[lineIdx%st.lines.length];
-    }
+    if(S.radioSayT>0)S.radioSayT-=dt;
+    const st=STATIONS[S.station];
+    const rainLine=S.rain&&st.rain?st.rain:null;
+    const line=S.radioSayT>0?S.radioSayText:(rainLine&&lineIdx%2?rainLine:st.lines[lineIdx%st.lines.length]);
+    if(radioLineEl.textContent!==line)radioLineEl.textContent=line;
   }
   /* 困到睡着：第一次按键唤醒（黑屏暂停），normal 第二次才结束；醒后 8 秒内不重复 */
   if(!S.dozing&&!WALK.active&&S.dozeProtectT<=0&&S.drowsy>=100&&!S.ended){dozeOff();}
@@ -7301,44 +7366,55 @@ function update(dt){
       return;
     }
   }
-  /* HUD — 极简拉力赛：右上箭头/计时，右下像素速度 */
-  updateRallyHud(dt);
-  elDist.textContent='距终点 '+(Math.max(0,(FINISH_S-S.dist))/1000).toFixed(2)+' km / 1.59 km';
-  /* 终点引导 HUD：150 m / 100 m / 60 m / 冲线 四段式，独立于被隐藏的旧 #hGuide */
-  if(elFinishGuide){
-    let fg='',fs='';
-    if(!S.ended&&!S.intro.active){
-      const toFin=FINISH_S-S.dist;
-      if(toFin<=18){fg='冲 线';fs='保持方向 · 穿过终点线';}
-      else if(toFin<=60){fg='前方终点';fs='直接冲线即可完成';}
-      else if(toFin<=100){fg='终点 100 m';fs='保持车道 · 准备冲线';}
-      else if(toFin<=150){fg='CHECKPOINT';fs='终点 150 m';}
+  /* HUD — 极简拉力赛：右上箭头/计时，右下像素速度；文字与样式 20 Hz 更新 */
+  hudAcc+=dt;
+  if(hudAcc>=0.05){
+    const hudDt=hudAcc;hudAcc=0;
+    updateRallyHud(hudDt);
+    elDist.textContent='距终点 '+(Math.max(0,(FINISH_S-S.dist))/1000).toFixed(2)+' km / 1.59 km';
+    if(elFinishGuide){
+      let fg='',fs='';
+      if(!S.ended&&!S.intro.active){
+        const toFin=FINISH_S-S.dist;
+        if(toFin<=18){fg='冲 线';fs='保持方向 · 穿过终点线';}
+        else if(toFin<=60){fg='前方终点';fs='直接冲线即可完成';}
+        else if(toFin<=100){fg='终点 100 m';fs='保持车道 · 准备冲线';}
+        else if(toFin<=150){fg='CHECKPOINT';fs='终点 150 m';}
+      }
+      const key=fg+'|'+fs;
+      if(elFinishGuide.dataset.key!==key){
+        elFinishGuide.dataset.key=key;
+        if(fg)elFinishGuide.innerHTML=fg+'<small>'+fs+'</small>';
+      }
+      elFinishGuide.classList.toggle('on',!!fg);
     }
-    if(fg){
-      elFinishGuide.innerHTML=fg+'<small>'+fs+'</small>';
-      elFinishGuide.classList.add('on');
-    }else elFinishGuide.classList.remove('on');
+    elSpeed.textContent=S.reverse?'R 倒车':Math.round(S.speed*3.6)+' km/h';
+    elDrow.firstChild.textContent='困意 '+Math.round(S.drowsy)+'%';
+    const dv=Math.min(1,Math.max(0,(S.drowsy-58)/46));
+    vig.style.opacity=(dv*0.9).toFixed(3);
+    const ld=Math.min(1,Math.max(0,(S.drowsy-45)/55));
+    lid.style.opacity=ld.toFixed(3);
+    viewEl.style.filter=dv>0.02?'blur('+(dv*2.0).toFixed(2)+'px)':'';
+    elFill.style.width=Math.min(100,S.drowsy)+'%';
+    elFill.style.background=S.drowsy>75?'#c9564a':(S.drowsy>50?'#d8b84a':'#cfe3a0');
   }
-  elSpeed.textContent=S.reverse?'R 倒车':Math.round(S.speed*3.6)+' km/h';
-  elDrow.firstChild.textContent='困意 '+Math.round(S.drowsy)+'%';
-  const dv=Math.min(1,Math.max(0,(S.drowsy-58)/46));
-  vig.style.opacity=(dv*0.9).toFixed(3);
-  const ld=Math.min(1,Math.max(0,(S.drowsy-45)/55));
-  lid.style.opacity=ld.toFixed(3);
-  viewEl.style.filter=dv>0.02?'blur('+(dv*2.0).toFixed(2)+'px)':'';
-  elFill.style.width=Math.min(100,S.drowsy)+'%';
-  elFill.style.background=S.drowsy>75?'#c9564a':(S.drowsy>50?'#d8b84a':'#cfe3a0');
   if(flashT>0)flashT-=dt;
   if(flashT>0)flashEl.style.background=flashTint?'#c01d12':'#fff';
   flashEl.style.opacity=flashT>0?Math.min(1,flashT*2.4).toFixed(2):'0';
   if(isTouch){
     const tE=document.getElementById('tE');
-    if(S.intro.active){
+    if(WALK.active){
+      document.body.classList.add('mf-walking');
+      tE.textContent='上车';tE.style.display='block';
+      document.getElementById('tF').style.display='none';
+    }else if(S.intro.active){
+      document.body.classList.remove('mf-walking');
       /* 开场：右下角按钮变成"上车"，跟唯一交互提示一致 */
       tE.textContent=S.intro.phase===2?'上车':'跳过';
       tE.style.display='block';
       document.getElementById('tF').style.display='none';
     }else{
+      document.body.classList.remove('mf-walking');
       const inGas=!S.gasStop&&inWin('gas',S.dist);
       const inBbq=!S.bbq&&inWin('bbq',S.dist);
       const inPark=false;   /* 终点改为冲线自动结算，不再需要按 E 停车 */
@@ -7382,13 +7458,15 @@ function update(dt){
   updateForestEnding(dt);
   updateRoadsideCapture(dt);
 }
-/* 内后视镜单独走一遍 RT：~30 Hz，中间帧直接复用上一张倒影 */
-let mirrorT=-1e9;
+/* 内后视镜与辉光分开节流：镜面 20 Hz，辉光 30 Hz，中间帧复用上一张结果 */
+let mirrorT=-1e9,bloomT=-1e9;
 function renderMirror(){
+  const needed=S.started&&!S.ended&&((S.camMode==='cockpit'&&!WALK.active&&!S.intro.active)||chaseRearFrame.visible);
+  if(!needed)return;
   mirrorMesh.visible=false;
   /* 座舱视角里，低速危险或追得很近时黑影才在镜中显形；正常行驶只有雾和路 */
   const gk=(S.chaserOn&&!S.ended&&S.camMode==='cockpit')
-    ?Math.max(S.chaserEye,Math.max(0,Math.min(1,(34-S.chaserGap)/24))*0.85):0;
+    ?Math.min(1,Math.max(S.chaserEye,Math.max(0,Math.min(1,(34-S.chaserGap)/24))*0.85)):0;
   mirrorGhostMat.opacity=gk*0.94;
   mirrorGhostLamps.forEach(m=>{m.material.opacity=gk*0.9;});
   mirrorGhostGrp.visible=gk>0.02;
@@ -7497,8 +7575,8 @@ const compMat=new THREE.ShaderMaterial({
     '  c*=vig;',
     '  c=max(c-vec3(0.008,0.008,0.006),vec3(0.0));',
     /* 低质量录像噪点 + 扫描线，压得很轻，不能盖住路面 */
-    '  float grain=fract(sin(dot(gl_FragCoord.xy+uTime*vec2(17.1,31.7),vec2(12.9898,78.233)))*43758.5453)-0.5;',
-    '  c+=grain*0.026;',
+    '  float grain=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-0.5;',
+    '  c+=grain*0.012;',
     '  c*=0.985+0.015*step(1.0,mod(gl_FragCoord.y,2.0));',
     '  c=clamp(c,0.0,1.0);',
     /* 二次量化，保证最终输出严格落在 15-bit 色阶上（抖动之后的偏色也要回到格点） */
@@ -7517,17 +7595,20 @@ function render(dt){
   hideCity();
   updateStoryScene();
   compMat.uniforms.uGlitch.value=Math.min(1,(S.glitchT||0)*2.4);
-  if(now-mirrorT>=33){mirrorT=now;renderMirror();}
+  if(S.started&&now-mirrorT>=50){mirrorT=now;renderMirror();}
   renderer.setRenderTarget(rtScene);
   renderer.render(scene,camera);
-  brightMat.uniforms.tDiffuse.value=rtScene.texture;
-  postPass(brightMat,rtBloomA);
-  blurMat.uniforms.tDiffuse.value=rtBloomA.texture;
-  blurMat.uniforms.uDir.value.set(1,0);
-  postPass(blurMat,rtBloomB);
-  blurMat.uniforms.tDiffuse.value=rtBloomB.texture;
-  blurMat.uniforms.uDir.value.set(0,1);
-  postPass(blurMat,rtBloomA);
+  if(now-bloomT>=33){
+    bloomT=now;
+    brightMat.uniforms.tDiffuse.value=rtScene.texture;
+    postPass(brightMat,rtBloomA);
+    blurMat.uniforms.tDiffuse.value=rtBloomA.texture;
+    blurMat.uniforms.uDir.value.set(1,0);
+    postPass(blurMat,rtBloomB);
+    blurMat.uniforms.tDiffuse.value=rtBloomB.texture;
+    blurMat.uniforms.uDir.value.set(0,1);
+    postPass(blurMat,rtBloomA);
+  }
   compMat.uniforms.tScene.value=rtScene.texture;
   compMat.uniforms.tBloom.value=rtBloomA.texture;
   compMat.uniforms.uTime.value=now*0.001;
@@ -7556,10 +7637,10 @@ const INTRO_CAM={
      z≈−2.3…5.7 无车），否则会站进墙里或穿过停放车辆。 */
   start :new THREE.Vector3(-2.45,1.55,5.0),
   door  :new THREE.Vector3(-2.45,1.38,0.60),  /* 车门左侧 1.5 m，仍在空口袋里 */
-  seat  :new THREE.Vector3(DRIVER_X,1.26,0.22),/* 驾驶位 */
+  seat  :new THREE.Vector3(DRIVER_X,DRIVER_EYE_Y,DRIVER_Z),/* 与 yard.html 一致的驾驶位 */
   lookGate:new THREE.Vector3(-0.6,1.42,-10.0),/* 停车场出口：车棚、奶罐车、窄门一起入画 */
   lookDoor:new THREE.Vector3(-1.16,1.06,0.02),/* 门把手 */
-  lookFwd :new THREE.Vector3(DRIVER_X,1.25,-34)/* 坐稳后朝前 */
+  lookFwd :new THREE.Vector3(DRIVER_X,DRIVER_EYE_Y,-34)/* 坐稳后水平朝前 */
 };
 const lerp=(a,b,t)=>a+(b-a)*t;
 const smooth=t=>t<0?0:t>1?1:t*t*(3-2*t);
@@ -7635,10 +7716,11 @@ function finishIntro(fromIgnition){
   I.active=false;I.phase=5;
   engineOn=true;
   applyCarAppearance();driverDoor.rotation.y=0;
+  if(objDriverDoor)objDriverDoor.rotation.y=0;
   doorHandleGlow.material.opacity=0;
   introHintEl.classList.remove('on');introSkipEl.classList.remove('on');
   camera.rotation.order='YXZ';look.yaw=0;look.ty=0;look.pitch=0;look.tp=0;
-  camera.position.set(DRIVER_X,1.26,0.22);
+  camera.position.set(DRIVER_X,DRIVER_EYE_Y,DRIVER_Z);
   hud.classList.add('on');
   updateLockHint();   /* 驾驶已就绪：给出“点击锁定鼠标环视”提示 */
   /* 坐稳反馈：安全带扣合 + 仪表自检 + 车机点亮 + 开局广播 */
@@ -7687,11 +7769,11 @@ function applyIntroCam(dt){
           lz=lerp(C.lookDoor.z,C.lookFwd.z,u);
     facePoint(camera,lx,ly,lz);
     applyCarAppearance();
-    /* 主角车的前门是画在贴图上的，没有可转的门网格；
-       所以这一段不再演"拉门"，改成贴着驾驶侧往车窗里一镜入座。
-       程序化车壳有独立前门，保留原来的拉门动作作为回退。 */
-    if(carModelOK)carModel.visible=u<0.92;
-    else driverDoor.rotation.y=-1.15*u;
+    /* OBJ 车有独立驾驶门，镜头靠近时开门；GLB/回退车壳仍按原逻辑处理。 */
+    if(carModelOK){
+      carModel.visible=u<0.92;
+      if(objDriverDoor)objDriverDoor.rotation.y=OBJ_DOOR_ANGLE*smooth(u);
+    }else driverDoor.rotation.y=-1.15*u;
     doorHandleGlow.material.opacity=0.9*(1-u);
     if(I.t>=dur){I.phase=4;I.t=0;I.ign=0;camera.position.copy(C.seat);}
   }else if(I.phase===4){                 /* 点火：两下没着，第三下着 */
@@ -7719,7 +7801,8 @@ function applyIntroCam(dt){
 
 function startGame(skipIntro){
   if(S.started)return;
-  if(q.has('walk')){startWalking();return;}
+  if(window.MFMobile&&MFMobile.isTouch)MFMobile.requestLandscape();
+  if(q.has('walk')){startWalking();document.getElementById('mfJoystick').classList.add('on');return;}
   /* 默认直接坐进驾驶舱：第一帧就是暗红座舱 + 荒野夜路。
      只有显式 ?intro=1 才播放老的走动/拉门过场。 */
   if(skipIntro===true||skipIntro==='brief'||q.has('shot')||(!FROM_FACTORY&&!q.has('intro'))){
@@ -7739,7 +7822,7 @@ function startGame(skipIntro){
     }
     initAudio();hud.classList.add('on');
     updateLockHint();
-    camera.position.set(DRIVER_X,1.26,0.22);
+    camera.position.set(DRIVER_X,DRIVER_EYE_Y,DRIVER_Z);
     camera.rotation.set(0,0,0);
     look.yaw=look.ty=look.pitch=look.tp=0;
     applyCarAppearance();
@@ -7752,6 +7835,7 @@ function startGame(skipIntro){
   }else{
     startIntro(false);
   }
+  document.getElementById('mfJoystick').classList.add('on');
 }
 /* 统一的键盘提示淡出入口（跳过开场/截图也走这里） */
 function setupHudFade(){
@@ -7760,7 +7844,7 @@ function setupHudFade(){
 }
 function finish(kind){
   if(S.ended)return;
-  S.ended=true;S.started=false;
+  S.ended=true;S.started=false;resetDriveInput();document.getElementById('mfJoystick').classList.remove('on');
   /* v4.3：结局必须真正静音——引擎/雨/胎噪/风/路噪/底噪 + 孙笑川语音
      全部停掉并关闭 AudioContext；再开一次会重新 initAudio。 */
   stopAllAudio();
@@ -7832,7 +7916,7 @@ document.getElementById('btnStart').onclick=()=>{
   if(!WALK.active&&!S.intro.active)requestDriveLock();
 };
 /* 只有显式 ?direct 才允许自动快速进入；调试/流程入口保持原样。 */
-if(q.has('walk'))
+if(q.has('walk')&&!isTouch)
   setTimeout(()=>{if(!S.started)startWalking();},260);
 else if(q.has('direct')&&!FROM_FACTORY&&!q.has('intro')&&!q.has('shot'))
   setTimeout(()=>{if(!S.started){startGame('brief');updateLockHint();}},260);
@@ -7975,7 +8059,7 @@ window.__game={
     return +((performance.now()-t0)/n).toFixed(2);}
 };
 </script>
-<script src="assets/outdoor-story.js"></script>
+<script src="assets/outdoor-story.js?v=city-route-fix-20261127b"></script>
 <script>
 if(q.has('shot')){
   startGame();
@@ -8072,16 +8156,15 @@ if(q.has('shot')){
 
 /* ============================================================
    PSX 顶点吸附：把投影后的顶点钉到一张粗网格上，制造老主机特有的
-   "模型边缘逐像素跳动"。只作用于内建 Lambert/Basic 材质，且按材质
-   实例只装一次；GLB 的 MeshStandard 材质也一并处理（同样的 project_vertex）。
-   网格 1/110 NDC ≈ 每帧 3 像素（640×360 内部），轻微但可辨。
+   "模型边缘轻微跳动"。透明辉光不参与，近景车辆使用更细网格，避免行车时边缘狂闪。
+   网格 1/320 NDC，保留 PS1 质感但不会让路边细节逐帧跳位。
    ============================================================ */
 (function installVertexSnap(){
   if(q.has('nosnap'))return;                       /* 调试：?nosnap 关闭 */
   const seen=new Set();
-  const SNAP='160.0';                              /* NDC 网格密度，越大吸附越细 */
+  const SNAP='320.0';                              /* NDC 网格密度，越大吸附越细 */
   function snap(mat){
-    if(!mat||seen.has(mat))return;seen.add(mat);
+    if(!mat||seen.has(mat)||mat.transparent)return;seen.add(mat);
     if(!mat.isMeshLambertMaterial&&!mat.isMeshBasicMaterial&&
        !mat.isMeshPhongMaterial&&!mat.isMeshStandardMaterial)return;
     /* 奶蛙自带蒙皮光照 shader：保留它，再叠顶点吸附，别把光照覆盖掉 */

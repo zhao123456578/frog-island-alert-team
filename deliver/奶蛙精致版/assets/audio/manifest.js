@@ -41,13 +41,13 @@ window.SFX_DATA = [
   },
   {
     "id": "amb_ventilation",
-    "zh": "通风管道风声",
+    "zh": "通风管道实录",
     "cat": "ambience",
     "catZh": "环境氛围",
-    "desc": "低沉呼啸的管道气流",
-    "dur": 10.0,
-    "src": "ambience/amb_ventilation.wav",
-    "kb": 625
+    "desc": "Mixkit 小型抽油烟机现实录音，低通后作为管道风声",
+    "dur": 20.6,
+    "src": "ambience/amb_ventilation_real.mp3",
+    "kb": 480
   },
   {
     "id": "amb_distant_whispers",
@@ -160,14 +160,14 @@ window.SFX_DATA = [
     "kb": 113
   },
   {
-    "id": "sfx_sticky_step",
-    "zh": "踩布丁啵",
+    "id": "sfx_footstep_wood",
+    "zh": "木地板脚步实录",
     "cat": "player",
     "catZh": "玩家动作",
-    "desc": "发酵区每一步像踩在布丁上的啵声",
-    "dur": 0.8,
-    "src": "player/sfx_sticky_step.wav",
-    "kb": 50
+    "desc": "Freesound 木地板八步实录，按单步截取并微调音高",
+    "dur": 3.5,
+    "src": "player/footsteps_wood_real.mp3",
+    "kb": 72
   },
   {
     "id": "sfx_swallow",

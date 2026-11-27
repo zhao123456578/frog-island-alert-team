@@ -15,6 +15,7 @@ window.MFSpriteFix = (function () {
 "use strict";
 
 const cache = new Map(); // img -> Promise<canvas>
+const processed = new WeakSet();
 
 function bleedCanvas(img) {
   let p = cache.get(img);
@@ -27,24 +28,38 @@ function bleedCanvas(img) {
     x.drawImage(img, 0, 0);
     try {
       const d = x.getImageData(0, 0, w, h), px = d.data;
-      const a = new Uint8ClampedArray(w * h);
-      for (let i = 0; i < w * h; i++) a[i] = px[i * 4 + 3];
-      // 1px 邻域 alpha bleed：透明像素取邻域内最不透明邻居的 RGB
-      for (let y = 0; y < h; y++) {
-        for (let i0 = 0; i0 < w; i0++) {
-          const i = y * w + i0;
-          if (a[i] >= 250) continue;
+      let rowA = new Uint8ClampedArray(w * 4), rowB = new Uint8ClampedArray(w * 4), rowC = new Uint8ClampedArray(w * 4);
+      function horizontalRow(y, out) {
+        if (y < 0 || y >= h) { out.fill(0); return; }
+        const base = y * w * 4;
+        for (let ix = 0; ix < w; ix++) {
           let ba = 0, br = 0, bg = 0, bb = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            const ny = y + dy; if (ny < 0 || ny >= h) continue;
-            for (let dx = -1; dx <= 1; dx++) {
-              const nx = i0 + dx; if (nx < 0 || nx >= w) continue;
-              const j = ny * w + nx;
-              if (a[j] > ba) { ba = a[j]; const o = j * 4; br = px[o]; bg = px[o + 1]; bb = px[o + 2]; }
-            }
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = ix + dx; if (nx < 0 || nx >= w) continue;
+            const o = base + nx * 4, a = px[o + 3];
+            if (a > ba) { ba = a; br = px[o]; bg = px[o + 1]; bb = px[o + 2]; }
           }
-          if (ba > 0 && a[i] < ba) { const o = i * 4; px[o] = br; px[o + 1] = bg; px[o + 2] = bb; }
+          const k = ix * 4; out[k] = ba; out[k + 1] = br; out[k + 2] = bg; out[k + 3] = bb;
         }
+      }
+      rowA.fill(0); horizontalRow(0, rowB);
+      for (let y = 0; y < h; y++) {
+        horizontalRow(y + 1, rowC);
+        const base = y * w * 4;
+        for (let ix = 0; ix < w; ix++) {
+          const o = base + ix * 4, srcA = px[o + 3];
+          if (srcA >= 250) continue;
+          let ba = 0, br = 0, bg = 0, bb = 0;
+          const k = ix * 4;
+          if (rowA[k] > ba) { ba = rowA[k]; br = rowA[k + 1]; bg = rowA[k + 2]; bb = rowA[k + 3]; }
+          if (rowB[k] > ba) { ba = rowB[k]; br = rowB[k + 1]; bg = rowB[k + 2]; bb = rowB[k + 3]; }
+          if (rowC[k] > ba) { ba = rowC[k]; br = rowC[k + 1]; bg = rowC[k + 2]; bb = rowC[k + 3]; }
+          if (ba > srcA) {
+            px[o] = br; px[o + 1] = bg; px[o + 2] = bb;
+            if (srcA === 0) px[o + 3] = 1;
+          }
+        }
+        const swap = rowA; rowA = rowB; rowB = rowC; rowC = swap;
       }
       x.putImageData(d, 0, 0);
     } catch (e) { /* 跨域等异常时退回原图 */ }
@@ -56,8 +71,15 @@ function bleedCanvas(img) {
 
 /* 把已加载的 Texture 的 image 换成 bleed 后的 canvas；原地修改，克隆共享同一 image */
 function process(texture) {
-  if (!texture || !texture.image || cache.has(texture.image)) return Promise.resolve(texture);
-  return bleedCanvas(texture.image).then(() => { texture.needsUpdate = true; return texture; });
+  if (!texture || !texture.image || processed.has(texture.image)) return Promise.resolve(texture);
+  const source = texture.image;
+  return bleedCanvas(source).then(canvas => {
+    texture.image = canvas;
+    processed.add(source);
+    processed.add(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  });
 }
 
 /* 材质补丁：alpha < 0.30 直接 discard（不依赖普通透明混合），残留半透明像素
@@ -65,11 +87,12 @@ function process(texture) {
 function patch(mat, threshold) {
   const th = threshold === undefined ? 0.30 : threshold;
   mat.onBeforeCompile = shader => {
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <alphatest_fragment>",
-        "#include <alphatest_fragment>\n" +
-        "if (diffuseColor.a < " + th.toFixed(3) + ") discard;\n" +
-        "diffuseColor.rgb *= smoothstep(" + th.toFixed(3) + ", 0.62, diffuseColor.a);");
+    const token = "#include <alphatest_fragment>";
+    if (!shader.fragmentShader.includes(token)) { console.warn("MFSpriteFix: alphaTest shader hook missing"); return; }
+    shader.fragmentShader = shader.fragmentShader.replace(token,
+      token + "\n" +
+      "if (diffuseColor.a < " + th.toFixed(3) + ") discard;\n" +
+      "diffuseColor.rgb *= smoothstep(" + th.toFixed(3) + ", 0.62, diffuseColor.a);");
   };
   mat.needsUpdate = true;
   return mat;

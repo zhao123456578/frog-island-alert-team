@@ -15,6 +15,7 @@
   audio.loop = true;
   audio.preload = 'auto';
   audio.volume = normalVolume;
+  if (window.MFAudio) window.MFAudio.attach(audio, 'music', 0);
 
   function readSaved() {
     try {

@@ -1,6 +1,8 @@
 "use strict";
 window.createNightShift=function(ctx){
   const {scene,camera,state:S,game:G,colliders,objects,surfaces,psMat,labelTexture,audio}=ctx;
+  const touchInput=!!(window.MFMobile&&MFMobile.isTouch);
+  let workInputAt=0;
   const st={started:false,intro:false,good:0,eaten:0,shiftDone:false,eavesdrop:false,office:false,
     thought:false,visited2:false,valve:false,anger:0,hidden:false,exposed:false,gun:false,ammo:0,
     hp:2,ehp:5,punchT:0,punchCd:0,punchHit:false,flashT:0,hurtT:0,dead:false,hearT:0,knockT:0,
@@ -11,6 +13,7 @@ window.createNightShift=function(ctx){
     last:new THREE.Vector3(),lost:0,search:0,stun:0,wait:1,repath:0,seen:false,cooldown:0,travel:0,goal:null,detour:null,direct:false,stuckT:0,
     atkT:0,atkHit:false};
   const events=[];let elapsed=0,work=false,workT=0,cursor=0,breathT=0,noiseT=0,officeHum=null,footAt=0;
+const FOOTSTEP_OFFSETS=[0.03,0.46,0.86,1.36,1.78,2.29,2.67,3.10];
   let hiddenCabinet=null,capturePose=null,coworkerModel=null,coworkerMode='WAIT',coworkerPath=[],coworkerAt=0;
   /* v4.4：NO.07 寻路防卡死状态。分段目标 + no-progress 检测 + 侧移/备用路线/安全重置。 */
   const COWORKER_SEAT={x:6.99,z:10.54};
@@ -64,15 +67,17 @@ window.createNightShift=function(ctx){
   const pageVoices={frog:['sfx_nw_gaga','sfx_nw_andi','sfx_nw_ganba','sfx_nw_yume','sfx_nw_hana'],
     sun:['sfx_sc_roar','sfx_sc_attitude','sfx_sc_window','sfx_sc_property','sfx_sc_again','sfx_sc_revive','sfx_sc_whatever','sfx_sc_sumimasen']};
   const voiceAt={frog:0,sun:0};let pageVoice=null;
-  function stopPageVoice(){if(!pageVoice)return;pageVoice.pause();audio.playing.delete(pageVoice);pageVoice=null;}
-  function playPageVoice(who,text){
+  function stopPageVoice(){if(!pageVoice)return;if(window.MFAudio)MFAudio.release(pageVoice);else pageVoice.pause();audio.playing.delete(pageVoice);pageVoice=null;}
+  function playPageVoice(who,text,pos){
     stopPageVoice();
     if(!S.started||S.pause||document.hidden||audio.muted||/沉思|玩家|广播/.test(who)||/^\s*[（(]/u.test(text))return;
     const family=/^孙笑川(?:$|[ ·：:])/.test(who)?'sun':/^(?:NO\.?\s*0?7\b|工位奶蛙(?:$|[ ·])|奶泡(?:$|[ ·])|奶蛙(?:$|[ ·]))/i.test(who)?'frog':null;
     if(!family)return;
-    const pool=pageVoices[family];pageVoice=audio.play(pool[voiceAt[family]++%pool.length],family==='frog'?0.16:0.32);
+    const pool=pageVoices[family];
+    pageVoice=pos?audio.playAt(pool[voiceAt[family]++%pool.length],family==='frog'?0.16:0.32,pos,{maxDistance:7}):
+      audio.play(pool[voiceAt[family]++%pool.length],family==='frog'?0.16:0.32);
   }
-  window.addEventListener('mf-dialog-page',e=>playPageVoice(e.detail.who,e.detail.text));
+  window.addEventListener('mf-dialog-page',e=>playPageVoice(e.detail.who,e.detail.text,e.detail.pos));
   window.addEventListener('mf-dialog-close',stopPageVoice);
 
   box('遮挡·废弃压缩机',-9.24,-21.63,2.4,1.6,1.9,0x566460);
@@ -222,16 +227,16 @@ window.createNightShift=function(ctx){
     #night-hitmark.on{animation:nightMark .34s ease-out forwards}
     @keyframes nightHit{0%{opacity:0;transform:translate(-50%,-50%) scale(1.5)}22%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-54%) scale(.94)}}
     @keyframes nightMark{0%{opacity:0;transform:scale(1.7)}30%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.9)}}
-    #night-work{display:none;position:fixed;left:50%;bottom:8%;transform:translateX(-50%);width:min(470px,90vw);z-index:45;padding:22px;background:#101916f2;border:1px solid #94a47b;color:#dfe2cd;font:14px monospace}
-    #night-work.on{display:block}#night-track{height:34px;background:#35433c;position:relative;margin:20px 0}#night-target{position:absolute;left:43%;width:14%;height:100%;background:#a1b776}#night-cursor{position:absolute;top:-4px;height:42px;width:4px;background:#fff}
-    #night-work button,#night-shoot{background:#25352e;border:1px solid #849579;color:#e0e3d3;padding:10px;margin:4px;cursor:pointer;font:12px monospace}#night-work p{font-size:12px;color:#a6b09e;line-height:1.7}
+    #night-work{display:none;position:fixed;left:50%;top:50%;bottom:auto;transform:translate(-50%,-50%);width:min(470px,90vw);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain;z-index:70;padding:22px;background:#101916f2;border:1px solid #94a47b;color:#dfe2cd;font:14px monospace;box-sizing:border-box}
+    #night-work.on{display:block}#night-track{height:34px;background:#35433c;position:relative;margin:20px 0}#night-target{position:absolute;left:43%;width:14%;height:100%;background:#a1b776}#night-cursor{position:absolute;top:-4px;height:42px;width:4px;background:#fff;transform:translateX(-50%)}
+    #night-work button,#night-shoot{background:#25352e;border:1px solid #849579;color:#e0e3d3;padding:10px;margin:4px;cursor:pointer;font:12px monospace;touch-action:manipulation}#night-work p{font-size:12px;color:#a6b09e;line-height:1.7}
     #night-hide{display:none;position:fixed;inset:0;pointer-events:none;z-index:28;background:radial-gradient(ellipse at center,transparent 6%,#03060466 45%,#030604e6 100%)}#night-hide.on{display:block}
     #night-cinema{display:none;position:fixed;inset:0;z-index:44;pointer-events:none;background:linear-gradient(#000 0%,#000 7%,transparent 7%,transparent 93%,#000 93%)}#night-cinema.on{display:block;pointer-events:auto}
     #night-cinema .next{position:absolute;bottom:8%;left:0;width:100%;text-align:center;color:#adb5a5;font:11px monospace}
     #night-cinema button{pointer-events:auto;position:absolute;bottom:3%;right:24px;background:transparent;border:0;color:#bcc4b4;font:12px monospace;cursor:pointer}
     #night-cinema span{position:absolute;top:2%;left:24px;color:#adb5a5;font:12px monospace;letter-spacing:3px}
     #night-cinema p{position:absolute;bottom:11%;left:50%;transform:translateX(-50%);margin:0;width:min(720px,88vw);text-align:center;white-space:pre-line;color:#eee9d3;font:17px/1.8 monospace;text-shadow:0 2px 5px #000,0 0 10px #000}
-    .night-cinematic #hud,.night-cinematic #dpad,.night-cinematic #night-status,.night-cinematic #broadcast,.night-cinematic #night-bag,.night-cinematic #tip,.night-cinematic #mf-toast{visibility:hidden;opacity:0;pointer-events:none}
+    .night-cinematic #hud,.night-cinematic #dpad,.night-cinematic #mfJoystick,.night-cinematic #actBtns,.night-cinematic #btnRun,.night-cinematic #night-status,.night-cinematic #broadcast,.night-cinematic #night-bag,.night-cinematic #tip,.night-cinematic #mf-toast{visibility:hidden;opacity:0;pointer-events:none}
     #night-hide span{position:absolute;bottom:20%;width:100%;text-align:center;color:#adb8a0;font:13px monospace}
     #night-shoot{position:fixed;right:24px;bottom:120px;z-index:35;display:none}#sceneBar{display:none!important}.dev-open #sceneBar.on{display:flex!important}
     #hudGoal{max-width:300px;line-height:1.7}#mf-hint{max-width:90vw;white-space:normal;text-align:center}
@@ -241,8 +246,8 @@ window.createNightShift=function(ctx){
   const ui=document.createElement('div');ui.innerHTML=`<div id="night-status" hidden>夜班 / NO.13<strong></strong><span></span></div>
     <div id="night-hp" hidden>体力 <b></b><b></b></div><div id="night-foe">孙笑川 <i></i><i></i><i></i><i></i><i></i></div><div id="night-hurt"></div>
     <div id="night-hit">HIT</div><div id="night-hitmark"></div>
-    <div id="night-work"><b>灌装工位 · 空格停在浅绿色区域</b><div id="night-track"><i id="night-target"></i><i id="night-cursor"></i></div><div id="night-result">合格 0 / 3</div><p>工位灯在闪。办公室那边却传来和机器不同的声音。</p><button id="night-stop">封盖 [空格]</button><button id="night-eat">偷吃一瓶 [F]</button><button id="night-stand">离开工位 [R]</button></div>
-    <div id="night-cinema"><span></span><p aria-live="polite"></p><div class="next"></div><button id="night-skip">跳过 / ESC</button></div><div id="night-hide"><span>躲在员工柜中 · E 离开 · 脚步声仍在外面</span></div><button id="night-shoot">G · 镇静枪</button><button id="night-bag">背包 / B</button>`;
+    <div id="night-work"><b>${touchInput?'灌装工位 · 划线进入浅绿色时点封盖':'灌装工位 · 空格停在浅绿色区域'}</b><div id="night-track"><i id="night-target"></i><i id="night-cursor"></i></div><div id="night-result">合格 0 / 3</div><p>工位灯在闪。办公室那边却传来和机器不同的声音。</p><button id="night-stop" type="button">${touchInput?'封 盖':'封盖 [空格]'}</button><button id="night-eat" type="button">${touchInput?'偷吃一瓶':'偷吃一瓶 [F]'}</button><button id="night-stand" type="button">${touchInput?'离开工位':'离开工位 [R]'}</button></div>
+    <div id="night-cinema"><span></span><p aria-live="polite"></p><div class="next"></div><button id="night-skip">${touchInput?'跳过':'跳过 / ESC'}</button></div><div id="night-hide"><span>${touchInput?'躲在员工柜中 · 点“交互”离开 · 脚步声仍在外面':'躲在员工柜中 · E 离开 · 脚步声仍在外面'}</span></div><button id="night-shoot">${touchInput?'镇静枪':'G · 镇静枪'}</button><button id="night-bag">${touchInput?'背包':'背包 / B'}</button>`;
   document.body.appendChild(ui);
   const statusEl=document.getElementById('night-status'),workEl=document.getElementById('night-work');
   const resultEl=document.getElementById('night-result'),cursorEl=document.getElementById('night-cursor');
@@ -272,11 +277,11 @@ window.createNightShift=function(ctx){
   };
   function showCaptionPage(c,index){
     c.page=index;c.pageClicked=false;c.waiting=false;
-    const page=c.pages[index];cinemaEl.dataset.state='typing';captionNext.textContent='E / 点击 补全字幕';
+    const page=c.pages[index];cinemaEl.dataset.state='typing';captionNext.textContent=touchInput?'点击 补全字幕':'E / 点击 补全字幕';
     captionWriter.start(page.who+'：'+page.text,()=>{
-      cinemaEl.dataset.state='waiting';captionNext.textContent='E / 点击 继续 ▼';
+      cinemaEl.dataset.state='waiting';captionNext.textContent=touchInput?'点击 继续 ▼':'E / 点击 继续 ▼';
     });
-    playPageVoice(page.who,page.text);
+    playPageVoice(page.who,page.text,/^孙笑川/.test(page.who)?npc.pos:null);
   }
   function advanceCinematic(){
     const c=cinematic;if(!c||S.pause||document.hidden)return;
@@ -304,7 +309,7 @@ window.createNightShift=function(ctx){
     if(kind==='vent'){
       const dx=ventTarget.x-from.x,dy=ventTarget.y-from.y,dz=ventTarget.z-from.z;
       cinematic={kind,t:0,duration:7.4,from,to:{...from,yaw:Math.atan2(-dx,-dz),pitch:Math.atan2(dy,Math.hypot(dx,dz))},knocked:false,pulled:false,slammed:false};
-      ventSeen=true;audio.play('amb_ventilation',0.22);
+      ventSeen=true;audio.play('amb_ventilation',0.08);
     }else{
       const shots=kind==='opening'?openingShots:storyShots[kind];
       const timings={opening:[[0,0],[1.6,0],[4,1],[5.6,1],[8,2],[9.6,2]],
@@ -352,7 +357,7 @@ window.createNightShift=function(ctx){
       const bounce=c.t>5.62?Math.abs(Math.sin((c.t-5.62)*17))*0.16*Math.exp(-(c.t-5.62)*5):0;
       ctx.built[1].props.ventGrille.rotation.x=-(push*0.65+struggle*1.6)*(1-fall)-bounce;
       if(c.t>1.5&&!c.knocked){c.knocked=true;audio.play('sfx_door_creak',0.3);audio.play('sfx_breath',0.22);}
-      if(c.t>4.35&&!c.pulled){c.pulled=true;audio.play('sfx_stinger',0.3);audio.play('sfx_sticky_step',0.35);}
+      if(c.t>4.35&&!c.pulled){c.pulled=true;audio.play('sfx_stinger',0.3);audio.play('sfx_footstep_wood',0.35,{offset:0.46,duration:0.34});}
       if(c.t>5.6&&!c.slammed){c.slammed=true;audio.play('sfx_lock_turn',0.55);}
     }else{
       let i=0;while(i<c.cues.length-2&&c.t>c.cues[i+1].at)i++;
@@ -382,22 +387,27 @@ window.createNightShift=function(ctx){
     if(e.code==='Escape')finishCinematic();else advanceCinematic();
   },true);
   window.addEventListener('pagehide',resetPose);
-  function closeWork(){work=false;workEl.classList.remove('on');ctx.clearKeys();ctx.standUp();}
-  function openWork(){if(uiBusy()||st.capturing)return;finishArcadeChase();if(arcade)arcade.close();work=true;workT=0;workEl.classList.add('on');ctx.clearKeys();ctx.setPose(2.45,1.35,-16.96,Math.PI/2);resultEl.textContent='合格 '+st.good+' / 3 · 偷吃 '+st.eaten+' 瓶';}
+  function closeWork(){work=false;workInputAt=0;workEl.classList.remove('on');document.body.classList.remove('work-open');ctx.clearKeys();ctx.standUp();}
+  function openWork(){if(uiBusy()||st.capturing)return;finishArcadeChase();if(arcade)arcade.close();work=true;workT=0;cursor=0;workInputAt=0;cursorEl.style.left='0%';workEl.classList.add('on');document.body.classList.add('work-open');ctx.clearKeys();ctx.setPose(2.45,1.35,-16.96,Math.PI/2);resultEl.textContent='合格 '+st.good+' / 3 · 偷吃 '+st.eaten+' 瓶';}
   function completeShift(){if(st.shiftDone||st.good<3)return;st.shiftDone=true;MF.state.inv.floorKey=true;MF.state.inv.backpack=true;MF.refreshPanel();
     closeWork();audio.play('sfx_pa_static',0.22);MF.dialog('下班广播',['本班产量达标。第 13 号，钥匙已经放进你的背包。','右侧监控室的绿色出口通向停车场。你可以直接开车走。','（办公室的声音还没停。西侧厕所的通风管里，似乎有人在哭。）']);refreshHint();}
-  function stopWork(){if(!work||S.pause||document.hidden)return;const ok=cursor>=0.43&&cursor<=0.57;
+  function stopWork(){if(!work||S.pause||document.hidden)return;const now=performance.now();if(now<workInputAt)return;workInputAt=now+220;
+    const ok=cursor>=0.43&&cursor<=0.57;
     if(ok){st.good=Math.min(3,st.good+1);audio.play('sfx_lock_turn',0.28);}else{audio.play('sfx_vending_beep',0.2);setAnger(st.anger+5);}
-    resultEl.textContent=(ok?'封盖合格':'偏了，可以继续试')+' · '+st.good+' / 3';workT=0;
+    resultEl.textContent=(ok?'封盖合格':'偏了，可以继续试')+' · '+st.good+' / 3';workT=0;cursor=0;cursorEl.style.left='0%';
     completeShift();}
   function eat(){if(!work||S.pause||document.hidden)return;st.eaten++;MF.state.happy=Math.min(100,MF.state.happy+20);MF.state.milk=Math.min(100,MF.state.milk+5);audio.play('sfx_swallow',0.45);MF.refreshPanel();
     resultEl.textContent='偷吃 '+st.eaten+' 瓶 · 合格 '+st.good+' / 3';
     if(st.eaten===3){closeWork();ctx.startLaugh();setAnger(40);npc.last.set(3.2,0,-17);npc.state='INVESTIGATE';npc.path=[];npc.repath=0;
-      [0.25,0.7,1.15].forEach((d,i)=>later(d,()=>{const a=audio.play('sfx_frog_laugh_raw',0.2-i*0.035);if(a){a.playbackRate=0.88+i*0.12;later(3.5-i*0.5,()=>{a.pause();audio.playing.delete(a);});}}));
+      [0.25,0.7,1.15].forEach((d,i)=>later(d,()=>{const a=audio.play('sfx_frog_laugh_raw',0.2-i*0.035);if(a){a.playbackRate=0.88+i*0.12;later(3.5-i*0.5,()=>{if(window.MFAudio)MFAudio.release(a);else a.pause();audio.playing.delete(a);});}}));
       later(2,()=>{MF.dialog('孙笑川',['そんなに大声を出して、何をしているんだ！','遊んでいないで、持ち場に戻れ！'],()=>MF.dialog('NO.07',['（办公室门口响起脚步声。NO.07 把笑憋了回去。）','先把三瓶合格品做完。想查那些声音，下班后去厕所听。']));});
     }
     refreshHint();}
-  document.getElementById('night-stop').onclick=stopWork;document.getElementById('night-eat').onclick=eat;document.getElementById('night-stand').onclick=closeWork;
+  workEl.addEventListener('pointerdown',e=>e.stopPropagation());
+  document.getElementById('night-stop').onclick=e=>{e.preventDefault();e.stopPropagation();stopWork();};
+  document.getElementById('night-eat').onclick=e=>{e.preventDefault();e.stopPropagation();eat();};
+  document.getElementById('night-stand').onclick=e=>{e.preventDefault();e.stopPropagation();closeWork();};
+  if(touchInput)document.getElementById('night-track').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();stopWork();});
   /* 工位小游戏的键盘：空格封盖 / F 偷吃 / R 离开。这里直接挂在 window 上，
      因为主脚本的 keydown 在 work 打开时会被 inputBlocked 吃掉。 */
   window.addEventListener('keydown',e=>{
@@ -407,7 +417,7 @@ window.createNightShift=function(ctx){
     else if(e.code==='KeyF'){e.preventDefault();e.stopImmediatePropagation();eat();}
     else if(e.code==='KeyR'){e.preventDefault();e.stopImmediatePropagation();closeWork();}
   },true);
-  document.getElementById('view').addEventListener('click',()=>{if(work)stopWork();});
+  document.getElementById('view').addEventListener('click',()=>{if(work&&!touchInput)stopWork();});
   MF.unregister('chair');MF.unregister('seated');
   prop('night-work',2.8,-16.96,()=>st.shiftDone?'回到工位（可以继续偷吃）':'上工 · 封盖小游戏',openWork,2);
   const coworkerProp=prop('coworker',2.66,7.88,'问问 NO.07',()=>MF.dialog('NO.07',['喂，第 13 号，别在传送带上摸鱼。','沿右侧黄线走到黄色操作椅。把划线停在浅绿色那段，三瓶就能下班。','我去调试室玩会儿游戏。你别玩太久，超过二十秒他会来抓你，赶紧回工位。'],sendCoworkerToSeat));
@@ -627,10 +637,11 @@ window.createNightShift=function(ctx){
     return true;
   }
   const grid={minX:-24,minZ:-140,step:0.6,w:85,h:256};
+  const pathWalkCache=new Int8Array(grid.w*grid.h),pathQueue=new Int32Array(grid.w*grid.h),pathParent=new Int32Array(grid.w*grid.h);
   const cell=(x,z)=>({x:Math.round((x-grid.minX)/grid.step),z:Math.round((z-grid.minZ)/grid.step)});
   const world=(x,z)=>({x:grid.minX+x*grid.step,z:grid.minZ+z*grid.step});
   function findPath(a,b,selfCol=null){
-    const total=grid.w*grid.h,cache=new Int8Array(total);
+    const total=grid.w*grid.h,cache=pathWalkCache;cache.fill(0);
     const ok=(x,z)=>{if(x<0||x>=grid.w||z<0||z>=grid.h)return false;const id=z*grid.w+x;if(!cache[id]){const p=world(x,z);cache[id]=blocked(p.x,p.z,0.31,true,selfCol)?-1:1;}return cache[id]>0;};
     /* 目标格被占（罐体/死角）时，往外找最近的可走格，最多找 7 米 */
     function nearest(p){const c=cell(p.x,p.z);let best=null,bd=1e9;
@@ -641,7 +652,7 @@ window.createNightShift=function(ctx){
         if(d<bd){bd=d;best={x:gx,z:gz};}}
       return best;}
     const from=nearest(a),to=nearest(b);if(!from||!to)return [];
-    const begin=from.z*grid.w+from.x,end=to.z*grid.w+to.x,queue=new Int32Array(total),parent=new Int32Array(total);parent.fill(-1);
+    const begin=from.z*grid.w+from.x,end=to.z*grid.w+to.x,queue=pathQueue,parent=pathParent;parent.fill(-1);
     let head=0,tail=1;queue[0]=begin;parent[begin]=begin;
     while(head<tail&&parent[end]===-1){const id=queue[head++],x=id%grid.w,z=Math.floor(id/grid.w);
       /* 八连通：四连通会被斜着卡住的窄口堵死（这正是"厂2 卡住"的原因） */
@@ -801,17 +812,10 @@ window.createNightShift=function(ctx){
     }
   }
   const actor=add('孙笑川',new THREE.Group());actor.position.copy(npc.pos);
-  /* v4.4：纸片人背后补一层低模身体轮廓（暗色躯干+头肩），转身时有体积感，不再只是贴图转圈。
-     贴图负责面部细节，低模只提供侧后方的轮廓与投影。 */
-  const bodySil=new THREE.Group();actor.add(bodySil);
-  const silMat=new THREE.MeshBasicMaterial({color:0x1a1e1a});
-  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.5,1.15,7),silMat);torso.position.y=0.82;bodySil.add(torso);
-  const shoulders=new THREE.Mesh(new THREE.BoxGeometry(1.02,0.24,0.42),silMat);shoulders.position.y=1.34;bodySil.add(shoulders);
-  const headSil=new THREE.Mesh(new THREE.SphereGeometry(0.27,7,5),silMat);headSil.position.y=1.62;bodySil.add(headSil);
   /* 地面投影：贴地的暗色椭圆，随 NPC 位置移动，给纸片人落地感 */
-  const shadowMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.32,depthWrite:false});
+  const shadowMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.32,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
   const npcShadow=new THREE.Mesh(new THREE.CircleGeometry(0.62,16),shadowMat);
-  npcShadow.rotation.x=-Math.PI/2;npcShadow.position.y=0.02;group.add(npcShadow);
+  npcShadow.rotation.x=-Math.PI/2;npcShadow.position.y=0.035;group.add(npcShadow);
   let npcMesh=null,frame=-1,sheets=[];
   const atlas=window.PAPERBOT_ATLAS;
   const ready=Promise.all(atlas.sheets.map(src=>new Promise(resolve=>new THREE.TextureLoader().load(src,t=>{
@@ -970,9 +974,9 @@ window.createNightShift=function(ctx){
       const tier=d<3?3:d<8?2:d<17?1:0;
       st.pressureTier=tier;
       if(tier>0&&st.pressureT<=0){
-        if(tier===1){audio.play('sfx_door_creak',0.12);st.pressureT=2.6;}       /* 远处金属摩擦/脚步 */
-        else if(tier===2){audio.play('sfx_breath',0.16);st.pressureT=1.5;}        /* 中距呼吸低语 */
-        else{audio.play('sfx_heartbeat',0.3);st.pressureT=0.85;}                  /* 贴脸心跳 */
+        if(tier===1){audio.playAt('sfx_door_creak',0.12,npc.pos,{maxDistance:18});st.pressureT=2.6;}
+        else if(tier===2){audio.playAt('sfx_breath',0.16,npc.pos,{maxDistance:10});st.pressureT=1.5;}
+        else{audio.play('sfx_heartbeat',0.3);st.pressureT=0.85;}
       }
     }else st.pressureTier=0;
     /* 听觉：奔跑会持续暴露位置——不用看见，也能把他引过来 */
@@ -990,10 +994,12 @@ window.createNightShift=function(ctx){
         }
       }
     }else st.hearT=0;
-    const see=!st.hidden&&!inSafe(camera.position)&&Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7&&d<17&&(facing>0.2||d<2)&&lineClear({x:npc.pos.x,y:npc.pos.y+1.6,z:npc.pos.z},camera.position,false,npcCol);
-    npc.seen=see;
+    const seeProbe=!st.hidden&&!inSafe(camera.position)&&Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7&&d<17&&(facing>0.2||d<2);
+    let losPlayer=null;
+    if(seeProbe)losPlayer=lineClear({x:npc.pos.x,y:npc.pos.y+1.6,z:npc.pos.z},camera.position,false,npcCol);
+    npc.seen=!!losPlayer;
     if(st.arcadeChase&&!st.hidden&&!inSafe(camera.position)&&npc.cooldown<=0){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
-    else if(see&&st.anger>=60&&npc.cooldown<=0&&(!MF.state.dead||st.anger>=80)){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
+    else if(npc.seen&&st.anger>=60&&npc.cooldown<=0&&(!MF.state.dead||st.anger>=80)){npc.last.copy(camera.position);npc.lost=0;npc.state='CHASE';}
     else if(npc.state==='CHASE'){npc.lost+=dt;if(npc.lost>1.5){npc.state='INVESTIGATE';npc.repath=0;}}
     /* ===== v4.5 近距离攻击状态机 =====
        是否攻击不再只依赖 CHASE/see：有效距离内、与玩家之间没有墙、玩家未进入
@@ -1001,7 +1007,7 @@ window.createNightShift=function(ctx){
        0–0.20s 抬手前倾蓄力 → 0.20–0.28s 攻击有效帧（只结算一次伤害）
        → 0.28–0.70s 收手空窗 → 结束进入 1.0–1.2s 冷却。
        INVESTIGATE 状态接近到 1.5m 并持续 0.35s 后也会主动出招。 */
-    const losWall=lineClear({x:npc.pos.x,y:npc.pos.y+1.5,z:npc.pos.z},{x:camera.position.x,y:camera.position.y,z:camera.position.z},false,npcCol);
+    const losWall=d<2.2?(losPlayer===null?lineClear({x:npc.pos.x,y:npc.pos.y+1.5,z:npc.pos.z},{x:camera.position.x,y:camera.position.y,z:camera.position.z},false,npcCol):losPlayer):false;
     const heightOK=Math.abs(camera.position.y-(npc.pos.y+1.35))<1.7;
     const canStrike=!st.hidden&&!inSafe(camera.position)&&!st.dead&&!st.capturing&&st.spawnGrace<=0&&npc.state!=='STUNNED'&&npc.state!=='CAPTURE';
     if(npc.atkT>0){
@@ -1056,41 +1062,43 @@ window.createNightShift=function(ctx){
     const vg=ctx.built[1]&&ctx.built[1].props.ventGrille;
     if(vg)aimTools.tagInteract(vg,'vent-listen');
   }
-  /* ===== v4.5 通风管环境层：独立 ambientClock（真实时间），与玩家移速彻底解耦 =====
-     - 移动速度只影响位移与步频，绝不影响音频计时、playbackRate、冷却；
-     - 被动底噪：0.05 音量的低频环境层，只在通风管附近渐入；
-     - 被动事件：20–35s 真实时间冷却，同一区域不连续刷；
-     - 主动交互：一次性 ~2.5s 响应 + 15–20s 冷却，playbackRate 固定 0.97–1.03。 */
+  /* ===== 通风管环境层：低声底噪 + 稀疏水滴，主动静听时暂停底噪避免叠加 ===== */
   const VENT_POINTS=[{x:3.39,z:-101.02},{x:-15.0,z:-16.8},{x:-15.0,z:-66.8}];
-  const ventAmb={hum:null,nextEvent:0,coolUntil:0,rate:0.97+Math.random()*0.06,lastScene:-1,acc:0};
+  const ventAmb={hum:null,nextEvent:0,coolUntil:0,listenUntil:0,rate:0.90+Math.random()*0.05,lastScene:-1,acc:0};
   const ventRealClock=()=>performance.now()/1000;
   function ventNear(){
-    for(const v of VENT_POINTS)if(Math.hypot(camera.position.x-v.x,camera.position.z-v.z)<11)return v;
+    for(const v of VENT_POINTS)if(Math.hypot(camera.position.x-v.x,camera.position.z-v.z)<9)return v;
     return null;}
   function ventListen(){
     const now=ventRealClock();
     if(now<ventAmb.coolUntil){MF.toast('管道这会儿很安静。');return;}
-    ventAmb.coolUntil=now+15+Math.random()*5;
-    const a=audio.play('amb_ventilation',0.3);
-    if(a){a.playbackRate=ventAmb.rate;   /* 固定速率，绝不随移速变化 */
-      setTimeout(()=>{try{a.pause();audio.playing&&audio.playing.delete(a);}catch(e){}},2500);}
+    ventAmb.coolUntil=now+18+Math.random()*7;ventAmb.listenUntil=now+2.7;
+    const v=ventNear()||VENT_POINTS[0];
+    const a=audio.play('amb_ventilation',0.11,{duration:2.5,
+      filter:{type:"lowpass",frequency:520,Q:0.7},
+      pan:window.MFAudio?MFAudio.panAt(v.x,v.z,camera):0});
+    if(a)a.playbackRate=ventAmb.rate;
     MF.toast('你把耳朵凑近通风管……里面有很轻的动静。');}
   function ventAmbTick(){
-    const now=ventRealClock();
-    if(S.scene!==ventAmb.lastScene){   /* 切幕：清理冷却与正在播放的通风声 */
-      ventAmb.lastScene=S.scene;ventAmb.nextEvent=now+6+Math.random()*8;
+    const now=ventRealClock(),listening=now<ventAmb.listenUntil;
+    if(S.scene!==ventAmb.lastScene){
+      ventAmb.lastScene=S.scene;ventAmb.nextEvent=now+10+Math.random()*10;ventAmb.listenUntil=0;
       if(ventAmb.hum){audio.fadeOut(ventAmb.hum);ventAmb.hum=null;}}
     const v=ventNear();
-    if(v&&!ventAmb.hum){ventAmb.hum=audio.loop('amb_ventilation',0.001);
+    if(v&&!listening&&!ventAmb.hum){ventAmb.hum=audio.loop('amb_ventilation',0.001,{
+      filter:{type:"lowpass",frequency:520,Q:0.7},
+      pan:window.MFAudio?MFAudio.panAt(v.x,v.z,camera):0});
       if(ventAmb.hum)ventAmb.hum.a.playbackRate=ventAmb.rate;}
     if(ventAmb.hum){
       const a=ventAmb.hum.a;
-      a.volume=Math.max(0,Math.min(0.05,a.volume+(v?0.01:-0.008)));
-      if(!v&&a.volume<=0.005){audio.fadeOut(ventAmb.hum);ventAmb.hum=null;}}
-    if(v&&now>=ventAmb.nextEvent){
-      ventAmb.nextEvent=now+20+Math.random()*15;
-      if(now>=ventAmb.coolUntil){const a=audio.play('amb_pipe_drip',0.12);
-        if(a)a.playbackRate=0.98+Math.random()*0.04;}}
+      if(v&&window.MFAudio)MFAudio.setPan(a,MFAudio.panAt(v.x,v.z,camera));
+      a.volume=Math.max(0,Math.min(0.018,a.volume+((v&&!listening)?0.004:-0.004)));
+      if((!v||listening)&&a.volume<=0.002){audio.fadeOut(ventAmb.hum);ventAmb.hum=null;}}
+    if(v&&!listening&&now>=ventAmb.nextEvent){
+      ventAmb.nextEvent=now+32+Math.random()*18;
+      if(now>=ventAmb.coolUntil){const a=audio.play('amb_pipe_drip',0.045,{
+        pan:window.MFAudio?MFAudio.panAt(v.x,v.z,camera):0});
+        if(a)a.playbackRate=0.94+Math.random()*0.04;}}
   }
   prop('vent-listen',3.39,-99.9,'在通风管边静听',ventListen,2.8);
   sign(['02 发酵厂','下班后解除门禁'], -3.3,2,-45.87,0,2);
@@ -1227,7 +1235,7 @@ window.createNightShift=function(ctx){
     actor.position.copy(npc.pos);
     refreshHint();
   }
-  function start(skip){st.started=true;statusEl.hidden=false;officeHum=audio.loop('amb_distant_whispers',0.01);population.start();
+  function start(skip){st.started=true;statusEl.hidden=false;officeHum=audio.loopAt('amb_distant_whispers',0.01,{x:-16.12,z:-4.17},{maxDistance:22});population.start();
     if(!skip)startCinematic('opening');
     else{sendCoworkerToSeat();setupScene(S.scene,true);}
     refreshHint();
@@ -1345,11 +1353,14 @@ window.createNightShift=function(ctx){
     actor.rotation.z=bodyTilt+(hitFx.wallStun>0?Math.sin(elapsed*40)*0.05:0);
     setFrame(hitFx.knockPhase>0?0:Math.floor(npc.travel*7)%atlas.count);
     breathT+=dt;if(breathT>0.35){breathT=0;refreshHint();}
-    if(st.shiftDone&&!st.eavesdrop&&!st.visited2){noiseT+=dt;if(noiseT>24){noiseT=0;audio.play('amb_distant_whispers',0.15);MF.toast('西侧厕所通风管又响了一声。');}}
+    if(st.shiftDone&&!st.eavesdrop&&!st.visited2){noiseT+=dt;if(noiseT>34){noiseT=0;audio.play('amb_distant_whispers',0.07);MF.toast('西侧厕所通风管又响了一声。');}}
     /* v4.5：通风管环境层以 2Hz 调度（真实时间时钟），与移速/游戏 dt 彻底解耦 */
     ventAmb.acc+=dt;if(ventAmb.acc>=0.5){ventAmb.acc=0;ventAmbTick();}
-    if(officeHum){const d=distance(camera.position,S.scene===0?{x:-16.12,z:-4.17}:{x:0,z:-106});officeHum.a.volume=Math.max(0,1-d/22)*(work?0.18:0.12);}
-    if(npc.travel-footAt>1.1){footAt=npc.travel;const d=distance(npc.pos,camera.position);if(d<18)audio.play('sfx_sticky_step',(1-d/18)*0.23);}
+    if(officeHum){const p=S.scene===0?{x:-16.12,z:-4.17}:{x:0,z:-106},d=distance(camera.position,p);
+      audio.spatial(officeHum,p,Math.max(0,1-d/22)*(work?0.18:0.12),22);}
+    if(npc.travel-footAt>1.1){footAt=npc.travel;const d=distance(npc.pos,camera.position);if(d<18){
+      const a=audio.play('sfx_footstep_wood',(1-d/18)*0.23,{offset:FOOTSTEP_OFFSETS[Math.floor(Math.random()*FOOTSTEP_OFFSETS.length)],duration:0.34});
+      if(a&&window.MFAudio)MFAudio.setPan(a,MFAudio.panAt(npc.pos.x,npc.pos.z,camera));}}
   }
   return {start,update,refreshHint,resetPose,leave,pullValve,setAnger,findPath,lineClear,blocked,setupScene,tryPunch,punchInRange,
     /* v4.5 验收钩子：把孙笑川摆到指定点/状态（回归测试用，不改玩法） */

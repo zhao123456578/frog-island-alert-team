@@ -27,17 +27,16 @@ function changeRoadReference(route){
 }
 function updateRouteChoice(){
   if(driveStory.route!=='undecided')return;
-  // 路口以原道路切线积分，松开方向盘才会真正直行，而不是被右弯坐标拖走。
-  if(S.dist>=FORK_S&&driveRoute==='main')changeRoadReference('junction');
-  if(driveRoute!=='junction')return;
-  if(S.dist>FORK_S+24&&S.lateral>1.35){
-    driveStory.route='home';changeRoadReference('main');
-  }else if(S.dist>=FORK_S+56){
+
+  if(S.dist<FORK_S+28)return;
+  {
     poseUpdate();
-    const main=projectRoadPoint(pose,'main',S.dist),forest=projectRoadPoint(pose,'forest',S.dist);
-    const home=Math.abs(main.lat-LANE_LAT)<Math.abs(forest.lat);
-    driveStory.route=home?'home':'forest';changeRoadReference(home?'main':'forest');
-  }
+  const main=projectRoadPoint(pose,'main',S.dist),
+    forest=projectRoadPoint(pose,'forest',S.dist);
+  const home=Math.abs(main.lat-LANE_LAT)<Math.abs(forest.lat);
+  driveStory.route=home?'home':'forest';changeRoadReference(home?'main':'forest');
+  
+}
 }
 
 const dirtTex=mkTex(256,512,(ctx,w,h)=>{
@@ -162,27 +161,30 @@ const assetLoads=['tree-pine-large','tree-large','tree-shrub','soviet-house'].ma
 window.__outdoor.assetsReady=Promise.all(assetLoads);
 
 const SUN_VOICES=['roar','attitude','window','property','again','revive','whatever','sumimasen','notmybiz','eat'];
-let sunAudio=null,sunAudioLoading=false,sunBuffers=[],voiceSerial=0;
+let sunAudio=null,sunAudioLoading=false,sunBuffers=[],voiceSerial=0,listenerAt=-1;
 const spatialVoices=[];
 const listenerForward=new THREE.Vector3(),listenerUp=new THREE.Vector3();
 function createSunVoice(volume,delay){
   const filter=actx.createBiquadFilter(),gain=actx.createGain(),panner=actx.createPanner();
   filter.type='lowpass';filter.frequency.value=1800;gain.gain.value=0;
   panner.panningModel='HRTF';panner.distanceModel='inverse';panner.refDistance=9;panner.maxDistance=240;panner.rolloffFactor=1.15;
-  filter.connect(gain);gain.connect(panner);panner.connect(actx.destination);
-  const voice={filter,gain,panner,volume,distance:0,envelope:0,nextAt:actx.currentTime+delay,last:-1,sources:new Set(),index:voiceSerial++};
+  filter.connect(gain);gain.connect(panner);panner.connect((window.MFAudio?MFAudio.input('voice'):actx.destination));
+  const voice={filter,gain,panner,volume,distance:0,envelope:0,nextAt:actx.currentTime+delay,last:-1,lastSpatial:-1,sources:new Set(),index:voiceSerial++};
   spatialVoices.push(voice);return voice;
 }
 async function ensureSunAudio(){
   if(!actx||sunAudio||sunAudioLoading||S.ended||NOCHASER)return;
   sunAudioLoading=true;
   try{
-    sunBuffers=await Promise.all(SUN_VOICES.map(async name=>{
-      const response=await fetch('assets/chaser/sunxiaochuan_'+name+'.wav');
-      if(!response.ok)throw new Error(name+' '+response.status);
-      return actx.decodeAudioData(await response.arrayBuffer());
-    }));
-    if(S.ended)return;
+    sunBuffers=[];
+    for(let i=0;i<SUN_VOICES.length;i+=2){
+      sunBuffers.push(...await Promise.all(SUN_VOICES.slice(i,i+2).map(async name=>{
+        const response=await fetch('assets/chaser/sunxiaochuan_'+name+'.wav');
+        if(!response.ok)throw new Error(name+' '+response.status);
+        return actx.decodeAudioData(await response.arrayBuffer());
+      })));
+    }
+    if(S.ended||!actx||actx.state==='closed')return;
     sunAudio=createSunVoice(.86,0);
   }catch(error){driveStory.audioError=String(error);console.error('[sun-audio]',error);}
 }
@@ -194,7 +196,8 @@ function stopSunAudio(){
   spatialVoices.length=0;sunAudio=null;
 }
 function updateVoiceListener(){
-  if(!actx)return;
+  if(!actx||actx.state==='closed')return;
+  const now=actx.currentTime;if(now-listenerAt<0.05)return;listenerAt=now;
   const listener=actx.listener;
   camera.getWorldDirection(listenerForward);listenerUp.set(0,1,0).applyQuaternion(camera.quaternion);
   listener.positionX.value=camera.position.x;listener.positionY.value=camera.position.y;listener.positionZ.value=camera.position.z;
@@ -202,8 +205,10 @@ function updateVoiceListener(){
   listener.upX.value=listenerUp.x;listener.upY.value=listenerUp.y;listener.upZ.value=listenerUp.z;
 }
 function positionSunVoice(voice,p,envelope,height=1.45){
-  if(!voice)return;
+  if(!voice||!actx||actx.state==='closed')return;
   const {panner,gain,filter}=voice,t=actx.currentTime;
+  if(t-voice.lastSpatial<0.05)return;
+  voice.lastSpatial=t;
   panner.positionX.value=p.x;panner.positionY.value=p.y+height;panner.positionZ.value=p.z;
   const distance=Math.hypot(p.x-camera.position.x,p.y+height-camera.position.y,p.z-camera.position.z);
   const audible=S.dozing||S.ended||document.hidden?0:envelope;
@@ -220,7 +225,7 @@ function positionSunVoice(voice,p,envelope,height=1.45){
 }
 function updateSunAudio(envelope){
   updateVoiceListener();positionSunVoice(sunAudio,chaserRoot.position,envelope);
-  if(S.dozing)for(const voice of spatialVoices)voice.gain.gain.setTargetAtTime(0,actx.currentTime,.08);
+  if(S.dozing&&actx&&actx.state!=='closed')for(const voice of spatialVoices)voice.gain.gain.setTargetAtTime(0,actx.currentTime,.08);
 }
 addEventListener('pointerdown',()=>{if(S.started&&!S.ended)initAudio();});
 addEventListener('visibilitychange',()=>{
@@ -250,7 +255,8 @@ function storySfxPlay(id,vol,rate,cooldown){
     if(!b||S.ended)return;
     const src=actx.createBufferSource(),g=actx.createGain();
     src.buffer=b;src.playbackRate.value=rate||1;g.gain.value=vol;
-    src.connect(g);g.connect(actx.destination);storySfx.active.add(src);
+    const bus=id.startsWith('amb_')?'ambience':(id==='sfx_breath'?'voice':'effects');
+    src.connect(g);g.connect((window.MFAudio?MFAudio.input(bus):actx.destination));storySfx.active.add(src);
     src.onended=()=>{storySfx.active.delete(src);src.disconnect();g.disconnect();};
     src.start();
   };
@@ -288,7 +294,7 @@ function frameHorde(actor,frame){
   const y=(Math.floor(local/SUN_ATLAS.cols)*SUN_ATLAS.cellH+SUN_ATLAS.pad)/tex.image.height;
   const w=SUN_ATLAS.fw/tex.image.width,h=actor.crop/tex.image.height,uv=actor.mesh.geometry.attributes.uv;
   uv.setXY(0,x,1-y);uv.setXY(1,x+w,1-y);uv.setXY(2,x,1-y-h);uv.setXY(3,x+w,1-y-h);uv.needsUpdate=true;
-  if(actor.mesh.material.map!==tex){actor.mesh.material.map=tex;actor.mesh.material.needsUpdate=true;}
+  if(actor.mesh.material.map!==tex)actor.mesh.material.map=tex;
   actor.frame=frame;
 }
 function faceHorde(actor){actor.g.rotation.y=Math.atan2(camera.position.x-actor.g.position.x,camera.position.z-actor.g.position.z);}
@@ -302,7 +308,11 @@ function beginForestCapture(){
   S.camMode='cockpit';S.drowsy=12;S.dozing=false;S.recoilV=0;S.slipV=0;
   for(const key in keys)keys[key]=false;
   look.yaw=look.ty=look.pitch=look.tp=0;look.drag=false;
-  horde.forEach(actor=>{actor.start=actor.g.position.clone();});
+  horde.forEach((actor,i)=>{
+    const side=i%2?1:-1,row=Math.floor(i/2);
+    actor.start=actor.g.position.clone();
+    actor.stop=new THREE.Vector3(side*(1.47+(row%2)*.23),0,-1.45+row*.78);
+  });
 }
 function updateForestHorde(dt,tnow){
   initHorde();
@@ -312,7 +322,7 @@ function updateForestHorde(dt,tnow){
   }
   if(driveStory.forestPhase!=='chase')return;
   driveStory.hordeTime+=dt;
-  driveStory.crowdGap=Math.max(4,driveStory.crowdGap-Math.max(5,33-S.speed+driveStory.hordeTime*.22)*dt);
+  driveStory.crowdGap=Math.max(4,driveStory.crowdGap-Math.max(5,33-S.speed+driveStory.hordeTime*.22)*dt*1.10);
   for(let i=0;i<horde.length;i++){
     /* v4.4：纵深错落 + 独立步伐相位，头肩起伏与左右摆动各不相同。 */
     const actor=horde[i],gap=driveStory.crowdGap+i*2.8+Math.sin(i*1.7)*1.1;
@@ -332,15 +342,14 @@ function updateForestEnding(dt){
   if(!driveStory.capture||driveStory.captureSide!=='forest'||S.ended)return;
   const t=driveStory.endingTime+=dt,step=sm01(0,3.4,t);
   S.camMode='cockpit';S.drowsy=12;
-  camera.position.set(DRIVER_X,1.26+Math.sin(t*1.9)*.004,.22);
+  camera.position.set(DRIVER_X,DRIVER_EYE_Y+Math.sin(t*1.9)*.004,DRIVER_Z);
   camera.rotation.order='YXZ';
   camera.rotation.set(.03*sm01(5.8,8.1,t),-.5*Math.PI*sm01(5.8,8.1,t)+.58*sm01(.7,1.4,t)*(1-sm01(2.1,3.2,t)),0);
   camera.fov=59;camera.updateProjectionMatrix();
   updateVoiceListener();
   for(let i=0;i<horde.length;i++){
-    const actor=horde[i],side=i%2?1:-1,row=Math.floor(i/2);
-    const x=side*(1.47+(row%2)*.23),z=-1.45+row*.78;
-    actor.g.position.lerpVectors(actor.start,new THREE.Vector3(x,0,z),step);
+    const actor=horde[i];
+    actor.g.position.lerpVectors(actor.start,actor.stop,step);
     actor.g.visible=!(i===1&&t>3.65);faceHorde(actor);frameHorde(actor,t<3.4?Math.floor(t*14+i*5):40+i%4);
     hordeVoice(actor,i,actor.g.visible?(t<5.8?.85:.20):0);
   }

@@ -113,15 +113,16 @@ const CSS = `
 #mf-dance .dbtns button:active{background:#e06b9e;color:#fff;}
 `;
 let els = {};
+const touchInput=!!(window.MFMobile&&MFMobile.isTouch);
 function initUI() {
   const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
   const wrap = document.createElement("div"); wrap.className = "mf-ui";
   wrap.innerHTML = `
     <div id="mf-hint"></div><div id="mf-toast"></div>
-    <div id="mf-dialog"><div class="who"></div><div class="line"></div><div class="next">E / 点击 继续 ▼</div></div>
+    <div id="mf-dialog"><div class="who"></div><div class="line"></div><div class="next">${touchInput?'点击 继续 ▼':'E / 点击 继续 ▼'}</div></div>
     <div id="mf-confirm"><div class="q"></div><button class="yes">确定</button><button class="no">再想想</button></div>
     <div id="mf-ending"><div class="tag"></div><div class="name"></div><div class="txt"></div><button>返回</button></div>
-    <div id="mf-dance"><div class="t">奶 蛙 舞 · 跟 上 节 拍</div><div class="arrow"></div><div class="seq"></div><div class="bar"><i></i></div><div class="hint">按对应方向键 · 错拍或超时即失败</div>
+    <div id="mf-dance"><div class="t">奶 蛙 舞 · 跟 上 节 拍</div><div class="arrow"></div><div class="seq"></div><div class="bar"><i></i></div><div class="hint">${touchInput?'点方向按钮 · 错拍或超时即失败':'按对应方向键 · 错拍或超时即失败'}</div>
       <div class="dbtns"><button data-d="ArrowLeft">←</button><button data-d="ArrowUp">↑</button><button data-d="ArrowDown">↓</button><button data-d="ArrowRight">→</button></div></div>`;
   document.body.appendChild(wrap);
   ["hint", "toast", "dialog", "confirm", "ending", "dance"].forEach(k => els[k] = document.getElementById("mf-" + k));
@@ -140,9 +141,14 @@ function toast(text, ms) {
   els.toast.textContent = text; els.toast.classList.add("on");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => els.toast.classList.remove("on"), ms || 2600);
 }
+let hintText = "";
 function hint(text) {
-  if (text) { els.hint.innerHTML = text; els.hint.classList.add("on"); }
-  else els.hint.classList.remove("on");
+  const next = text || "";
+  if (next !== hintText) {
+    hintText = next;
+    if (next) els.hint.innerHTML = next;
+  }
+  els.hint.classList.toggle("on", !!next);
 }
 
 /* ---- 对话 ---- */
@@ -172,7 +178,7 @@ function createTypewriter(element) {
   function reveal() { if (!isTyping()) return false; complete(); return true; }
   return { start, reveal, clear, isTyping };
 }
-let dlgQueue = [], dlgCb = null, dlgWriter = null, dlgWho = "", dlgPage = 0;
+let dlgQueue = [], dlgCb = null, dlgWriter = null, dlgWho = "", dlgPage = 0, dlgPos = null;
 const dialogInputs = new WeakSet();
 function consumeDialogInput(e) {
   if (!e) return true;
@@ -194,15 +200,16 @@ function showDialogPage() {
   const text = dlgQueue.shift();
   if (!dlgWriter) dlgWriter = createTypewriter(els.dialog.querySelector(".line"));
   els.dialog.dataset.state = "typing";
-  els.dialog.querySelector(".next").textContent = "按住 E 补全字幕";
+  els.dialog.querySelector(".next").textContent = touchInput?"点击 补全字幕":"按住 E 补全字幕";
   dlgWriter.start(text, () => {
     els.dialog.dataset.state = "waiting";
-    els.dialog.querySelector(".next").textContent = "按住 E 继续 ▼";
+    els.dialog.querySelector(".next").textContent = touchInput?"点击 继续 ▼":"按住 E 继续 ▼";
   });
-  window.dispatchEvent(new CustomEvent("mf-dialog-page", { detail: { who: dlgWho, text, page: dlgPage++ } }));
+  window.dispatchEvent(new CustomEvent("mf-dialog-page", { detail: { who: dlgWho, text, page: dlgPage++, pos: dlgPos } }));
 }
 function dialog(who, lines, cb) {
   closeDialog(); dlgQueue = lines.slice(); dlgCb = cb || null; dlgWho = who; dlgPage = 0;
+  dlgPos = active && active.pos ? { x: active.pos.x, y: active.pos.y || 1.35, z: active.pos.z } : null;
   lastAutoAdvance = performance.now() + 320;   /* 开门那一下不算"按住" */
   els.dialog.querySelector(".who").textContent = who;
   els.dialog.classList.add("on");
@@ -331,7 +338,7 @@ function update(px, pz) {
     }
   }
   active = best;
-  hint(best ? "<b>[E]</b> " + best._lb : null);
+  hint(best ? (touchInput?"<b>交互</b> ":"<b>[E]</b> ") + best._lb : null);
 }
 function interact(e) {
   if (dialogOpen()) { advanceDialog(e); return; }
@@ -350,7 +357,7 @@ function setActive(p) {
   const lb = p.label();
   if (!lb || (p.enabled && !p.enabled()) || (visibilityTest && visibilityTest(p) === false)) { active = null; hint(null); return; }
   active = p; p._lb = lb;
-  hint("<b>[E]</b> " + lb);
+  hint((touchInput?"<b>交互</b> ":"<b>[E]</b> ") + lb);
 }
 
 /* ===== 状态面板（实验台用，场景可隐藏） ===== */
